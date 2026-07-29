@@ -5,7 +5,10 @@ import {
   calculateBattleReward,
   chooseEnemyAction,
   createCombatState,
+  createEquipmentCatalog,
   createInitialGameState,
+  deriveCharacterCombatStats,
+  equipItem,
   grantExperience,
   inventoryQuantity,
   refreshQuestAvailability,
@@ -20,18 +23,23 @@ import { applyGeneratedPatch, NarrativeCheckpointQueue } from "../ai";
 import {
   encounterFinds,
   encounters,
+  bossPhases,
   getDialogue,
   items,
   locationFinds,
   locations,
   npcs,
-  quests
+  quests,
+  recruitProfiles,
+  startingBuildLoadouts,
+  type RecruitProfile
 } from "../content";
 import type {
   BattleAction,
   BattleView,
   CharacterCreationDraft,
   GameBridge,
+  GameSaveSlot,
   GameSnapshot,
   InteractionView,
   PartyMemberView,
@@ -64,19 +72,66 @@ const BASE_STATS: Stats = {
   charisma: 8
 };
 
-const ROOT_SPARK: CombatSkill = {
-  id: "skill.root-spark",
-  name: "Root Spark",
-  element: "nature",
-  power: 18,
-  accuracy: 0.92,
-  mpCost: 5,
-  target: "enemy",
-  status: { id: "poison", chance: 0.25, turns: 2, potency: 3 }
+const COMBAT_SKILLS: readonly CombatSkill[] = [
+  { id: "skill.guard-line", name: "Guard Line", element: "physical", power: 14, accuracy: 0.98, mpCost: 3, target: "enemy", status: { id: "stun", chance: 0.2, turns: 1, potency: 0 } },
+  { id: "skill.shield-bash", name: "Shield Bash", element: "physical", power: 20, accuracy: 0.88, mpCost: 5, target: "enemy", status: { id: "stun", chance: 0.3, turns: 1, potency: 0 } },
+  { id: "skill.aimed-shot", name: "Aimed Shot", element: "physical", power: 22, accuracy: 0.96, mpCost: 4, target: "enemy" },
+  { id: "skill.quickstep", name: "Quickstep Cut", element: "wind", power: 17, accuracy: 0.98, mpCost: 3, target: "enemy", status: { id: "bleed", chance: 0.25, turns: 2, potency: 3 } },
+  { id: "skill.mend", name: "Mending Light", element: "radiant", power: 18, accuracy: 1, mpCost: 4, target: "self", healing: true },
+  { id: "skill.ward-thread", name: "Ward Thread", element: "aether", power: 15, accuracy: 1, mpCost: 3, target: "enemy", status: { id: "sleep", chance: 0.2, turns: 1, potency: 0 } },
+  { id: "skill.ember-spark", name: "Ember Spark", element: "fire", power: 24, accuracy: 0.9, mpCost: 6, target: "enemy", status: { id: "burn", chance: 0.35, turns: 2, potency: 4 } },
+  { id: "skill.tide-pulse", name: "Tide Pulse", element: "water", power: 20, accuracy: 0.94, mpCost: 5, target: "enemy" },
+  { id: "skill.feint", name: "Feint", element: "physical", power: 16, accuracy: 0.99, mpCost: 3, target: "enemy", status: { id: "bleed", chance: 0.3, turns: 2, potency: 3 } },
+  { id: "skill.slow-mark", name: "Slow Mark", element: "shadow", power: 15, accuracy: 0.96, mpCost: 4, target: "enemy", status: { id: "freeze", chance: 0.2, turns: 1, potency: 0 } },
+  { id: "skill.thorn-bind", name: "Thorn Bind", element: "nature", power: 20, accuracy: 0.93, mpCost: 5, target: "enemy", status: { id: "poison", chance: 0.4, turns: 2, potency: 4 } },
+  { id: "skill.rootward", name: "Rootward", element: "earth", power: 17, accuracy: 0.97, mpCost: 4, target: "enemy" }
+];
+
+const SKILLS: Readonly<Record<string, CombatSkill>> = Object.fromEntries(
+  COMBAT_SKILLS.map((skill) => [skill.id, skill])
+);
+
+const EQUIPMENT = createEquipmentCatalog([
+  {
+    id: "item.wayfarer-blade",
+    name: "Wayfarer Blade",
+    kind: "weapon",
+    description: "A balanced road sword made for uncertain fights.",
+    value: 120,
+    statModifiers: { strength: 3, dexterity: 2 }
+  },
+  {
+    id: "item.resin-vest",
+    name: "Resin Vest",
+    kind: "armor",
+    description: "Layered cloth hardened with flexible resin.",
+    value: 110,
+    statModifiers: { maxHp: 14, vitality: 3 }
+  },
+  {
+    id: "item.dream-resin",
+    name: "Dream Resin",
+    kind: "accessory",
+    description: "A cloudy bead that hums during sleep.",
+    value: 180,
+    statModifiers: { maxMp: 8, wisdom: 2 }
+  }
+]);
+
+const ANCESTRY_STATS: Readonly<Record<string, Partial<Stats>>> = {
+  hearthborn: { maxHp: 4, charisma: 2 },
+  sylvan: { maxMp: 8, intellect: 2, wisdom: 1 },
+  stonekin: { maxHp: 12, vitality: 3, agility: -2 },
+  wayfarer: { dexterity: 2, agility: 2, charisma: 1 }
 };
 
-const SKILLS: Readonly<Record<string, CombatSkill>> = {
-  [ROOT_SPARK.id]: ROOT_SPARK
+const JOB_STATS: Readonly<Record<string, Partial<Stats>>> = {
+  vanguard: { maxHp: 12, strength: 2, vitality: 3 },
+  ranger: { dexterity: 3, agility: 3, vitality: -1 },
+  mender: { maxMp: 10, intellect: 1, wisdom: 4 },
+  shaper: { maxMp: 14, intellect: 4, vitality: -2 },
+  trickster: { maxMp: 5, dexterity: 3, agility: 2 },
+  warden: { maxHp: 6, maxMp: 7, vitality: 1, wisdom: 3 }
 };
 
 interface ActiveBattle {
@@ -86,53 +141,90 @@ interface ActiveBattle {
   log: string[];
   /** Index of the party member whose player turn is awaiting an action. */
   partyTurnIndex: number;
+  activatedBossPhases: string[];
+}
+
+function statsForBuild(ancestryId: string, jobId: string): Stats {
+  const ancestry = ANCESTRY_STATS[ancestryId] ?? {};
+  const job = JOB_STATS[jobId] ?? {};
+  return Object.fromEntries(
+    Object.entries(BASE_STATS).map(([key, value]) => [
+      key,
+      Math.max(key === "maxHp" ? 1 : 0, value + (ancestry[key as keyof Stats] ?? 0) + (job[key as keyof Stats] ?? 0))
+    ])
+  ) as unknown as Stats;
+}
+
+function equipStartingItems(character: PlayerCharacter, startingItems: readonly string[]): PlayerCharacter {
+  return startingItems.reduce((current, itemId) => {
+    const equipment = EQUIPMENT[itemId];
+    return equipment ? equipItem(current, equipment) : current;
+  }, character);
+}
+
+function isEquipmentItem(itemId: string): boolean {
+  return EQUIPMENT[itemId] !== undefined;
+}
+
+function createPartyCharacter(options: {
+  id: string;
+  name: string;
+  ancestryId: string;
+  jobId: string;
+  skills: readonly string[];
+  startingItems: readonly string[];
+}): PlayerCharacter {
+  const stats = statsForBuild(options.ancestryId, options.jobId);
+  const character: PlayerCharacter = {
+    id: options.id,
+    name: options.name,
+    raceId: options.ancestryId,
+    jobId: options.jobId,
+    experience: 0,
+    level: 1,
+    stats,
+    hp: stats.maxHp,
+    mp: stats.maxMp,
+    skills: [...options.skills],
+    elements: options.ancestryId === "sylvan"
+      ? { nature: -0.2, fire: 0.15 }
+      : options.ancestryId === "stonekin"
+        ? { earth: -0.2, lightning: 0.1 }
+        : options.ancestryId === "wayfarer"
+          ? { wind: -0.1 }
+          : { aether: -0.1 },
+    statuses: [],
+    isPlayerControlled: true,
+    equipment: {}
+  };
+  return equipStartingItems(character, options.startingItems);
 }
 
 function playerFromDraft(draft: CharacterCreationDraft): PlayerCharacter {
-  const stats = { ...BASE_STATS };
-  return {
+  const loadout = startingBuildLoadouts.find(
+    (candidate) => candidate.ancestryId === draft.ancestryId && candidate.jobId === draft.jobId
+  );
+  if (!loadout) throw new Error(`Unknown starting build '${draft.ancestryId}/${draft.jobId}'`);
+  return createPartyCharacter({
     id: "party.protagonist",
     name: draft.name.trim() || "Rowan",
-    raceId: draft.ancestryId,
+    ancestryId: draft.ancestryId,
     jobId: draft.jobId,
-    experience: 0,
-    level: 1,
-    stats,
-    hp: stats.maxHp,
-    mp: stats.maxMp,
-    skills: [ROOT_SPARK.id],
-    elements: { nature: -0.15 },
-    statuses: [],
-    isPlayerControlled: true,
-    equipment: {}
-  };
+    skills: loadout.startingSkills,
+    startingItems: loadout.startingItems
+  });
 }
 
-function tovinCharacter(): PlayerCharacter {
-  const stats: Stats = {
-    ...BASE_STATS,
-    maxHp: 60,
-    maxMp: 34,
-    dexterity: 12,
-    agility: 12,
-    vitality: 8
-  };
-  return {
-    id: "party.tovin",
-    name: "Tovin",
-    raceId: "Wayfarer",
-    jobId: "Ranger",
-    experience: 0,
-    level: 1,
-    stats,
-    hp: stats.maxHp,
-    mp: stats.maxMp,
-    skills: [ROOT_SPARK.id],
-    elements: { wind: -0.1 },
-    statuses: [],
-    isPlayerControlled: true,
-    equipment: {}
-  };
+function recruitCharacter(profile: RecruitProfile): PlayerCharacter {
+  const npc = npcs.find(({ id }) => id === profile.npcId);
+  return createPartyCharacter({
+    id: profile.id.replace("recruit.", "party."),
+    name: npc?.name.split(" ")[0] ?? profile.id,
+    ancestryId: profile.ancestryId,
+    jobId: profile.jobId,
+    skills: profile.startingSkills,
+    startingItems: profile.startingItems
+  });
 }
 
 function enemyCombatant(id: string, index: number, boss: boolean, level: number): Combatant {
@@ -168,6 +260,7 @@ export class EngineGameBridge implements GameBridge {
   #battle?: ActiveBattle;
   #autosave: GameSnapshot["autosave"] = "idle";
   #hasSave = false;
+  readonly #saveSlots = new Set<GameSaveSlot>();
   readonly #narrative = new NarrativeCheckpointQueue({
     validationCatalog: {
       knownEntityIds: new Set([
@@ -186,7 +279,8 @@ export class EngineGameBridge implements GameBridge {
   }
 
   async initialize(): Promise<void> {
-    this.#hasSave = (await this.#saves.list()).some(({ slot }) => slot === "autosave");
+    for (const record of await this.#saves.list()) this.#saveSlots.add(record.slot);
+    this.#hasSave = this.#saveSlots.has("autosave");
   }
 
   getSnapshot(): Readonly<GameSnapshot> {
@@ -200,6 +294,7 @@ export class EngineGameBridge implements GameBridge {
         party: [],
         inventory: [],
         quests: [],
+        saveSlots: [...this.#saveSlots],
         autosave: this.#autosave,
         chronicleHint: "A rain-heavy morning in Hearthcross."
       };
@@ -235,6 +330,7 @@ export class EngineGameBridge implements GameBridge {
         totalMainQuests: mainQuestIds.size,
         complete: mainQuestIds.size > 0 && completedMainQuests === mainQuestIds.size
       },
+      saveSlots: [...this.#saveSlots],
       autosave: this.#autosave,
       chronicleHint: this.#state.world.chronicle.at(-1)?.body ?? "The road is waiting."
     };
@@ -246,6 +342,10 @@ export class EngineGameBridge implements GameBridge {
   }
 
   async newGame(draft: CharacterCreationDraft): Promise<void> {
+    const loadout = startingBuildLoadouts.find(
+      (candidate) => candidate.ancestryId === draft.ancestryId && candidate.jobId === draft.jobId
+    );
+    if (!loadout) throw new Error(`Unknown starting build '${draft.ancestryId}/${draft.jobId}'`);
     let state = createInitialGameState({
       seed: `${draft.name || "Rowan"}-${crypto.randomUUID()}`,
       startingLocationId: STARTING_LOCATION,
@@ -253,9 +353,15 @@ export class EngineGameBridge implements GameBridge {
       contentPackVersions: { "core.yggdrasil-chronicles": CORE_PACK_VERSION },
       quests
     });
+    let startingInventory = addItem(addItem(state.inventory, "item.vesleaf", 3), "item.root-tonic", 2);
+    for (const itemId of loadout.startingItems) {
+      if (!isEquipmentItem(itemId)) {
+        startingInventory = this.addWithinStackLimit(startingInventory, itemId, 1);
+      }
+    }
     state = {
       ...state,
-      inventory: addItem(addItem(state.inventory, "item.vesleaf", 3), "item.root-tonic", 2),
+      inventory: startingInventory,
       quests: startQuest(state.quests, FIRST_QUEST),
       world: {
         ...state.world,
@@ -274,7 +380,11 @@ export class EngineGameBridge implements GameBridge {
   }
 
   async continueGame(): Promise<void> {
-    this.#state = await this.#saves.load("autosave");
+    await this.load("autosave");
+  }
+
+  async load(slot: GameSaveSlot): Promise<void> {
+    this.#state = await this.#saves.load(slot);
     this.#hasSave = Boolean(this.#state);
     this.emit();
   }
@@ -317,13 +427,6 @@ export class EngineGameBridge implements GameBridge {
 
   async interactNpc(npcId: string): Promise<InteractionView> {
     const state = this.requireState();
-    let recruitedMember: PartyMemberView | undefined;
-    let party = state.party;
-    if (npcId === "npc.tovin-ash" && party.length < 4 && !party.some(({ id }) => id === "party.tovin")) {
-      const recruited = tovinCharacter();
-      party = [...party, recruited];
-      recruitedMember = this.toPartyView(recruited, party.length - 1);
-    }
     let progress = state.quests;
     for (const definition of quests) {
       const entry = progress.find(({ questId }) => questId === definition.id);
@@ -334,12 +437,34 @@ export class EngineGameBridge implements GameBridge {
     }
     this.#state = {
       ...state,
-      party,
       quests: this.applyObjectiveToActiveQuests(progress, "talk", npcId)
     };
     this.applyInventoryObjectives();
     this.advanceCampaign();
     this.applyCompletedQuestRewards();
+    let recruitedMember: PartyMemberView | undefined;
+    const profile = recruitProfiles.find((candidate) => candidate.npcId === npcId);
+    if (profile && this.#state.party.length < 4) {
+      const completed = this.#state.quests.some(
+        ({ questId, state: questState }) => questId === profile.recruitmentQuestId && questState === "completed"
+      );
+      const partyId = profile.id.replace("recruit.", "party.");
+      if (completed && !this.#state.party.some(({ id }) => id === partyId)) {
+        const recruited = recruitCharacter(profile);
+        const party = [...this.#state.party, recruited];
+        this.#state = {
+          ...this.#state,
+          party,
+          inventory: profile.startingItems.reduce(
+            (inventory, itemId) => isEquipmentItem(itemId)
+              ? inventory
+              : this.addWithinStackLimit(inventory, itemId, 1),
+            this.#state.inventory
+          )
+        };
+        recruitedMember = this.toPartyView(recruited, party.length - 1);
+      }
+    }
     await this.persist("autosave");
     const npc = npcId.replace("npc.", "").split("-").map((word) =>
       `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`
@@ -354,13 +479,24 @@ export class EngineGameBridge implements GameBridge {
     if (encounter.boss && state.world.defeatedBossIds.includes(encounterId)) return;
     const averageLevel = Math.max(1, Math.round(state.party.reduce((sum, member) => sum + member.level, 0) / state.party.length));
     const enemies = encounter.enemyIds.map((id, index) => enemyCombatant(id, index, encounter.boss, averageLevel));
+    const party = state.party.map((member) => {
+      const stats = deriveCharacterCombatStats(member, EQUIPMENT);
+      return {
+        ...member,
+        stats,
+        hp: Math.min(stats.maxHp, member.hp + Math.max(0, stats.maxHp - member.stats.maxHp)),
+        mp: Math.min(stats.maxMp, member.mp + Math.max(0, stats.maxMp - member.stats.maxMp))
+      };
+    });
     this.#battle = {
       encounterId,
-      state: createCombatState(state.party, enemies, `${state.seed}:${encounterId}:${state.world.worldMinutes}`),
+      state: createCombatState(party, enemies, `${state.seed}:${encounterId}:${state.world.worldMinutes}`),
       phase: "choosing",
       log: [`${encounter.name} bars the road.`],
-      partyTurnIndex: this.firstLivingPartyIndex(state.party)
+      partyTurnIndex: this.firstLivingPartyIndex(party),
+      activatedBossPhases: []
     };
+    this.applyBossPhaseTransitions(this.#battle);
     this.emit();
   }
 
@@ -391,17 +527,27 @@ export class EngineGameBridge implements GameBridge {
         active.log.push("No Root Tonic remains in the pack.");
       }
     } else {
+      const activeSkillId = actor.skills.find((skillId) => SKILLS[skillId]);
+      const activeSkill = activeSkillId ? SKILLS[activeSkillId] : undefined;
       const resolution = resolveCombatAction(
         active.state,
         action === "guard"
           ? { type: "guard", actorId: actor.id }
           : action === "skill"
-            ? { type: "skill", actorId: actor.id, targetId: target.id, skillId: ROOT_SPARK.id }
+            ? activeSkillId
+              ? {
+                  type: "skill",
+                  actorId: actor.id,
+                  targetId: activeSkill?.target === "enemy" ? target.id : actor.id,
+                  skillId: activeSkillId
+                }
+              : { type: "attack", actorId: actor.id, targetId: target.id }
             : { type: "attack", actorId: actor.id, targetId: target.id },
         SKILLS
       );
       active.state = resolution.state;
       active.log.push(...resolution.events.map((event) => this.describeEvent(event, active.state)));
+      this.applyBossPhaseTransitions(active);
     }
 
     if (active.state.outcome === "ongoing" && this.advancePartyTurn(active)) {
@@ -492,7 +638,14 @@ export class EngineGameBridge implements GameBridge {
     const party = active.state.party.map((member) => {
       const original = state.party.find(({ id }) => id === member.id);
       if (!original) return member as PlayerCharacter;
-      return grantExperience({ ...original, hp: member.hp, mp: member.mp, statuses: member.statuses }, reward.experience).character;
+      const missingHp = Math.max(0, member.stats.maxHp - member.hp);
+      const missingMp = Math.max(0, member.stats.maxMp - member.mp);
+      return grantExperience({
+        ...original,
+        hp: Math.max(0, original.stats.maxHp - missingHp),
+        mp: Math.max(0, original.stats.maxMp - missingMp),
+        statuses: member.statuses
+      }, reward.experience).character;
     });
     let inventory = state.inventory;
     if (reward.itemRoll < 350) inventory = this.addWithinStackLimit(inventory, "item.root-tonic", 1);
@@ -657,6 +810,76 @@ export class EngineGameBridge implements GameBridge {
     return index;
   }
 
+  private applyBossPhaseTransitions(active: ActiveBattle): void {
+    if (active.state.outcome !== "ongoing") return;
+    const candidates = bossPhases
+      .filter((phase) =>
+        phase.encounterId === active.encounterId
+        && !active.activatedBossPhases.includes(phase.phaseName)
+      )
+      .sort((left, right) => right.beginsAtHealthPercent - left.beginsAtHealthPercent);
+    for (const phase of candidates) {
+      const enemyIndex = active.state.enemies.findIndex(({ id }) => id.startsWith(`${phase.enemyId}.`));
+      const enemy = active.state.enemies[enemyIndex];
+      if (!enemy || enemy.hp <= 0 || enemy.hp / enemy.stats.maxHp * 100 > phase.beginsAtHealthPercent) continue;
+      const empowered = {
+        ...enemy,
+        stats: { ...enemy.stats },
+        elements: { ...enemy.elements },
+        statuses: enemy.statuses.map((status) => ({ ...status }))
+      };
+      let party = active.state.party;
+      if (phase.mechanic === "empower") {
+        empowered.stats.strength += 3;
+        empowered.stats.agility += 2;
+        empowered.stats.intellect += 3;
+      } else if (phase.mechanic === "fortify") {
+        empowered.stats.vitality += 4;
+        empowered.stats.wisdom += 4;
+      } else if (phase.mechanic === "root_party") {
+        party = party.map((member) => member.hp > 0
+          ? {
+              ...member,
+              statuses: [
+                ...member.statuses.filter(({ id }) => id !== "freeze"),
+                { id: "freeze" as const, remainingTurns: 2, potency: 0 }
+              ]
+            }
+          : member);
+      } else if (phase.mechanic === "scorch_party") {
+        party = party.map((member) => member.hp > 0
+          ? {
+              ...member,
+              statuses: [
+                ...member.statuses.filter(({ id }) => id !== "burn"),
+                { id: "burn" as const, remainingTurns: 2, potency: 4 }
+              ]
+            }
+          : member);
+      } else if (phase.mechanic === "restore_boss") {
+        empowered.hp = Math.min(
+          empowered.stats.maxHp,
+          empowered.hp + Math.round(empowered.stats.maxHp * 0.15)
+        );
+      } else if (phase.mechanic === "elemental_shift") {
+        empowered.elements = {
+          ...empowered.elements,
+          nature: 0.4,
+          fire: 0.4,
+          aether: -0.25
+        };
+      }
+      active.state = {
+        ...active.state,
+        party,
+        enemies: active.state.enemies.map((candidate, index) => index === enemyIndex ? empowered : candidate)
+      };
+      active.activatedBossPhases.push(phase.phaseName);
+      active.log.push(`${phase.phaseName}: ${phase.telegraph}`);
+      active.log.push(phase.tacticalChange);
+    }
+  }
+
   /** Returns true when another living party member must act before enemies. */
   private advancePartyTurn(active: ActiveBattle): boolean {
     for (let index = active.partyTurnIndex + 1; index < active.state.party.length; index += 1) {
@@ -725,6 +948,7 @@ export class EngineGameBridge implements GameBridge {
     this.emit();
     try {
       await this.#saves.save(slot, this.#state);
+      this.#saveSlots.add(slot);
       this.#hasSave = true;
       this.#autosave = "saved";
     } catch (error) {
@@ -786,6 +1010,12 @@ export class EngineGameBridge implements GameBridge {
       activeActorId: active.phase === "choosing"
         ? active.state.party[active.partyTurnIndex]?.id
         : undefined,
+      activeSkillName: (() => {
+        const actor = active.state.party[active.partyTurnIndex];
+        const skillId = actor?.skills.find((candidate) => SKILLS[candidate]);
+        return skillId ? SKILLS[skillId]?.name : undefined;
+      })(),
+      bossPhase: active.activatedBossPhases.at(-1),
       log: active.log.slice(-8),
       round: active.state.round
     };
@@ -797,6 +1027,8 @@ export class EngineGameBridge implements GameBridge {
     switch (event.type) {
       case "damage":
         return `${name(event.actorId)} deals ${event.amount} ${event.element} damage to ${name(event.targetId)}${event.critical ? " — critical!" : "."}`;
+      case "healing":
+        return `${name(event.actorId)} restores ${event.amount} vitality to ${name(event.targetId)}.`;
       case "miss":
         return `${name(event.actorId)} misses ${name(event.targetId)}.`;
       case "guard":

@@ -4,7 +4,7 @@ An original living-world browser JRPG. Explore three regions, recruit a four-per
 
 ## Quick start
 
-Requirements: Node.js 22 or newer.
+Requirements: Node.js 22.9 or newer.
 
 ```bash
 npm install
@@ -21,10 +21,19 @@ Open `http://127.0.0.1:5173`. The game remains playable without an AI key.
 - Journal: J
 - Party: P
 - Quick save: F5
+- System menu/manual saves: Escape, then choose a slot
+- Gamepad: D-pad/left stick to move, A to confirm, B to cancel
+
+Continue loads the autosave. `Load Chronicle` on the title screen lists the
+three manual slots and restores the selected snapshot.
 
 ## Optional living-world generation
 
 Copy `.env.example` to `.env`, set `AI_API_KEY`, `AI_MODEL`, and optionally `AI_BASE_URL`, then run `npm run dev`. Keys stay in the Node proxy and are never sent to the browser.
+
+Both development and production commands load `.env` automatically when the
+file exists. Generated story content is optional; the authored campaign,
+combat, travel, and saves remain available when the proxy is offline.
 
 ## Quality commands
 

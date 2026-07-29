@@ -86,6 +86,12 @@ export class BattleScene extends Phaser.Scene {
     for (let ring = 0; ring < 6; ring += 1) graphics.strokeEllipse(480, 305, 240 + ring * 94, 42 + ring * 15);
     this.add.text(28, 22, battle.title.toUpperCase(), { ...TEXT.heading, color: COLORS.gold });
     this.add.text(28, 50, `ROUND ${battle.round}`, TEXT.small);
+    if (battle.bossPhase) {
+      this.add.text(930, 24, battle.bossPhase.toUpperCase(), {
+        ...TEXT.small,
+        color: COLORS.gold
+      }).setOrigin(1, 0);
+    }
   }
 
   private paintActors(battle: BattleView): void {
@@ -149,7 +155,10 @@ export class BattleScene extends Phaser.Scene {
         padding: { x: 8, y: 7 }
       });
     });
-    this.add.text(36, 446, ACTIONS[this.actionIndex]?.hint ?? "", { ...TEXT.body, color: COLORS.muted });
+    const hint = this.actionIndex === 1 && battle.activeSkillName
+      ? `${battle.activeSkillName}: ${ACTIONS[this.actionIndex]?.hint ?? ""}`
+      : ACTIONS[this.actionIndex]?.hint ?? "";
+    this.add.text(36, 446, hint, { ...TEXT.body, color: COLORS.muted });
     const recentLog = battle.log.slice(-3).join("\n");
     this.add.text(670, 365, recentLog, {
       ...TEXT.small,

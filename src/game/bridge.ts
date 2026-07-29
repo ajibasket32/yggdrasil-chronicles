@@ -3,6 +3,7 @@ import type { QuestState } from "../shared/types";
 export type Direction = "up" | "down" | "left" | "right";
 export type OverlayKind = "journal" | "inventory" | "party" | "system";
 export type BattleAction = "attack" | "skill" | "item" | "guard" | "escape";
+export type GameSaveSlot = "autosave" | "manual-1" | "manual-2" | "manual-3";
 
 export interface CharacterCreationDraft {
   name: string;
@@ -55,6 +56,8 @@ export interface BattleView {
   phase: "choosing" | "resolving" | "victory" | "defeat" | "escaped";
   actors: BattleActorView[];
   activeActorId?: string;
+  activeSkillName?: string;
+  bossPhase?: string;
   log: string[];
   round: number;
 }
@@ -81,6 +84,7 @@ export interface GameSnapshot {
     totalMainQuests: number;
     complete: boolean;
   };
+  saveSlots?: GameSaveSlot[];
   autosave: "idle" | "saving" | "saved" | "error";
   chronicleHint: string;
 }
@@ -96,13 +100,14 @@ export interface GameBridge {
   subscribe(listener: SnapshotListener): () => void;
   newGame(draft: CharacterCreationDraft): void | Promise<void>;
   continueGame(): void | Promise<void>;
+  load(slot: GameSaveSlot): void | Promise<void>;
   travel(locationId: string): void | Promise<void>;
   interactNpc(npcId: string): InteractionView | Promise<InteractionView>;
   startEncounter(encounterId: string): void | Promise<void>;
   chooseBattleAction(action: BattleAction): void | Promise<void>;
   leaveBattle(): void | Promise<void>;
   rest(): void | Promise<void>;
-  save(slot: "autosave" | "manual-1" | "manual-2" | "manual-3"): void | Promise<void>;
+  save(slot: GameSaveSlot): void | Promise<void>;
 }
 
 export interface GameLaunchOptions {

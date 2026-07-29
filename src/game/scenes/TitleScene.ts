@@ -5,11 +5,15 @@ import { gamepadButtonAction } from "../gamepadControls";
 import { announceScene, COLORS, getBridge, TEXT } from "../runtime";
 
 const NAME_CHOICES = ["Rowan", "Aster", "Marlowe", "Sage", "Kestrel", "Vale"] as const;
+const MANUAL_SLOTS = ["manual-1", "manual-2", "manual-3"] as const;
+
+type TitleMode = "title" | "creation" | "load";
 
 export class TitleScene extends Phaser.Scene {
   private bridge!: GameBridge;
-  private mode: "title" | "creation" = "title";
+  private mode: TitleMode = "title";
   private titleIndex = 0;
+  private loadIndex = 0;
   private creationRow = 0;
   private nameIndex = 0;
   private ancestryIndex = 0;
@@ -17,6 +21,8 @@ export class TitleScene extends Phaser.Scene {
   private menuTexts: Phaser.GameObjects.Text[] = [];
   private detailText?: Phaser.GameObjects.Text;
   private creationTexts: Phaser.GameObjects.Text[] = [];
+  private loading = false;
+  private highContrast = false;
 
   constructor() {
     super("title");
@@ -24,6 +30,9 @@ export class TitleScene extends Phaser.Scene {
 
   create(): void {
     this.bridge = getBridge(this);
+    this.mode = "title";
+    this.titleIndex = 0;
+    this.loadIndex = 0;
     this.cameras.main.setBackgroundColor(COLORS.ink);
     this.paintBackdrop();
     this.add.text(64, 66, "YGGDRASIL", { ...TEXT.title, fontSize: "54px", letterSpacing: 7 });
@@ -92,14 +101,52 @@ export class TitleScene extends Phaser.Scene {
     this.detailText?.destroy();
     this.creationTexts = [];
     const hasSave = this.bridge.getSnapshot().hasSave;
-    const choices = ["NEW CHRONICLE", hasSave ? "CONTINUE" : "CONTINUE  —  NO SAVE", "ACCESSIBILITY"];
+    const manualSaveCount = MANUAL_SLOTS.filter((slot) => this.hasSlot(slot)).length;
+    const choices = [
+      "NEW CHRONICLE",
+      hasSave ? "CONTINUE  —  AUTOSAVE" : "CONTINUE  —  NO AUTOSAVE",
+      `LOAD CHRONICLE  —  ${manualSaveCount}/3 MANUAL`,
+      `ACCESSIBILITY  —  HIGH CONTRAST ${this.highContrast ? "ON" : "OFF"}`
+    ];
     this.menuTexts = choices.map((label, index) =>
       this.add.text(72, 245 + index * 48, label, {
         ...TEXT.heading,
-        color: index === this.titleIndex ? COLORS.gold : index === 1 && !hasSave ? "#64727a" : COLORS.cream
+        color: index === this.titleIndex ? COLORS.gold : index === 1 && !hasSave ? "#64727a" : this.highContrast ? "#ffffff" : COLORS.cream
       })
     );
     this.mode = "title";
+  }
+
+  private drawLoadMenu(message?: string): void {
+    this.menuTexts.forEach((text) => text.destroy());
+    this.creationTexts.forEach((text) => text.destroy());
+    this.detailText?.destroy();
+    this.creationTexts = [];
+    this.mode = "load";
+    const heading = this.add.text(72, 220, "LOAD A CHRONICLE", { ...TEXT.heading, color: COLORS.gold });
+    const slotTexts = MANUAL_SLOTS.map((slot, index) => {
+      const available = this.hasSlot(slot);
+      const selected = index === this.loadIndex;
+      return this.add.text(72, 264 + index * 48, `${selected ? "›" : " "} SLOT ${index + 1}  —  ${available ? "AVAILABLE" : "EMPTY"}`, {
+        ...TEXT.heading,
+        color: selected ? (available ? COLORS.gold : COLORS.muted) : available ? COLORS.cream : "#64727a"
+      });
+    });
+    this.menuTexts = [heading, ...slotTexts];
+    const selectedSlot = MANUAL_SLOTS[this.loadIndex];
+    const selectedAvailable = selectedSlot ? this.hasSlot(selectedSlot) : false;
+    this.detailText = this.add.text(
+      72,
+      424,
+      message ?? (selectedAvailable
+        ? "Confirm to load this manual chronicle. The current session will be replaced."
+        : "This manual slot is empty. Choose an available chronicle, or return with Esc / B."),
+      { ...TEXT.small, color: selectedAvailable ? COLORS.cream : COLORS.muted, wordWrap: { width: 500 }, lineSpacing: 5 }
+    );
+  }
+
+  private hasSlot(slot: (typeof MANUAL_SLOTS)[number]): boolean {
+    return this.bridge.getSnapshot().saveSlots?.includes(slot) ?? false;
   }
 
   private drawCreation(): void {
@@ -132,8 +179,11 @@ export class TitleScene extends Phaser.Scene {
 
   private move(delta: number): void {
     if (this.mode === "title") {
-      this.titleIndex = Phaser.Math.Wrap(this.titleIndex + delta, 0, 3);
+      this.titleIndex = Phaser.Math.Wrap(this.titleIndex + delta, 0, 4);
       this.drawTitleMenu();
+    } else if (this.mode === "load") {
+      this.loadIndex = Phaser.Math.Wrap(this.loadIndex + delta, 0, MANUAL_SLOTS.length);
+      this.drawLoadMenu();
     } else {
       this.creationRow = Phaser.Math.Wrap(this.creationRow + delta, 0, 4);
       this.drawCreation();
@@ -149,6 +199,7 @@ export class TitleScene extends Phaser.Scene {
   }
 
   private async confirm(): Promise<void> {
+    if (this.loading) return;
     if (this.mode === "title") {
       if (this.titleIndex === 0) {
         this.drawCreation();
@@ -156,8 +207,24 @@ export class TitleScene extends Phaser.Scene {
         await this.bridge.continueGame();
         this.scene.start("world");
       } else if (this.titleIndex === 2) {
-        this.add.text(72, 414, "High contrast UI and reduced motion are enabled by default in this preview.", TEXT.small);
+        this.drawLoadMenu();
+      } else if (this.titleIndex === 3) {
+        this.toggleHighContrast();
       }
+      return;
+    }
+    if (this.mode === "load") {
+      const slot = MANUAL_SLOTS[this.loadIndex];
+      if (!slot) return;
+      if (!this.hasSlot(slot)) {
+        this.drawLoadMenu("This manual slot is empty. It cannot be loaded.");
+        return;
+      }
+      this.loading = true;
+      await this.bridge.load(slot);
+      this.loading = false;
+      this.cameras.main.fadeOut(260, 10, 18, 24);
+      this.time.delayedCall(270, () => this.scene.start("world"));
       return;
     }
     if (this.creationRow < 3) {
@@ -176,6 +243,12 @@ export class TitleScene extends Phaser.Scene {
   }
 
   private back(): void {
-    if (this.mode === "creation") this.drawTitleMenu();
+    if (this.mode === "creation" || this.mode === "load") this.drawTitleMenu();
+  }
+
+  private toggleHighContrast(): void {
+    this.highContrast = !this.highContrast;
+    this.game.canvas.style.filter = this.highContrast ? "contrast(1.45) brightness(1.12)" : "";
+    this.drawTitleMenu();
   }
 }

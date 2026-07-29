@@ -400,6 +400,19 @@ export const locationEncounters: Readonly<Record<string, readonly string[]>> = {
   "location.starless-vault": ["encounter.vault-echoes", "encounter.varn-rootless"]
 };
 
+/** Ordinary fights may be selected again; named bosses permanently change the world when defeated. */
+export const encounterAvailability: Readonly<Record<string, "repeatable" | "once">> = {
+  "encounter.mossroad-foragers": "repeatable",
+  "encounter.flooded-grove": "repeatable",
+  "encounter.mire-antler": "once",
+  "encounter.ashfall-motes": "repeatable",
+  "encounter.kiln-watch": "repeatable",
+  "encounter.kiln-heart": "once",
+  "encounter.whitebough-hunt": "repeatable",
+  "encounter.vault-echoes": "repeatable",
+  "encounter.varn-rootless": "once"
+};
+
 export type ContentFind = readonly [itemId: string, quantity: number];
 
 export const locationFinds: Readonly<Record<string, readonly ContentFind[]>> = {
@@ -414,7 +427,7 @@ export const encounterFinds: Readonly<Record<string, readonly ContentFind[]>> = 
   "encounter.mossroad-foragers": [["item.brass-rivet", 2], ["item.vesleaf", 2]],
   "encounter.flooded-grove": [["item.lantern-wick", 3]],
   "encounter.mire-antler": [["item.dream-resin", 1]],
-  "encounter.ashfall-motes": [["item.ash-memory", 2], ["item.calm-ember", 2]],
+  "encounter.ashfall-motes": [["item.ash-memory", 2], ["item.calm-ember", 2], ["item.ash-spice", 2]],
   "encounter.kiln-watch": [["item.ash-memory", 2], ["item.yarrow-seal", 1]],
   "encounter.kiln-heart": [["item.severance-ledger", 1], ["item.cold-ember", 1]],
   "encounter.whitebough-hunt": [["item.frost-resin", 2], ["item.memory-shard", 2]],
@@ -470,6 +483,112 @@ export const jobs = [
   { id: "warden", name: "Root Warden", role: "Nature magic and counters", branches: ["Thornspeaker", "Green Sentinel"] }
 ] as const;
 
+type AncestryId = (typeof ancestries)[number]["id"];
+type StartingJobId = (typeof jobs)[number]["id"];
+
+export interface StartingBuildLoadout {
+  readonly id: string;
+  readonly ancestryId: AncestryId;
+  readonly jobId: StartingJobId;
+  readonly partyRole: string;
+  readonly strengths: readonly string[];
+  readonly counters: readonly string[];
+  readonly startingItems: readonly string[];
+  readonly startingSkills: readonly string[];
+}
+
+const ancestryLoadoutNotes: Readonly<Record<AncestryId, Pick<StartingBuildLoadout, "strengths" | "counters">>> = {
+  hearthborn: { strengths: ["Flexible opening turns", "Reliable recovery"], counters: ["Focused elemental pressure", "Long attrition fights"] },
+  sylvan: { strengths: ["Nature resonance", "Status awareness"], counters: ["Fire pressure", "Direct burst damage"] },
+  stonekin: { strengths: ["Guard durability", "Stagger resistance"], counters: ["Slow initiative", "Armor-piercing attacks"] },
+  wayfarer: { strengths: ["Fast positioning", "Item efficiency"], counters: ["Area damage", "Forced stand-your-ground fights"] }
+};
+
+const jobLoadoutNotes: Readonly<Record<StartingJobId, Omit<StartingBuildLoadout, "id" | "ancestryId" | "jobId" | "strengths" | "counters">>> = {
+  vanguard: { partyRole: "Front-line defender", startingItems: ["item.root-tonic", "item.resin-vest"], startingSkills: ["skill.guard-line", "skill.shield-bash"] },
+  ranger: { partyRole: "Fast physical striker", startingItems: ["item.root-tonic", "item.wayfarer-blade"], startingSkills: ["skill.aimed-shot", "skill.quickstep"] },
+  mender: { partyRole: "Healing and protection", startingItems: ["item.root-tonic", "item.aether-drop"], startingSkills: ["skill.mend", "skill.ward-thread"] },
+  shaper: { partyRole: "Elemental spellcraft", startingItems: ["item.aether-drop", "item.aether-drop"], startingSkills: ["skill.ember-spark", "skill.tide-pulse"] },
+  trickster: { partyRole: "Debuffs and turn control", startingItems: ["item.root-tonic", "item.ash-spice"], startingSkills: ["skill.feint", "skill.slow-mark"] },
+  warden: { partyRole: "Nature magic and counters", startingItems: ["item.vesleaf", "item.dream-resin"], startingSkills: ["skill.thorn-bind", "skill.rootward"] }
+};
+
+/** Every character-creation pairing is authored rather than inferred by the UI. */
+export const startingBuildLoadouts: readonly StartingBuildLoadout[] = ancestries.flatMap((ancestry) =>
+  jobs.map((job) => ({
+    id: `build.${ancestry.id}.${job.id}`,
+    ancestryId: ancestry.id,
+    jobId: job.id,
+    ...jobLoadoutNotes[job.id],
+    strengths: [...ancestryLoadoutNotes[ancestry.id].strengths, job.role],
+    counters: ancestryLoadoutNotes[ancestry.id].counters
+  }))
+);
+
+export interface RecruitProfile {
+  readonly id: string;
+  readonly npcId: string;
+  readonly ancestryId: AncestryId;
+  readonly jobId: StartingJobId;
+  readonly recruitmentQuestId: string;
+  readonly recruitmentMoment: string;
+  readonly startingItems: readonly string[];
+  readonly startingSkills: readonly string[];
+}
+
+export const recruitProfiles: readonly RecruitProfile[] = [
+  {
+    id: "recruit.tovin-ash",
+    npcId: "npc.tovin-ash",
+    ancestryId: "wayfarer",
+    jobId: "ranger",
+    recruitmentQuestId: "quest.tovins-company",
+    recruitmentMoment: "Tovin joins after the vanished company is named and the Mossroad route is reclaimed.",
+    startingItems: ["item.wayfarer-blade", "item.root-tonic"],
+    startingSkills: ["skill.aimed-shot", "skill.quickstep"]
+  },
+  {
+    id: "recruit.keva-dross",
+    npcId: "npc.keva-dross",
+    ancestryId: "stonekin",
+    jobId: "vanguard",
+    recruitmentQuestId: "quest.kevas-last-descent",
+    recruitmentMoment: "Keva joins when the delver's oath is returned to the Silent Kiln instead of sold as a relic.",
+    startingItems: ["item.resin-vest", "item.delver-token"],
+    startingSkills: ["skill.guard-line", "skill.shield-bash"]
+  },
+  {
+    id: "recruit.eira-lune",
+    npcId: "npc.eira-lune",
+    ancestryId: "sylvan",
+    jobId: "mender",
+    recruitmentQuestId: "quest.eiras-burden",
+    recruitmentMoment: "Eira joins after entrusting the repaired bridge to the people who now understand its living burden.",
+    startingItems: ["item.aether-drop", "item.frost-resin"],
+    startingSkills: ["skill.mend", "skill.ward-thread"]
+  }
+];
+
+export interface BossPhaseMetadata {
+  readonly encounterId: string;
+  readonly enemyId: string;
+  readonly phaseName: string;
+  readonly beginsAtHealthPercent: number;
+  readonly telegraph: string;
+  readonly tacticalChange: string;
+  readonly mechanic: "empower" | "fortify" | "root_party" | "scorch_party" | "restore_boss" | "elemental_shift";
+}
+
+export const bossPhases: readonly BossPhaseMetadata[] = [
+  { encounterId: "encounter.mire-antler", enemyId: "enemy.mire-antler", phaseName: "Drowned Charge", beginsAtHealthPercent: 100, telegraph: "Water gathers around its antlers.", tacticalChange: "Its opening charge grows stronger and faster.", mechanic: "empower" },
+  { encounterId: "encounter.mire-antler", enemyId: "enemy.mire-antler", phaseName: "Rooted Panic", beginsAtHealthPercent: 50, telegraph: "Its hooves split the flooded ground.", tacticalChange: "Slowing roots seize the party for one turn.", mechanic: "root_party" },
+  { encounterId: "encounter.kiln-heart", enemyId: "enemy.kiln-heart", phaseName: "Banked Furnace", beginsAtHealthPercent: 100, telegraph: "The kiln breathes through sealed vents.", tacticalChange: "Its sealed shell hardens against physical and aether pressure.", mechanic: "fortify" },
+  { encounterId: "encounter.kiln-heart", enemyId: "enemy.kiln-heart", phaseName: "Open Crucible", beginsAtHealthPercent: 45, telegraph: "The central seal fractures in white fire.", tacticalChange: "Escaping heat burns every living party member.", mechanic: "scorch_party" },
+  { encounterId: "encounter.varn-rootless", enemyId: "enemy.varn-rootless", phaseName: "Measured Severance", beginsAtHealthPercent: 100, telegraph: "Varn marks a rootway line across the arena.", tacticalChange: "Varn's measured cuts gain force and initiative.", mechanic: "empower" },
+  { encounterId: "encounter.varn-rootless", enemyId: "enemy.varn-rootless", phaseName: "Borrowed Chorus", beginsAtHealthPercent: 60, telegraph: "Old voices answer from the vault walls.", tacticalChange: "The chorus restores a portion of Varn's vitality.", mechanic: "restore_boss" },
+  { encounterId: "encounter.varn-rootless", enemyId: "enemy.varn-rootless", phaseName: "Unmade Concord", beginsAtHealthPercent: 25, telegraph: "The marked lines converge beneath the party.", tacticalChange: "Varn changes elemental defenses for the final exchange.", mechanic: "elemental_shift" }
+];
+
 export const dialogueByNpcId: Readonly<Record<string, readonly string[]>> = {
   "npc.mara-vell": [
     "The east root went quiet three nights ago. No wind, no pulse—only rain.",
@@ -486,13 +605,29 @@ export const dialogueByNpcId: Readonly<Record<string, readonly string[]>> = {
   "npc.joryn-hale": ["Rooms are cheap. Rumors cost one honest answer."],
   "npc.senna-brook": ["The rain is early, the pears are late, and nobody will say what passed the east wall."],
   "npc.veska-reed": ["Bring me vesleaf if you see it. Heroics are easier with clean bandages."],
+  "npc.fen-til": ["A lantern is a promise: someone can find their way back before the fog learns their name."],
+  "npc.ilas-morn": ["I salvage what people discard. That does not make every memory I find mine to sell."],
+  "npc.pella-wren": ["My missing ending is not in my notebook. It is somewhere in the road, waiting for a listener brave enough to hear it."],
   "npc.old-cairn": ["Be still. The hollow is not silent. It is holding its breath."],
   "npc.ira-sorn": ["Emberwake deals in proof, not frontier panic. Show me what you carried through the ash."],
   "npc.brannic-quill": ["The foundry does not need another decree. It needs a promise the workers can survive."],
+  "npc.keva-dross": ["I left my token in the Kiln because I was afraid it would tell me I had no business leaving alive."],
+  "npc.hett-copper": ["Glass remembers every furnace that made it. People pretend they do not."],
+  "npc.nema-slate": ["A calm ember is not weak. It is a fire that has decided not to spread its grief."],
   "npc.solvi-renn": ["The ledger is genuine. The names inside it are not merely crooked; they are organized."],
+  "npc.cask-ember": ["Feed three caravans one good meal and they will remember they were neighbors before they were rivals."],
+  "npc.adra-flint": ["A strike line is not a wall. It is where we stand so nobody can quietly decide we do not count."],
+  "npc.mell-ochre": ["The Choir asks for silence because noise can be cruel. Varn asks for silence because people can answer back."],
+  "npc.yarrow-kest": ["I remember the heat. I do not remember my name. Perhaps one of those is enough to start with."],
   "npc.sable-voss": ["The oldest chart has thirteen guide stars. The sky insists there are twelve."],
   "npc.eira-lune": ["The bridge is alive enough to suffer. Help me mend it, and I will show you the high road."],
+  "npc.corin-mist": ["Restoration is a choice, never a neutral repair. We decide which absence becomes visible again."],
+  "npc.thyme-vale": ["Frost resin spoils the moment it believes it is safe. Keep it cold, or let it become ordinary sap."],
+  "npc.rook-silva": ["High roads are not safer because they are high. They are safer because someone bothered to map the places that break."],
   "npc.mother-hush": ["We did not come to erase the present. We came because the past has learned to devour it."],
+  "npc.lenn-auric": ["The Compact will call every compromise practical. Ask who pays for practicality before you sign anything."],
+  "npc.otis-snow": ["The letter stayed dry because I did not. Please tell Corin that was a fair trade."],
+  "npc.thea-nacre": ["The vault was built to preserve a city. It forgot that preserved things can still ask to be changed."],
   "npc.varn-rootless": ["Memory is a wound the world refuses to close. I chose the knife."]
 };
 
@@ -503,4 +638,54 @@ export function getDialogue(npcId: string): readonly string[] {
   return npc
     ? [`${npc.name} watches the road for a moment.`, `"Every place remembers differently," ${npc.name} says.`]
     : ["Only the rain answers."];
+}
+
+/** Validates content-local references that are intentionally outside the shared pack contract. */
+export function validateCampaignMetadata(): string[] {
+  const errors: string[] = [];
+  const ancestryIds = new Set(ancestries.map(({ id }) => id));
+  const jobIds = new Set(jobs.map(({ id }) => id));
+  const npcIds = new Set(npcs.map(({ id }) => id));
+  const questIds = new Set(quests.map(({ id }) => id));
+  const itemIds = new Set(items.map(({ id }) => id));
+  const encounterById = new Map(encounters.map((encounter) => [encounter.id, encounter]));
+  const buildKeys = new Set<string>();
+
+  for (const build of startingBuildLoadouts) {
+    const key = `${build.ancestryId}.${build.jobId}`;
+    if (buildKeys.has(key)) errors.push(`Duplicate starting build ${key}`);
+    buildKeys.add(key);
+    if (!ancestryIds.has(build.ancestryId)) errors.push(`${build.id} references unknown ancestry ${build.ancestryId}`);
+    if (!jobIds.has(build.jobId)) errors.push(`${build.id} references unknown job ${build.jobId}`);
+    for (const itemId of build.startingItems) if (!itemIds.has(itemId)) errors.push(`${build.id} references unknown item ${itemId}`);
+  }
+  for (const ancestry of ancestries) for (const job of jobs) {
+    if (!buildKeys.has(`${ancestry.id}.${job.id}`)) errors.push(`Missing starting build ${ancestry.id}.${job.id}`);
+  }
+  for (const recruit of recruitProfiles) {
+    if (!npcIds.has(recruit.npcId)) errors.push(`${recruit.id} references unknown NPC ${recruit.npcId}`);
+    if (!questIds.has(recruit.recruitmentQuestId)) errors.push(`${recruit.id} references unknown quest ${recruit.recruitmentQuestId}`);
+    if (!ancestryIds.has(recruit.ancestryId)) errors.push(`${recruit.id} references unknown ancestry ${recruit.ancestryId}`);
+    if (!jobIds.has(recruit.jobId)) errors.push(`${recruit.id} references unknown job ${recruit.jobId}`);
+    for (const itemId of recruit.startingItems) if (!itemIds.has(itemId)) errors.push(`${recruit.id} references unknown item ${itemId}`);
+  }
+  for (const encounter of encounters) {
+    const availability = encounterAvailability[encounter.id];
+    if (!availability) errors.push(`${encounter.id} has no availability semantics`);
+    if (encounter.boss && availability !== "once") errors.push(`${encounter.id} is a boss but is not once-only`);
+    if (!encounter.boss && availability !== "repeatable") errors.push(`${encounter.id} is ordinary but is not repeatable`);
+  }
+  for (const phase of bossPhases) {
+    const encounter = encounterById.get(phase.encounterId);
+    if (!encounter?.boss) errors.push(`${phase.phaseName} references a non-boss encounter ${phase.encounterId}`);
+    if (!encounter?.enemyIds.includes(phase.enemyId)) errors.push(`${phase.phaseName} references unknown boss enemy ${phase.enemyId}`);
+    if (phase.beginsAtHealthPercent < 1 || phase.beginsAtHealthPercent > 100) errors.push(`${phase.phaseName} has an invalid health threshold`);
+  }
+  for (const boss of encounters.filter(({ boss }) => boss)) {
+    if (!bossPhases.some(({ encounterId }) => encounterId === boss.id)) errors.push(`${boss.id} has no phase metadata`);
+  }
+  for (const npc of npcs) {
+    if (!dialogueByNpcId[npc.id]?.length) errors.push(`${npc.id} has no authored dialogue`);
+  }
+  return errors;
 }

@@ -26,8 +26,19 @@ async function winCurrentBattle(bridge: EngineGameBridge): Promise<void> {
 
 describe("EngineGameBridge party combat", () => {
   it("gives every living party member a deterministic turn before enemies act", async () => {
-    const { bridge } = createBridge();
+    const { bridge, saves } = createBridge();
     await startChronicle(bridge);
+    const initial = await saves.load("autosave");
+    if (!initial) throw new Error("Expected an initial autosave");
+    await saves.save("autosave", {
+      ...initial,
+      quests: initial.quests.map((quest) =>
+        quest.questId === "quest.tovins-company"
+          ? { ...quest, state: "completed" as const, currentStep: 3 }
+          : quest
+      )
+    });
+    await bridge.continueGame();
     await bridge.interactNpc("npc.tovin-ash");
     bridge.startEncounter("encounter.mossroad-foragers");
 
@@ -35,7 +46,7 @@ describe("EngineGameBridge party combat", () => {
     await bridge.chooseBattleAction("guard");
     expect(bridge.getSnapshot().battle).toMatchObject({
       phase: "choosing",
-      activeActorId: "party.tovin",
+      activeActorId: "party.tovin-ash",
       round: 1
     });
 
@@ -50,10 +61,12 @@ describe("EngineGameBridge party combat", () => {
   it("handles item and escape actions safely through the public bridge", async () => {
     const { bridge } = createBridge();
     await startChronicle(bridge);
+    const tonicCount = bridge.getSnapshot().inventory.find(({ itemId }) => itemId === "item.root-tonic")?.quantity ?? 0;
     bridge.startEncounter("encounter.mossroad-foragers");
 
     await bridge.chooseBattleAction("item");
-    expect(bridge.getSnapshot().inventory.find(({ itemId }) => itemId === "item.root-tonic")?.quantity).toBe(1);
+    expect(bridge.getSnapshot().inventory.find(({ itemId }) => itemId === "item.root-tonic")?.quantity)
+      .toBe(tonicCount - 1);
     expect(bridge.getSnapshot().battle?.activeActorId).toBe("party.protagonist");
 
     await bridge.chooseBattleAction("escape");
@@ -61,9 +74,98 @@ describe("EngineGameBridge party combat", () => {
     await bridge.leaveBattle();
     expect(bridge.getSnapshot().battle).toBeUndefined();
   });
+
+  it("uses the selected job's authored form and applies starting equipment in battle", async () => {
+    const { bridge, saves } = createBridge();
+    await bridge.newGame({ name: "Nyra", ancestryId: "stonekin", jobId: "vanguard" });
+    const saved = await saves.load("autosave");
+    const protagonist = saved?.party[0];
+    expect(protagonist?.skills).toContain("skill.guard-line");
+    expect(protagonist?.equipment.armor).toBe("item.resin-vest");
+    expect(saved?.inventory.some(({ itemId }) => itemId === "item.resin-vest")).toBe(false);
+
+    bridge.startEncounter("encounter.mossroad-foragers");
+    expect(bridge.getSnapshot().battle?.activeSkillName).toBe("Guard Line");
+    const actor = bridge.getSnapshot().battle?.actors.find(({ id }) => id === "party.protagonist");
+    expect(actor?.maxHp).toBe((protagonist?.stats.maxHp ?? 0) + 14);
+  });
+
+  it("lets a Mender use their active form to restore vitality", async () => {
+    const { bridge, saves } = createBridge();
+    await bridge.newGame({ name: "Sage", ancestryId: "sylvan", jobId: "mender" });
+    const initial = await saves.load("autosave");
+    if (!initial) throw new Error("Expected an initial autosave");
+    await saves.save("autosave", {
+      ...initial,
+      party: initial.party.map((member) => ({ ...member, hp: 1 }))
+    });
+    await bridge.continueGame();
+    bridge.startEncounter("encounter.mossroad-foragers");
+
+    await bridge.chooseBattleAction("skill");
+
+    expect(bridge.getSnapshot().battle?.log.join(" ")).toContain("restores");
+    expect(bridge.getSnapshot().battle?.actors.find(({ id }) => id === "party.protagonist")?.hp).toBeGreaterThan(1);
+  });
+
+  it("does not turn an equipment max-HP bonus into free healing after victory", async () => {
+    const { bridge, saves } = createBridge();
+    await bridge.newGame({ name: "Nyra", ancestryId: "stonekin", jobId: "vanguard" });
+    const initial = await saves.load("autosave");
+    if (!initial) throw new Error("Expected an initial autosave");
+    await saves.save("autosave", {
+      ...initial,
+      party: initial.party.map((member) => ({
+        ...member,
+        hp: 50,
+        stats: { ...member.stats, strength: 1_000 }
+      }))
+    });
+    await bridge.continueGame();
+    bridge.startEncounter("encounter.mossroad-foragers");
+    await bridge.chooseBattleAction("attack");
+
+    expect((await saves.load("autosave"))?.party[0]?.hp).toBe(50);
+  });
+
+  it("activates authored boss phases as health thresholds are crossed", async () => {
+    const { bridge, saves } = createBridge();
+    await startChronicle(bridge);
+    const initial = await saves.load("autosave");
+    if (!initial) throw new Error("Expected an initial autosave");
+    await saves.save("autosave", {
+      ...initial,
+      party: initial.party.map((member) => ({
+        ...member,
+        stats: { ...member.stats, strength: 25, maxHp: 1_000 },
+        hp: 1_000
+      }))
+    });
+    await bridge.continueGame();
+    bridge.startEncounter("encounter.mire-antler");
+    expect(bridge.getSnapshot().battle?.bossPhase).toBe("Drowned Charge");
+
+    for (let turn = 0; turn < 8 && bridge.getSnapshot().battle?.bossPhase !== "Rooted Panic"; turn += 1) {
+      await bridge.chooseBattleAction("attack");
+    }
+    expect(bridge.getSnapshot().battle?.bossPhase).toBe("Rooted Panic");
+    expect(bridge.getSnapshot().battle?.log.join(" ")).toContain("hooves split the flooded ground");
+    expect(bridge.getSnapshot().battle?.actors.find(({ isParty }) => isParty)?.status).toBe("freeze");
+  });
 });
 
 describe("EngineGameBridge campaign persistence", () => {
+  it("lists and loads manual save slots through the game bridge", async () => {
+    const { bridge } = createBridge();
+    await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "vanguard" });
+    await bridge.save("manual-1");
+    await bridge.newGame({ name: "Vale", ancestryId: "sylvan", jobId: "mender" });
+
+    expect(bridge.getSnapshot().saveSlots).toEqual(expect.arrayContaining(["autosave", "manual-1"]));
+    await bridge.load("manual-1");
+    expect(bridge.getSnapshot().playerName).toBe("Aster");
+  });
+
   it("discovers an available travel-first side quest from the matching action", async () => {
     const { bridge } = createBridge();
     await startChronicle(bridge);

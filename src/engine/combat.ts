@@ -25,6 +25,8 @@ export interface CombatSkill {
   readonly accuracy: number;
   readonly mpCost: number;
   readonly target: "enemy" | "ally" | "self";
+  /** Converts power into deterministic HP recovery instead of damage. */
+  readonly healing?: boolean;
   readonly status?: StatusApplication;
 }
 
@@ -35,6 +37,7 @@ export type CombatAction =
 
 export type CombatEvent =
   | { readonly type: "damage"; readonly actorId: EntityId; readonly targetId: EntityId; readonly amount: number; readonly element: Element; readonly critical: boolean }
+  | { readonly type: "healing"; readonly actorId: EntityId; readonly targetId: EntityId; readonly amount: number }
   | { readonly type: "miss"; readonly actorId: EntityId; readonly targetId: EntityId }
   | { readonly type: "guard"; readonly actorId: EntityId }
   | { readonly type: "status_applied"; readonly targetId: EntityId; readonly status: StatusInstance["id"] }
@@ -272,6 +275,25 @@ export function resolveCombatAction(
   const criticalRoll = randomChance(state.rng, Math.min(0.35, 0.05 + actorMatch.combatant.stats.dexterity * 0.003));
   const varianceRoll = nextRandom(criticalRoll.rng);
   state = { ...state, rng: varianceRoll.rng };
+  if (skill.healing) {
+    const amount = Math.max(
+      1,
+      Math.round((skill.power + actorMatch.combatant.stats.wisdom * 1.5) * (0.95 + varianceRoll.value * 0.1))
+    );
+    const healed = {
+      ...targetMatch.combatant,
+      hp: Math.min(targetMatch.combatant.stats.maxHp, targetMatch.combatant.hp + amount)
+    };
+    return {
+      state: withCombatant(state, targetMatch.side, targetMatch.index, healed),
+      events: [{
+        type: "healing",
+        actorId: action.actorId,
+        targetId: action.targetId,
+        amount: healed.hp - targetMatch.combatant.hp
+      }]
+    };
+  }
   const damage = calculateDamage(actorMatch.combatant, targetMatch.combatant, skill, 0.9 + varianceRoll.value * 0.2, criticalRoll.value);
   let target = removeGuard({
     ...targetMatch.combatant,

@@ -10,8 +10,8 @@
 - Release target: a complete authored route exceeding 20 hours in normal
   exploratory play, verified by timed playthrough rather than quest count.
 
-The automated readiness walk currently proves that all 15 main quests and 33
-main objectives can be completed offline through 51 minimum authored world
+The automated readiness walk currently proves that all 35 authored quests and
+74 objectives can be completed offline through 130 minimum authored world
 interactions. This is a reachability lower bound, not a duration claim; content
 expansion and timed playtesting remain required before certifying 20+ hours.
 

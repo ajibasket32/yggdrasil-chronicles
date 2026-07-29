@@ -55,6 +55,30 @@ describe("deterministic combat", () => {
     expect(damage(guardedHit)).toBeLessThan(damage(weakHit));
   });
 
+  it("resolves healing forms without damaging their allied target", () => {
+    const mend: CombatSkill = {
+      id: "mend",
+      name: "Mend",
+      element: "radiant",
+      power: 18,
+      accuracy: 1,
+      mpCost: 4,
+      target: "self",
+      healing: true
+    };
+    const healer = makeCombatant("healer", { hp: 20, skills: [mend.id] });
+    const enemy = makeCombatant("mireling");
+    const resolution = resolveCombatAction(
+      createCombatState([healer], [enemy], "healing"),
+      { type: "skill", actorId: healer.id, targetId: healer.id, skillId: mend.id },
+      { [mend.id]: mend }
+    );
+
+    expect(resolution.state.party[0]?.hp).toBeGreaterThan(healer.hp);
+    expect(resolution.state.enemies[0]?.hp).toBe(enemy.hp);
+    expect(resolution.events[0]?.type).toBe("healing");
+  });
+
   it("ticks damaging statuses and ends combat when the last enemy falls", () => {
     const enemy = makeCombatant("mireling", {
       hp: 4,

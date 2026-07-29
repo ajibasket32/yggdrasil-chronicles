@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   auditCampaignReadiness,
+  bossPhases,
   coreCampaign,
+  encounterAvailability,
   encounterFinds,
   getReachableQuestIds,
   locationEncounters,
   locationFinds,
+  recruitProfiles,
+  startingBuildLoadouts,
   validateContentPack,
+  validateCampaignMetadata,
   worldRoutes
 } from "../../src/content";
 
@@ -17,6 +22,9 @@ describe("core campaign content", () => {
     expect(coreCampaign.quests).toHaveLength(35);
     expect(coreCampaign.quests.filter(({ mainStory }) => mainStory)).toHaveLength(15);
     expect(coreCampaign.encounters.filter(({ boss }) => boss)).toHaveLength(3);
+    expect(startingBuildLoadouts).toHaveLength(24);
+    expect(recruitProfiles).toHaveLength(3);
+    expect(bossPhases.filter(({ encounterId }) => encounterId === "encounter.varn-rootless")).toHaveLength(3);
   });
 
   it("has globally unique stable ids within every entity kind", () => {
@@ -46,6 +54,7 @@ describe("core campaign content", () => {
     const result = validateContentPack(coreCampaign);
     expect(result.errors).toEqual([]);
     expect(result.valid).toBe(true);
+    expect(validateCampaignMetadata()).toEqual([]);
   });
 
   it("provides a continuous bidirectional route through all regions", () => {
@@ -96,7 +105,8 @@ describe("core campaign content", () => {
       routes: worldRoutes,
       locationEncounters,
       locationFinds,
-      encounterFinds
+      encounterFinds,
+      encounterAvailability
     });
 
     expect(result.valid).toBe(true);
@@ -105,6 +115,10 @@ describe("core campaign content", () => {
       coreCampaign.quests.filter(({ mainStory }) => mainStory).map(({ id }) => id)
     );
     expect(result.completedMainQuestIds).toContain("quest.architect-of-severance");
+    expect(result.completedQuestIds).toHaveLength(coreCampaign.quests.length);
+    expect(result.authoredQuestOrder).toHaveLength(35);
+    expect(result.activityBudget.authoredQuestCount).toBe(35);
+    expect(result.activityBudget.repeatableEncounterVictories).toBeGreaterThan(0);
     expect(result.activityBudget.minimumPlayerActions).toBeGreaterThan(0);
     expect(result.warnings.some((warning) => warning.includes("not an hours estimate"))).toBe(true);
   });
@@ -115,7 +129,8 @@ describe("core campaign content", () => {
       routes: worldRoutes,
       locationEncounters,
       locationFinds: { ...locationFinds, "location.mossroad": [["item.vesleaf", 1]] },
-      encounterFinds: { ...encounterFinds, "encounter.mossroad-foragers": [["item.vesleaf", 2]] }
+      encounterFinds: { ...encounterFinds, "encounter.mossroad-foragers": [["item.vesleaf", 2]] },
+      encounterAvailability
     });
 
     expect(result.valid).toBe(false);
@@ -132,7 +147,8 @@ describe("core campaign content", () => {
       }],
       locationEncounters,
       locationFinds,
-      encounterFinds
+      encounterFinds,
+      encounterAvailability
     });
 
     expect(result.valid).toBe(false);
@@ -145,10 +161,25 @@ describe("core campaign content", () => {
       routes: worldRoutes,
       locationEncounters: { ...locationEncounters, "location.starless-vault": ["encounter.vault-echoes"] },
       locationFinds,
-      encounterFinds
+      encounterFinds,
+      encounterAvailability
     });
 
     expect(result.valid).toBe(false);
     expect(result.errors).toContain("Boss encounter is not placed in the world: encounter.varn-rootless");
+  });
+
+  it("rejects an ordinary encounter without repeatable availability semantics", () => {
+    const result = auditCampaignReadiness(coreCampaign, {
+      startLocationId: "location.hearthcross",
+      routes: worldRoutes,
+      locationEncounters,
+      locationFinds,
+      encounterFinds,
+      encounterAvailability: { ...encounterAvailability, "encounter.ashfall-motes": "once" }
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("encounter.ashfall-motes is ordinary but is not repeatable");
   });
 });

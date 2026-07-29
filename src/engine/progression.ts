@@ -13,6 +13,11 @@ export interface ProgressionResult {
   readonly levelsGained: number;
 }
 
+export type JobUnlockBlocker =
+  | { readonly type: "minimum_level"; readonly requiredLevel: number; readonly currentLevel: number }
+  | { readonly type: "prerequisite_job"; readonly jobId: EntityId }
+  | { readonly type: "required_skill"; readonly skillId: EntityId };
+
 const STAT_GROWTH: Stats = {
   maxHp: 8,
   maxMp: 3,
@@ -79,9 +84,57 @@ export function canUnlockJob(
   job: JobDefinition,
   unlockedJobIds: readonly EntityId[]
 ): boolean {
-  return character.level >= job.minimumLevel
-    && job.prerequisiteJobIds.every((id) => unlockedJobIds.includes(id))
-    && job.requiredSkillIds.every((id) => character.skills.includes(id));
+  return getJobUnlockBlockers(character, job, unlockedJobIds).length === 0;
+}
+
+/**
+ * Lists every unmet requirement so the UI can explain a branch instead of
+ * presenting a generic locked state. The active job is always treated as known.
+ */
+export function getJobUnlockBlockers(
+  character: PlayerCharacter,
+  job: JobDefinition,
+  unlockedJobIds: readonly EntityId[]
+): JobUnlockBlocker[] {
+  const knownJobs = new Set([character.jobId, ...unlockedJobIds]);
+  const blockers: JobUnlockBlocker[] = [];
+  if (character.level < job.minimumLevel) {
+    blockers.push({ type: "minimum_level", requiredLevel: job.minimumLevel, currentLevel: character.level });
+  }
+  for (const prerequisiteJobId of job.prerequisiteJobIds) {
+    if (!knownJobs.has(prerequisiteJobId)) {
+      blockers.push({ type: "prerequisite_job", jobId: prerequisiteJobId });
+    }
+  }
+  for (const requiredSkillId of job.requiredSkillIds) {
+    if (!character.skills.includes(requiredSkillId)) {
+      blockers.push({ type: "required_skill", skillId: requiredSkillId });
+    }
+  }
+  return blockers;
+}
+
+/** Returns eligible, not-yet-unlocked jobs in the supplied deterministic content order. */
+export function listUnlockableJobs(
+  character: PlayerCharacter,
+  jobs: readonly JobDefinition[],
+  unlockedJobIds: readonly EntityId[]
+): JobDefinition[] {
+  const knownJobs = new Set([character.jobId, ...unlockedJobIds]);
+  return jobs.filter((job) => !knownJobs.has(job.id) && canUnlockJob(character, job, unlockedJobIds));
+}
+
+/** Adds a job branch to external progression state without changing the active job. */
+export function unlockJob(
+  character: PlayerCharacter,
+  job: JobDefinition,
+  unlockedJobIds: readonly EntityId[]
+): EntityId[] {
+  if (!canUnlockJob(character, job, unlockedJobIds)) {
+    throw new Error(`Character '${character.id}' does not meet the requirements for job '${job.id}'`);
+  }
+  const knownJobs = new Set([character.jobId, ...unlockedJobIds]);
+  return knownJobs.has(job.id) ? [...unlockedJobIds] : [...unlockedJobIds, job.id];
 }
 
 export function changeJob(character: PlayerCharacter, job: JobDefinition, unlockedJobIds: readonly EntityId[]): PlayerCharacter {

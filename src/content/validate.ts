@@ -22,14 +22,19 @@ export interface CampaignReadinessSources {
   readonly locationEncounters: Readonly<Record<string, readonly string[]>>;
   readonly locationFinds: Readonly<Record<string, readonly CampaignFind[]>>;
   readonly encounterFinds: Readonly<Record<string, readonly CampaignFind[]>>;
+  /** Explicitly distinguishes respawnable ordinary fights from permanent world bosses. */
+  readonly encounterAvailability: Readonly<Record<string, "repeatable" | "once">>;
 }
 
 export interface CampaignActivityBudget {
+  readonly authoredQuestCount: number;
+  readonly authoredObjectiveCount: number;
   readonly mainQuestCount: number;
   readonly mainObjectiveCount: number;
   readonly routeTransitions: number;
   readonly npcInteractions: number;
   readonly encounterVictories: number;
+  readonly repeatableEncounterVictories: number;
   /** Item-source encounters included above; retained to expose collection pressure without double-counting actions. */
   readonly itemSourceInteractions: number;
   /** A mechanical lower bound, not a playtime or completion-hour estimate. */
@@ -41,6 +46,8 @@ export interface CampaignReadinessResult {
   readonly errors: string[];
   readonly warnings: string[];
   readonly mainQuestOrder: string[];
+  readonly authoredQuestOrder: string[];
+  readonly completedQuestIds: string[];
   readonly completedMainQuestIds: string[];
   readonly finalLocationId: string;
   readonly activityBudget: CampaignActivityBudget;
@@ -100,9 +107,10 @@ const sumFinds = (finds: readonly CampaignFind[], itemId: string): number =>
   finds.filter(([candidate]) => candidate === itemId).reduce((total, [, quantity]) => total + quantity, 0);
 
 /**
- * Walks the canonical main-story chain through actual routes, NPC placements,
- * encounter placements, and item sources. This deliberately models only
- * deterministic authored content: no generated narrative or assumed drops.
+ * Walks every authored quest in prerequisite order through actual routes, NPC
+ * placements, encounter placements, and finite/repeatable item sources. This
+ * deliberately models only deterministic authored content: no generated
+ * narrative or assumed drops.
  */
 export function auditCampaignReadiness(
   pack: ContentPack,
@@ -164,6 +172,16 @@ export function auditCampaignReadiness(
     }
   }
 
+  for (const encounter of pack.encounters) {
+    const availability = sources.encounterAvailability[encounter.id];
+    if (!availability) errors.push(`${encounter.id} has no encounter availability semantics`);
+    if (encounter.boss && availability !== "once") errors.push(`${encounter.id} is a boss but is not once-only`);
+    if (!encounter.boss && availability !== "repeatable") errors.push(`${encounter.id} is ordinary but is not repeatable`);
+  }
+  for (const encounterId of Object.keys(sources.encounterAvailability)) {
+    if (!encounterById.has(encounterId)) errors.push(`Availability references unknown encounter ${encounterId}`);
+  }
+
   const roots = mainQuests.filter(({ prerequisites }) => prerequisites.filter((id) => mainQuestIds.has(id)).length === 0);
   if (roots.length !== 1) errors.push(`Main story must have exactly one starting quest; found ${roots.length}`);
   const mainQuestOrder: string[] = [];
@@ -184,12 +202,36 @@ export function auditCampaignReadiness(
     completed.add(quest.id);
   }
 
+  const authoredQuestOrder: string[] = [];
+  const authoredCompleted = new Set<string>();
+  while (authoredQuestOrder.length < pack.quests.length) {
+    const next = pack.quests.find((quest) =>
+      !authoredCompleted.has(quest.id) && quest.prerequisites.every((id) => authoredCompleted.has(id))
+    );
+    if (!next) {
+      errors.push("Authored quest graph has a dead end or prerequisite cycle");
+      break;
+    }
+    authoredQuestOrder.push(next.id);
+    authoredCompleted.add(next.id);
+  }
+
   const itemQuantities = new Map<string, number>();
+  const harvestedLocations = new Set<string>();
+  const defeatedOnce = new Set<string>();
   let locationId = sources.startLocationId;
   let routeTransitions = 0;
   let npcInteractions = 0;
   let encounterVictories = 0;
+  let repeatableEncounterVictories = 0;
   let itemSourceInteractions = 0;
+  const harvestLocation = (candidateLocationId: string): void => {
+    if (harvestedLocations.has(candidateLocationId)) return;
+    harvestedLocations.add(candidateLocationId);
+    for (const [itemId, quantity] of sources.locationFinds[candidateLocationId] ?? []) {
+      itemQuantities.set(itemId, (itemQuantities.get(itemId) ?? 0) + quantity);
+    }
+  };
   const travelTo = (targets: ReadonlySet<string>, label: string): string | undefined => {
     const path = findRoute(sources.routes, locationId, targets);
     if (!path) {
@@ -199,17 +241,26 @@ export function auditCampaignReadiness(
     for (const nextLocationId of path.slice(1)) {
       routeTransitions += 1;
       locationId = nextLocationId;
-      for (const [itemId, quantity] of sources.locationFinds[locationId] ?? []) {
-        itemQuantities.set(itemId, (itemQuantities.get(itemId) ?? 0) + quantity);
-      }
+      harvestLocation(locationId);
     }
     return locationId;
   };
   const encounterLocations = (encounterId: string): string[] => Object.entries(sources.locationEncounters)
     .flatMap(([candidateLocationId, encounterIds]) => encounterIds.includes(encounterId) ? [candidateLocationId] : []);
+  const canFight = (encounterId: string): boolean =>
+    sources.encounterAvailability[encounterId] === "repeatable" || !defeatedOnce.has(encounterId);
+  const resolveEncounter = (encounterId: string): void => {
+    const availability = sources.encounterAvailability[encounterId];
+    if (availability === "once") defeatedOnce.add(encounterId);
+    if (availability === "repeatable") repeatableEncounterVictories += 1;
+    encounterVictories += 1;
+    for (const [itemId, quantity] of sources.encounterFinds[encounterId] ?? []) {
+      itemQuantities.set(itemId, (itemQuantities.get(itemId) ?? 0) + quantity);
+    }
+  };
 
-  for (const questId of mainQuestOrder) {
-    const quest = mainQuests.find((candidate) => candidate.id === questId);
+  for (const questId of authoredQuestOrder) {
+    const quest = pack.quests.find((candidate) => candidate.id === questId);
     if (!quest) continue;
     for (const objective of quest.steps) {
       if (objective.kind === "talk") {
@@ -224,17 +275,16 @@ export function auditCampaignReadiness(
           encounterId: id,
           locationId: candidateLocationId
         })));
-        const source = placedCandidates.find(({ locationId: candidateLocationId }) =>
-          findRoute(sources.routes, locationId, new Set([candidateLocationId]))
-        );
-        if (!source || !travelTo(new Set([source.locationId]), objective.targetId)) {
-          errors.push(`${quest.id} has no placed encounter source for ${objective.targetId}`);
-          continue;
+        for (let victory = 0; victory < objective.count; victory += 1) {
+          const source = placedCandidates.find(({ encounterId, locationId: candidateLocationId }) =>
+            canFight(encounterId) && findRoute(sources.routes, locationId, new Set([candidateLocationId]))
+          );
+          if (!source || !travelTo(new Set([source.locationId]), objective.targetId)) {
+            errors.push(`${quest.id} has no available placed encounter source for ${objective.targetId} x${objective.count}`);
+            break;
+          }
+          resolveEncounter(source.encounterId);
         }
-        for (const [itemId, quantity] of sources.encounterFinds[source.encounterId] ?? []) {
-          itemQuantities.set(itemId, (itemQuantities.get(itemId) ?? 0) + quantity);
-        }
-        encounterVictories += 1;
       } else {
         const owned = itemQuantities.get(objective.targetId) ?? 0;
         if (owned >= objective.count) continue;
@@ -249,6 +299,7 @@ export function auditCampaignReadiness(
           sumFinds(finds, objective.targetId) > 0
             ? encounterLocations(encounterId).map((candidateLocationId) => ({
               kind: "encounter" as const,
+              encounterId,
               locationId: candidateLocationId,
               quantity: sumFinds(finds, objective.targetId)
             }))
@@ -266,23 +317,19 @@ export function auditCampaignReadiness(
             errors.push(`${quest.id} cannot collect enough ${objective.targetId} from its authored sources`);
             break;
           }
-          const source = candidates.find(({ locationId: candidateLocationId }) =>
-            findRoute(sources.routes, locationId, new Set([candidateLocationId]))
-          );
+          const source = candidates.find((candidate) => {
+            const available = candidate.kind === "location"
+              ? !harvestedLocations.has(candidate.locationId)
+              : canFight(candidate.encounterId);
+            return available && Boolean(findRoute(sources.routes, locationId, new Set([candidate.locationId])));
+          });
           if (!source || !travelTo(new Set([source.locationId]), objective.targetId)) {
             errors.push(`${quest.id} cannot reach an item source for ${objective.targetId}`);
             break;
           }
           if (source.kind === "encounter") {
-            itemQuantities.set(objective.targetId, (itemQuantities.get(objective.targetId) ?? 0) + source.quantity);
-            encounterVictories += 1;
+            resolveEncounter(source.encounterId);
             itemSourceInteractions += 1;
-          } else if ((itemQuantities.get(objective.targetId) ?? 0) < objective.count) {
-            const departure = sources.routes.find(({ fromId }) => fromId === locationId);
-            if (!departure || !travelTo(new Set([departure.toId]), departure.toId) || !travelTo(new Set([source.locationId]), source.locationId)) {
-              errors.push(`${quest.id} cannot re-enter ${source.locationId} to collect ${objective.targetId}`);
-              break;
-            }
           }
         }
       }
@@ -302,23 +349,29 @@ export function auditCampaignReadiness(
   if (!bossQuest) errors.push("Main story has no placed boss objective");
 
   const mainObjectiveCount = mainQuests.reduce((total, quest) => total + quest.steps.length, 0);
+  const authoredObjectiveCount = pack.quests.reduce((total, quest) => total + quest.steps.length, 0);
   const activityBudget: CampaignActivityBudget = {
+    authoredQuestCount: pack.quests.length,
+    authoredObjectiveCount,
     mainQuestCount: mainQuests.length,
     mainObjectiveCount,
     routeTransitions,
     npcInteractions,
     encounterVictories,
+    repeatableEncounterVictories,
     itemSourceInteractions,
     minimumPlayerActions: routeTransitions + npcInteractions + encounterVictories
   };
   warnings.push(
-    `Authored minimum: ${activityBudget.minimumPlayerActions} world interactions across ${mainObjectiveCount} main objectives; this is not an hours estimate.`
+    `Authored minimum: ${activityBudget.minimumPlayerActions} world interactions across ${authoredObjectiveCount} authored objectives; this is not an hours estimate.`
   );
   return {
     valid: errors.length === 0,
     errors,
     warnings,
     mainQuestOrder,
+    authoredQuestOrder,
+    completedQuestIds: [...authoredCompleted],
     completedMainQuestIds: [...completed],
     finalLocationId: locationId,
     activityBudget

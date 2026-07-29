@@ -3,12 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.9.0"
+  },
   "scripts": {
-    "dev": "concurrently -k \"vite\" \"tsx watch server/index.ts\"",
+    "dev": "concurrently -k \"npm:dev:game\" \"npm:dev:server\"",
     "dev:game": "vite",
-    "dev:server": "tsx watch server/index.ts",
+    "dev:server": "tsx --env-file-if-exists=.env watch server/index.ts",
     "build": "tsc -b && vite build && tsc -p server/tsconfig.json",
-    "start": "node server-dist/index.js",
+    "start": "node --env-file-if-exists=.env server-dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",

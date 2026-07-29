@@ -3,6 +3,7 @@ import type {
   BattleAction,
   CharacterCreationDraft,
   GameBridge,
+  GameSaveSlot,
   GameSnapshot,
   InteractionView,
   PartyMemberView,
@@ -75,6 +76,10 @@ export class DemoGameBridge implements GameBridge {
   }
 
   continueGame(): void {
+    this.emit();
+  }
+
+  load(_slot: GameSaveSlot): void {
     this.emit();
   }
 
@@ -228,7 +233,7 @@ export class DemoGameBridge implements GameBridge {
     this.emit();
   }
 
-  save(_slot: "autosave" | "manual-1" | "manual-2" | "manual-3"): void {
+  save(_slot: GameSaveSlot): void {
     this.state = { ...this.state, autosave: "saving" };
     this.emit();
     this.state = { ...this.state, autosave: "saved" };

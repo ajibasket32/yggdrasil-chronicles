@@ -15,6 +15,7 @@ test("new chronicle reaches exploration and deterministic battle", async ({ page
   await page.goto("/");
   const canvas = page.locator("canvas");
   await expect(canvas).toBeVisible();
+  await expect(page.locator("#app")).toHaveAttribute("data-scene", "title");
 
   await pressRepeatedly(page, "Enter", 5);
 
@@ -49,6 +50,7 @@ test("system menu exposes all manual save slots and can return to the title", as
   await page.goto("/");
   const canvas = page.locator("canvas");
   await expect(canvas).toBeVisible();
+  await expect(page.locator("#app")).toHaveAttribute("data-scene", "title");
   await pressRepeatedly(page, "Enter", 5);
   await expect(page.locator("#app")).toHaveAttribute("data-scene", "world");
 
@@ -64,4 +66,37 @@ test("system menu exposes all manual save slots and can return to the title", as
   await pressRepeatedly(page, "ArrowDown", 2);
   await page.keyboard.press("Enter");
   await expect(page.locator("#app")).toHaveAttribute("data-scene", "title");
+});
+
+test("manual load restores the selected chronicle from the title", async ({ page }) => {
+  await page.goto("/");
+  const app = page.locator("#app");
+  await expect(page.locator("canvas")).toBeVisible();
+  await expect(app).toHaveAttribute("data-scene", "title");
+  await pressRepeatedly(page, "Enter", 5);
+  await expect(app).toHaveAttribute("data-scene", "world");
+
+  // Mossroad is the identifiable state captured in Manual Slot 1.
+  await pressRepeatedly(page, "ArrowUp", 2);
+  await pressRepeatedly(page, "ArrowRight", 17);
+  await expect(app).toHaveAttribute("data-location-id", "location.mossroad");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Enter");
+
+  // Change the autosaved session after the manual record exists.
+  await page.keyboard.press("Escape");
+  await pressRepeatedly(page, "ArrowLeft", 5);
+  await expect(app).toHaveAttribute("data-location-id", "location.hearthcross");
+
+  // Return to the title through the system menu, then load Manual Slot 1.
+  await page.keyboard.press("Escape");
+  await pressRepeatedly(page, "ArrowDown", 4);
+  await page.keyboard.press("Enter");
+  await expect(app).toHaveAttribute("data-scene", "title");
+  await pressRepeatedly(page, "ArrowDown", 2);
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+
+  await expect(app).toHaveAttribute("data-scene", "world");
+  await expect(app).toHaveAttribute("data-location-id", "location.mossroad");
 });

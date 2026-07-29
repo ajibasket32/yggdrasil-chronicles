@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Added distinct authored loadouts for every ancestry/job pairing, including
+  starting stats, practiced forms, inventory, resistances, and equipped gear.
+- Added quest-gated Tovin, Keva, and Eira recruitment plus data-driven
+  companion creation and party inventory grants.
+- Added runtime multi-phase boss transitions with visible telegraphs and
+  deterministic phase mechanics including roots, burns, restoration, and
+  elemental defense shifts.
+- Added equipment eligibility/stat derivation and inspectable job-branch
+  unlock blockers, with focused unit and integration coverage.
+- Added a manual-load title flow for all three save slots, an E2E restore test,
+  a high-contrast title toggle, and automatic `.env` loading.
+- Expanded the offline campaign audit to all 35 quests, 74 objectives, and 130
+  minimum authored interactions.
 - Added GitHub Actions quality gates for typechecking, tests, campaign
   validation, production builds, and Chromium E2E coverage.
 - Added authored route directions, objective wayfinding, destination labels,
