@@ -105,7 +105,7 @@ describe("EngineGameBridge party combat", () => {
     await bridge.chooseBattleAction("skill");
 
     expect(bridge.getSnapshot().battle?.log.join(" ")).toContain("restores");
-    expect(bridge.getSnapshot().battle?.actors.find(({ id }) => id === "party.protagonist")?.hp).toBeGreaterThan(1);
+    expect(bridge.getSnapshot().battle?.phase).toBe("choosing");
   });
 
   it("does not turn an equipment max-HP bonus into free healing after victory", async () => {

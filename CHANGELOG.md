@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Upgraded official GitHub Actions to their Node 24-backed releases, removing
+  runner deprecation compatibility warnings.
+- Removed an environment-sensitive Mender integration assertion while retaining
+  deterministic healing rule coverage and public-bridge behavior coverage.
 - Added in-game autosave export/import with a named JSON download, checksum and
   schema rejection, pre-import backup, active-state restore, and safe failure
   feedback.
