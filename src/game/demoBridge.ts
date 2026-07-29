@@ -257,6 +257,14 @@ export class DemoGameBridge implements GameBridge {
     return { success: false, message: "Job actions are unavailable in the demo bridge." };
   }
 
+  exportSave(_slot: GameSaveSlot): string {
+    return JSON.stringify({ demo: true }, null, 2);
+  }
+
+  importSave(_slot: GameSaveSlot, _json: string): GameCommandResult {
+    return { success: false, message: "Save import is unavailable in the demo bridge." };
+  }
+
   private emit(): void {
     const snapshot = this.getSnapshot();
     for (const listener of this.listeners) listener(snapshot);

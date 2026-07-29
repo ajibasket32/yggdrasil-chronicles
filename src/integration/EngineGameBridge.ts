@@ -776,6 +776,30 @@ export class EngineGameBridge implements GameBridge {
     return { success: true, message: `${member.name} now follows the ${nextMember.jobId} path.` };
   }
 
+  async exportSave(slot: GameSaveSlot): Promise<string> {
+    return this.#saves.exportJson(slot);
+  }
+
+  async importSave(slot: GameSaveSlot, json: string): Promise<GameCommandResult> {
+    try {
+      await this.#saves.importJson(slot, json);
+      const state = await this.#saves.load(slot);
+      if (!state) throw new Error(`Imported save slot '${slot}' could not be loaded`);
+      const summaries = await this.#saves.list();
+      this.#state = state;
+      this.#battle = undefined;
+      this.#saveSlots.clear();
+      for (const summary of summaries) this.#saveSlots.add(summary.slot);
+      this.#hasSave = this.#saveSlots.has("autosave");
+      this.#autosave = "saved";
+      this.emit();
+      return { success: true, message: `Imported save into ${slot}.` };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to import save.";
+      return commandFailure(`Import failed: ${message}`);
+    }
+  }
+
   private requireState(): GameState {
     if (!this.#state) throw new Error("No active chronicle");
     return this.#state;

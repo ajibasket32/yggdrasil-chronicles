@@ -46,6 +46,7 @@ export class WorldScene extends Phaser.Scene {
   private equipmentIndex = 0;
   private interactiveMode: InteractiveOverlayMode = "browse";
   private selectedInventoryItemId?: string;
+  private systemBusy = false;
   private npcSprites: Array<{ id: string; point: Point; sprite: Phaser.GameObjects.Image }> = [];
   private encounterSprite?: Phaser.GameObjects.Image;
   private activeInteraction?: { view: InteractionView; index: number };
@@ -545,6 +546,8 @@ export class WorldScene extends Phaser.Scene {
       "Save to Manual Slot 1",
       "Save to Manual Slot 2",
       "Save to Manual Slot 3",
+      "Export Autosave",
+      "Import Autosave",
       "Rest for eight hours",
       "Return to Title"
     ];
@@ -768,7 +771,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private moveSystem(delta: number): void {
-    this.systemIndex = Phaser.Math.Wrap(this.systemIndex + delta, 0, 5);
+    this.systemIndex = Phaser.Math.Wrap(this.systemIndex + delta, 0, 7);
     this.drawSystemOverlay();
   }
 
@@ -780,6 +783,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private async confirmSystemCommand(): Promise<void> {
+    if (this.systemBusy) return;
     if (this.systemIndex < 3) {
       const slot = (["manual-1", "manual-2", "manual-3"] as const)[this.systemIndex];
       if (!slot) return;
@@ -788,12 +792,96 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     if (this.systemIndex === 3) {
+      await this.exportAutosave();
+      return;
+    }
+    if (this.systemIndex === 4) {
+      this.importAutosave();
+      return;
+    }
+    if (this.systemIndex === 5) {
       await this.bridge.rest();
       this.closeOverlay();
       this.showToast("The party rests. HP and MP restored.");
       return;
     }
     this.returnToTitle();
+  }
+
+  private async exportAutosave(): Promise<void> {
+    this.systemBusy = true;
+    try {
+      const json = await this.bridge.exportSave("autosave");
+      const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "yggdrasil-chronicles-save.json";
+      anchor.style.display = "none";
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      this.showToast("Autosave exported to yggdrasil-chronicles-save.json.");
+    } catch (error) {
+      this.showToast(error instanceof Error ? `Export failed: ${error.message}` : "Export failed.");
+    } finally {
+      this.systemBusy = false;
+    }
+  }
+
+  private importAutosave(): void {
+    this.systemBusy = true;
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json,.json";
+    input.style.display = "none";
+    document.body.append(input);
+    let cleaned = false;
+    const onWindowFocus = (): void => {
+      window.setTimeout(() => {
+        if (!input.files?.length) {
+          this.showToast("Import cancelled.");
+          cleanup();
+        }
+      }, 0);
+    };
+    const cleanup = (): void => {
+      if (cleaned) return;
+      cleaned = true;
+      window.removeEventListener("focus", onWindowFocus);
+      input.remove();
+      this.systemBusy = false;
+    };
+    input.addEventListener("cancel", () => {
+      this.showToast("Import cancelled.");
+      cleanup();
+    }, { once: true });
+    input.addEventListener("change", () => {
+      void this.importSelectedAutosave(input, cleanup);
+    }, { once: true });
+    window.addEventListener("focus", onWindowFocus, { once: true });
+    try {
+      input.click();
+    } catch (error) {
+      this.showToast(error instanceof Error ? `Import failed: ${error.message}` : "Import failed.");
+      cleanup();
+    }
+  }
+
+  private async importSelectedAutosave(input: HTMLInputElement, cleanup: () => void): Promise<void> {
+    try {
+      const file = input.files?.[0];
+      if (!file) {
+        this.showToast("Import cancelled.");
+        return;
+      }
+      const result = await this.bridge.importSave("autosave", await file.text());
+      this.showToast(result.message);
+    } catch (error) {
+      this.showToast(error instanceof Error ? `Import failed: ${error.message}` : "Import failed.");
+    } finally {
+      cleanup();
+    }
   }
 
   private returnToTitle(): void {

@@ -131,6 +131,8 @@ export interface GameBridge {
     itemId?: string
   ): GameCommandResult | Promise<GameCommandResult>;
   selectJob(memberId: string, jobId: string): GameCommandResult | Promise<GameCommandResult>;
+  exportSave(slot: GameSaveSlot): string | Promise<string>;
+  importSave(slot: GameSaveSlot, json: string): GameCommandResult | Promise<GameCommandResult>;
 }
 
 export interface GameLaunchOptions {

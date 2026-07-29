@@ -63,7 +63,7 @@ test("system menu exposes all manual save slots and can return to the title", as
   // of the game, then the last command returns to the title scene.
   await pressRepeatedly(page, "ArrowDown", 2);
   await page.keyboard.press("Enter");
-  await pressRepeatedly(page, "ArrowDown", 2);
+  await pressRepeatedly(page, "ArrowDown", 4);
   await page.keyboard.press("Enter");
   await expect(page.locator("#app")).toHaveAttribute("data-scene", "title");
 });
@@ -90,7 +90,7 @@ test("manual load restores the selected chronicle from the title", async ({ page
 
   // Return to the title through the system menu, then load Manual Slot 1.
   await page.keyboard.press("Escape");
-  await pressRepeatedly(page, "ArrowDown", 4);
+  await pressRepeatedly(page, "ArrowDown", 6);
   await page.keyboard.press("Enter");
   await expect(app).toHaveAttribute("data-scene", "title");
   await pressRepeatedly(page, "ArrowDown", 2);
@@ -132,4 +132,20 @@ test("inventory targets a party member and visibly consumes a restorative", asyn
   await page.waitForTimeout(180);
   const usedItem = await canvas.screenshot();
   expect(usedItem.equals(selectedItem)).toBe(false);
+});
+
+test("system menu exports the autosave as a named JSON download", async ({ page }) => {
+  await page.goto("/");
+  const app = page.locator("#app");
+  await expect(page.locator("canvas")).toBeVisible();
+  await expect(app).toHaveAttribute("data-scene", "title");
+  await pressRepeatedly(page, "Enter", 5);
+  await expect(app).toHaveAttribute("data-scene", "world");
+
+  await page.keyboard.press("Escape");
+  await pressRepeatedly(page, "ArrowDown", 3);
+  const downloadPromise = page.waitForEvent("download");
+  await page.keyboard.press("Enter");
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("yggdrasil-chronicles-save.json");
 });

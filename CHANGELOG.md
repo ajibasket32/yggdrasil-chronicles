@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added in-game autosave export/import with a named JSON download, checksum and
+  schema rejection, pre-import backup, active-state restore, and safe failure
+  feedback.
 - Made inventory and party overlays interactive with keyboard/gamepad item
   targeting, restorative use, atomic equip/unequip, and clear action feedback.
 - Added twelve level-gated advanced jobs, persistent branch unlocks, signature

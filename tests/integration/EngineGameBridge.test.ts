@@ -406,3 +406,51 @@ describe("EngineGameBridge runtime party management", () => {
     expect(bridge.getSnapshot().party[0]?.jobOptions?.find(({ id }) => id === "banneret")?.state).toBe("unlocked");
   });
 });
+
+describe("EngineGameBridge save interchange", () => {
+  it("exports, imports into the requested slot, restores active state, and preserves the target backup", async () => {
+    const { bridge, saves } = createBridge();
+    await bridge.newGame({ name: "Imported", ancestryId: "sylvan", jobId: "mender" });
+    await bridge.travel("location.mossroad");
+    await bridge.save("manual-2");
+    const exported = await bridge.exportSave("manual-2");
+
+    await bridge.newGame({ name: "Replaced", ancestryId: "stonekin", jobId: "vanguard" });
+    await bridge.save("manual-1");
+    const previousTarget = await saves.load("manual-1");
+    bridge.startEncounter("encounter.mossroad-foragers");
+    expect(bridge.getSnapshot().battle).toBeDefined();
+
+    const result = await bridge.importSave("manual-1", exported);
+    expect(result.success).toBe(true);
+    expect(bridge.getSnapshot()).toMatchObject({
+      playerName: "Imported",
+      locationId: "location.mossroad",
+      battle: undefined
+    });
+    expect((await saves.load("manual-1"))?.seed).toBe((await saves.load("manual-2"))?.seed);
+    expect((await saves.backups("manual-1"))[0]?.record.seed).toBe(previousTarget?.seed);
+    expect(bridge.getSnapshot().saveSlots).toEqual(expect.arrayContaining(["autosave", "manual-1", "manual-2"]));
+  });
+
+  it("rejects corrupt imports without replacing either the active state or target save", async () => {
+    const { bridge, saves } = createBridge();
+    await bridge.newGame({ name: "Safe", ancestryId: "hearthborn", jobId: "vanguard" });
+    await bridge.save("manual-1");
+    const activeBefore = bridge.getSnapshot();
+    const targetBefore = await saves.load("manual-1");
+    const corrupt = JSON.parse(await bridge.exportSave("manual-1")) as Record<string, unknown>;
+    corrupt.checksum = "invalid";
+
+    const result = await bridge.importSave("manual-1", JSON.stringify(corrupt));
+
+    expect(result).toMatchObject({ success: false, message: expect.stringMatching(/checksum mismatch/i) });
+    expect(bridge.getSnapshot()).toMatchObject({
+      playerName: activeBefore.playerName,
+      locationId: activeBefore.locationId,
+      party: activeBefore.party
+    });
+    expect((await saves.load("manual-1"))?.seed).toBe(targetBefore?.seed);
+    expect(await saves.backups("manual-1")).toHaveLength(0);
+  });
+});

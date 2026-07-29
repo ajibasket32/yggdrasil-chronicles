@@ -32,6 +32,10 @@ become selectable at level 4.
 Continue loads the autosave. `Load Chronicle` on the title screen lists the
 three manual slots and restores the selected snapshot.
 
+The system menu can export the autosave as
+`yggdrasil-chronicles-save.json` and import it later. Imports validate the
+record checksum and schema, then retain a backup of the replaced autosave.
+
 ## Optional living-world generation
 
 Copy `.env.example` to `.env`, set `AI_API_KEY`, `AI_MODEL`, and optionally `AI_BASE_URL`, then run `npm run dev`. Keys stay in the Node proxy and are never sent to the browser.
