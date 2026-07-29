@@ -10,6 +10,7 @@ import type {
   PartyMemberView
 } from "../bridge";
 import { gamepadButtonAction } from "../gamepadControls";
+import { keyboardActionForCode, keyboardCodeLabel } from "../keyboardControls";
 import { getNpcSpawnPoints } from "../npcPlacement";
 import { announceScene, COLORS, getBridge, motionDuration, playSound, TEXT } from "../runtime";
 import {
@@ -82,26 +83,24 @@ export class WorldScene extends Phaser.Scene {
   private bindKeys(): void {
     const keyboard = this.input.keyboard;
     if (!keyboard) return;
-    keyboard.on("keydown-UP", () => this.handleDirection("up"));
-    keyboard.on("keydown-W", () => this.handleDirection("up"));
-    keyboard.on("keydown-DOWN", () => this.handleDirection("down"));
-    keyboard.on("keydown-S", () => this.handleDirection("down"));
-    keyboard.on("keydown-LEFT", () => this.handleDirection("left"));
-    keyboard.on("keydown-A", () => this.handleDirection("left"));
-    keyboard.on("keydown-RIGHT", () => this.handleDirection("right"));
-    keyboard.on("keydown-D", () => this.handleDirection("right"));
-    keyboard.on("keydown-E", () => void this.interact());
-    keyboard.on("keydown-SPACE", () => void this.interact());
-    keyboard.on("keydown-ENTER", () => void this.interact());
-    keyboard.on("keydown-J", () => this.toggleOverlay("journal"));
-    keyboard.on("keydown-I", () => this.toggleOverlay("inventory"));
-    keyboard.on("keydown-P", () => this.toggleOverlay("party"));
-    keyboard.on("keydown-ESC", () => this.escape());
-    keyboard.on("keydown-B", () => void this.launchEncounter());
-    keyboard.on("keydown-F5", () => void this.manualSave());
-    keyboard.on("keydown-T", () => this.returnToTitle());
+    keyboard.on("keydown", this.onKeyboard, this);
     this.input.gamepad?.on("down", this.onGamepadButton, this);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.gamepad?.off("down", this.onGamepadButton, this));
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      keyboard.off("keydown", this.onKeyboard, this);
+      this.input.gamepad?.off("down", this.onGamepadButton, this);
+    });
+  }
+
+  private onKeyboard(event: KeyboardEvent): void {
+    const action = keyboardActionForCode(event.code, gameSettingsStore.get().keyBindings);
+    if (action === "up" || action === "down" || action === "left" || action === "right") this.handleDirection(action);
+    else if (action === "confirm" || action === "interact") void this.interact();
+    else if (action === "cancel") this.escape();
+    else if (action === "journal") this.toggleOverlay("journal");
+    else if (action === "inventory") this.toggleOverlay("inventory");
+    else if (action === "party") this.toggleOverlay("party");
+    else if (action === "encounter") void this.launchEncounter();
+    else if (action === "quickSave") void this.manualSave();
   }
 
   private onGamepadButton(_pad: Phaser.Input.Gamepad.Gamepad, button: Phaser.Input.Gamepad.Button): void {
@@ -391,12 +390,16 @@ export class WorldScene extends Phaser.Scene {
   private refreshPrompt(): void {
     if (!this.prompt || this.locked) return;
     const npc = this.nearestNpc();
+    const bindings = gameSettingsStore.get().keyBindings;
     if (npc) {
-      this.prompt.setText("E / A  Talk");
+      this.prompt.setText(`${keyboardCodeLabel(bindings.interact)} / A  Talk`);
     } else if (this.isNearEncounter()) {
-      this.prompt.setText("E / A  Engage");
+      this.prompt.setText(`${keyboardCodeLabel(bindings.interact)} / A  Engage`);
     } else {
-      this.prompt.setText("D-pad Move   X Journal   Y Party   L1 Pack   Start Menu");
+      this.prompt.setText(
+        `${keyboardCodeLabel(bindings.journal)} Journal   ${keyboardCodeLabel(bindings.party)} Party   `
+        + `${keyboardCodeLabel(bindings.inventory)} Pack   ${keyboardCodeLabel(bindings.cancel)} Menu`
+      );
     }
   }
 

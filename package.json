@@ -16,7 +16,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "typecheck": "tsc -b --pretty false && tsc -p server/tsconfig.json --noEmit",
-    "validate:content": "tsx tools/validate-content.ts"
+    "validate:content": "tsx tools/validate-content.ts",
+    "simulate:campaign": "tsx tools/campaign-simulation.ts"
   },
   "dependencies": {
     "express": "^5.1.0",

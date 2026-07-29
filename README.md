@@ -35,6 +35,10 @@ three manual slots and restores the selected snapshot.
 The title and in-game system menus expose persistent high-contrast,
 reduced-motion, sound on/off, and sound-volume controls. Sound effects use the
 committed CC0 Kenney RPG Audio pack and never require a network connection.
+The title settings screen also supports persistent keyboard rebinding for
+movement, confirmation, menus, interaction, journal, inventory, party,
+encounters, and quick save. Assigning a key already in use swaps the two actions
+so no command becomes unreachable.
 
 The system menu can export the autosave as
 `yggdrasil-chronicles-save.json` and import it later. Imports validate the

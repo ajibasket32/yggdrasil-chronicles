@@ -7,6 +7,7 @@ every pull request. The same gate can be reproduced locally with:
 npm run typecheck
 npm test
 npm run validate:content
+npm run simulate:campaign
 npm run build
 npm run test:e2e
 ```
@@ -19,11 +20,18 @@ npm run test:e2e
   system/manual-save controls, manual-slot restoration from the title, and
   targeted restorative use from the inventory, plus startup with the narrative
   proxy unavailable. It also verifies the named autosave export download and
-  persistence of accessibility settings across a browser reload.
+  persistence of accessibility settings across a browser reload. A dedicated
+  flow rebinds Journal to a new physical key, uses it in exploration, and
+  verifies the binding survives reload.
 - Campaign validation walks all 35 authored quests through real routes, NPC
   placements, encounter placements, and item sources; it checks graph
   reachability, references, source quantities, boss placement, and route
   ambiguity.
+- `npm run simulate:campaign` runs that authored route audit plus deterministic
+  boss simulations through the public combat engine. It verifies a campaign-valid
+  Shaper/Ranger/Vanguard/Mender roster can defeat every boss across fixed seeds
+  while each authored boss phase activates. This is a combat/regression gate,
+  not evidence of a 20-hour playtime.
 - Integration coverage verifies job-specific forms, starting equipment,
   atomic equip/unequip, restorative consumption, advanced-job unlocks,
   save interchange/corruption rejection, quest-gated recruitment,

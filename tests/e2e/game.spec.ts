@@ -175,3 +175,40 @@ test("accessibility and audio settings persist after a reload", async ({ page })
   await expect(root).toHaveAttribute("data-game-high-contrast", "true");
   await expect(root).toHaveAttribute("data-game-reduced-motion", "true");
 });
+
+test("a rebound journal key persists and controls the world scene", async ({ page }) => {
+  await page.goto("/");
+  const app = page.locator("#app");
+  const canvas = page.locator("canvas");
+  await expect(app).toHaveAttribute("data-scene", "title");
+
+  // Settings -> Keyboard Bindings -> Journal, then capture K.
+  await pressRepeatedly(page, "ArrowDown", 3);
+  await page.keyboard.press("Enter");
+  await pressRepeatedly(page, "ArrowDown", 4);
+  await page.keyboard.press("Enter");
+  await pressRepeatedly(page, "ArrowDown", 7);
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("k");
+
+  const savedSettings = await page.evaluate(() =>
+    window.localStorage.getItem("yggdrasil-chronicles.settings.v1")
+  );
+  expect(savedSettings).toContain('"journal":"KeyK"');
+
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await pressRepeatedly(page, "ArrowUp", 3);
+  await pressRepeatedly(page, "Enter", 5);
+  await expect(app).toHaveAttribute("data-scene", "world");
+
+  const world = await canvas.screenshot();
+  await page.keyboard.press("k");
+  const journal = await canvas.screenshot();
+  expect(journal.equals(world)).toBe(false);
+
+  await page.reload();
+  expect(await page.evaluate(() =>
+    window.localStorage.getItem("yggdrasil-chronicles.settings.v1")
+  )).toContain('"journal":"KeyK"');
+});

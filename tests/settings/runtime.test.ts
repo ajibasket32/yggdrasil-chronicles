@@ -83,6 +83,24 @@ describe("persistent game settings", () => {
       .toBe(DEFAULT_GAME_SETTINGS.soundVolume);
   });
 
+  it("migrates missing bindings and rejects ambiguous duplicate bindings", () => {
+    expect(sanitizeGameSettings({ version: 1 }).keyBindings).toEqual(DEFAULT_GAME_SETTINGS.keyBindings);
+    expect(sanitizeGameSettings({
+      ...DEFAULT_GAME_SETTINGS,
+      keyBindings: {
+        ...DEFAULT_GAME_SETTINGS.keyBindings,
+        journal: "KeyK"
+      }
+    }).keyBindings.journal).toBe("KeyK");
+    expect(sanitizeGameSettings({
+      ...DEFAULT_GAME_SETTINGS,
+      keyBindings: {
+        ...DEFAULT_GAME_SETTINGS.keyBindings,
+        journal: "KeyI"
+      }
+    }).keyBindings).toEqual(DEFAULT_GAME_SETTINGS.keyBindings);
+  });
+
   it("merges settings without accepting malformed runtime patches", () => {
     const storage = new MemorySettingsStorage();
     const saved = saveGameSettings({ highContrast: true, soundVolume: 0.2 }, storage);
@@ -108,11 +126,13 @@ describe("persistent game settings", () => {
 
     store.update({ highContrast: true });
     store.update({ highContrast: true });
+    store.update({ keyBindings: { journal: "KeyK" } });
     unsubscribe();
     store.update({ highContrast: false });
 
-    expect(seen).toEqual([true]);
+    expect(seen).toEqual([true, true]);
     expect(store.get().highContrast).toBe(false);
+    expect(store.get().keyBindings.journal).toBe("KeyK");
   });
 
   it("applies visual hooks and Phaser sound state without a live browser", () => {
@@ -126,7 +146,14 @@ describe("persistent game settings", () => {
     };
 
     applySettingsToPhaserGame(
-      { version: 1, highContrast: true, reducedMotion: true, soundEnabled: false, soundVolume: 0.3 },
+      {
+        version: 1,
+        highContrast: true,
+        reducedMotion: true,
+        soundEnabled: false,
+        soundVolume: 0.3,
+        keyBindings: { ...DEFAULT_GAME_SETTINGS.keyBindings }
+      },
       game as never,
       fakeDocument
     );

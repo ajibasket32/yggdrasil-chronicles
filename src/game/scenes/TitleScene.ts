@@ -1,14 +1,23 @@
 import Phaser from "phaser";
 import { ancestries, jobs } from "../../content";
-import { gameSettingsStore } from "../../settings";
+import {
+  gameSettingsStore,
+  REBINDABLE_ACTIONS
+} from "../../settings";
 import type { CharacterCreationDraft, GameBridge } from "../bridge";
 import { gamepadButtonAction } from "../gamepadControls";
+import {
+  keyboardActionForCode,
+  keyboardActionLabel,
+  keyboardCodeLabel,
+  rebindKeyboardAction
+} from "../keyboardControls";
 import { announceScene, COLORS, getBridge, motionDuration, playSound, TEXT } from "../runtime";
 
 const NAME_CHOICES = ["Rowan", "Aster", "Marlowe", "Sage", "Kestrel", "Vale"] as const;
 const MANUAL_SLOTS = ["manual-1", "manual-2", "manual-3"] as const;
 
-type TitleMode = "title" | "creation" | "load" | "settings";
+type TitleMode = "title" | "creation" | "load" | "settings" | "bindings";
 
 export class TitleScene extends Phaser.Scene {
   private bridge!: GameBridge;
@@ -21,9 +30,12 @@ export class TitleScene extends Phaser.Scene {
   private jobIndex = 0;
   private menuTexts: Phaser.GameObjects.Text[] = [];
   private detailText?: Phaser.GameObjects.Text;
+  private controlsText?: Phaser.GameObjects.Text;
   private creationTexts: Phaser.GameObjects.Text[] = [];
   private loading = false;
   private settingsIndex = 0;
+  private bindingIndex = 0;
+  private capturingBinding = false;
 
   constructor() {
     super("title");
@@ -39,7 +51,8 @@ export class TitleScene extends Phaser.Scene {
     this.add.text(64, 66, "YGGDRASIL", { ...TEXT.title, fontSize: "54px", letterSpacing: 7 });
     this.add.text(68, 126, "C H R O N I C L E S", { ...TEXT.body, color: COLORS.gold, letterSpacing: 4 });
     this.add.text(68, 164, "The Severed Concord", { ...TEXT.heading, fontStyle: "italic", color: COLORS.muted });
-    this.add.text(68, 470, "Arrows / D-pad  Navigate     Enter / A  Confirm     Esc / B  Back", TEXT.small);
+    this.controlsText = this.add.text(68, 470, "", TEXT.small);
+    this.refreshControlsText();
     this.drawTitleMenu();
     this.bindKeys();
     announceScene("title");
@@ -71,19 +84,42 @@ export class TitleScene extends Phaser.Scene {
   private bindKeys(): void {
     const keyboard = this.input.keyboard;
     if (!keyboard) return;
-    keyboard.on("keydown-UP", () => this.move(-1));
-    keyboard.on("keydown-W", () => this.move(-1));
-    keyboard.on("keydown-DOWN", () => this.move(1));
-    keyboard.on("keydown-S", () => this.move(1));
-    keyboard.on("keydown-LEFT", () => this.adjust(-1));
-    keyboard.on("keydown-A", () => this.adjust(-1));
-    keyboard.on("keydown-RIGHT", () => this.adjust(1));
-    keyboard.on("keydown-D", () => this.adjust(1));
-    keyboard.on("keydown-ENTER", () => void this.confirm());
-    keyboard.on("keydown-SPACE", () => void this.confirm());
-    keyboard.on("keydown-ESC", () => this.back());
+    keyboard.on("keydown", this.onKeyboard, this);
     this.input.gamepad?.on("down", this.onGamepadButton, this);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.gamepad?.off("down", this.onGamepadButton, this));
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      keyboard.off("keydown", this.onKeyboard, this);
+      this.input.gamepad?.off("down", this.onGamepadButton, this);
+    });
+  }
+
+  private onKeyboard(event: KeyboardEvent): void {
+    if (this.capturingBinding) {
+      event.preventDefault();
+      const action = REBINDABLE_ACTIONS[this.bindingIndex];
+      if (!action) return;
+      const bindings = rebindKeyboardAction(gameSettingsStore.get().keyBindings, action, event.code);
+      gameSettingsStore.update({ keyBindings: bindings });
+      this.capturingBinding = false;
+      playSound(this, "sfx.confirm");
+      this.drawBindings();
+      return;
+    }
+    const action = keyboardActionForCode(event.code, gameSettingsStore.get().keyBindings);
+    if (action === "up") this.move(-1);
+    else if (action === "down") this.move(1);
+    else if (action === "left") this.adjust(-1);
+    else if (action === "right") this.adjust(1);
+    else if (action === "confirm" || action === "interact") void this.confirm();
+    else if (action === "cancel") this.back();
+  }
+
+  private refreshControlsText(): void {
+    const bindings = gameSettingsStore.get().keyBindings;
+    this.controlsText?.setText(
+      `${keyboardCodeLabel(bindings.up)}/${keyboardCodeLabel(bindings.down)} / D-pad  Navigate     `
+      + `${keyboardCodeLabel(bindings.confirm)} / A  Confirm     `
+      + `${keyboardCodeLabel(bindings.cancel)} / B  Back`
+    );
   }
 
   private onGamepadButton(_pad: Phaser.Input.Gamepad.Gamepad, button: Phaser.Input.Gamepad.Button): void {
@@ -101,6 +137,7 @@ export class TitleScene extends Phaser.Scene {
     this.creationTexts.forEach((text) => text.destroy());
     this.detailText?.destroy();
     this.creationTexts = [];
+    this.refreshControlsText();
     const hasSave = this.bridge.getSnapshot().hasSave;
     const manualSaveCount = MANUAL_SLOTS.filter((slot) => this.hasSlot(slot)).length;
     const choices = [
@@ -123,17 +160,19 @@ export class TitleScene extends Phaser.Scene {
     this.creationTexts.forEach((text) => text.destroy());
     this.detailText?.destroy();
     this.creationTexts = [];
+    this.refreshControlsText();
     this.mode = "settings";
     const settings = gameSettingsStore.get();
     const choices = [
       `HIGH CONTRAST       ${settings.highContrast ? "ON" : "OFF"}`,
       `REDUCED MOTION      ${settings.reducedMotion ? "ON" : "OFF"}`,
       `SOUND               ${settings.soundEnabled ? "ON" : "OFF"}`,
-      `SOUND VOLUME        ${Math.round(settings.soundVolume * 100)}%`
+      `SOUND VOLUME        ${Math.round(settings.soundVolume * 100)}%`,
+      "KEYBOARD BINDINGS"
     ];
     const heading = this.add.text(72, 210, "SETTINGS", { ...TEXT.heading, color: COLORS.gold });
     const rows = choices.map((label, index) =>
-      this.add.text(72, 258 + index * 48, `${index === this.settingsIndex ? "›" : " "} ${label}`, {
+      this.add.text(72, 250 + index * 40, `${index === this.settingsIndex ? "›" : " "} ${label}`, {
         ...TEXT.heading,
         color: index === this.settingsIndex ? COLORS.gold : COLORS.cream
       })
@@ -141,8 +180,40 @@ export class TitleScene extends Phaser.Scene {
     this.menuTexts = [heading, ...rows];
     this.detailText = this.add.text(
       72,
-      438,
+      442,
       "Enter / A toggles options. Left / Right changes volume. Esc / B returns.",
+      TEXT.small
+    );
+  }
+
+  private drawBindings(): void {
+    this.menuTexts.forEach((text) => text.destroy());
+    this.creationTexts.forEach((text) => text.destroy());
+    this.detailText?.destroy();
+    this.creationTexts = [];
+    this.refreshControlsText();
+    this.mode = "bindings";
+    const bindings = gameSettingsStore.get().keyBindings;
+    const heading = this.add.text(72, 190, "KEYBOARD BINDINGS", { ...TEXT.heading, color: COLORS.gold });
+    const rows = REBINDABLE_ACTIONS.map((action, index) => {
+      const selected = index === this.bindingIndex;
+      const value = selected && this.capturingBinding ? "PRESS A KEY…" : keyboardCodeLabel(bindings[action]);
+      return this.add.text(
+        72,
+        226 + index * 20,
+        `${selected ? "›" : " "} ${keyboardActionLabel(action).padEnd(24)} ${value}`,
+        {
+          ...TEXT.body,
+          fontSize: "12px",
+          color: selected ? COLORS.gold : COLORS.cream
+        }
+      );
+    });
+    this.menuTexts = [heading, ...rows];
+    this.detailText = this.add.text(
+      72,
+      500,
+      "Select an action and confirm, then press its new key. Conflicts swap automatically.",
       TEXT.small
     );
   }
@@ -215,8 +286,12 @@ export class TitleScene extends Phaser.Scene {
       this.loadIndex = Phaser.Math.Wrap(this.loadIndex + delta, 0, MANUAL_SLOTS.length);
       this.drawLoadMenu();
     } else if (this.mode === "settings") {
-      this.settingsIndex = Phaser.Math.Wrap(this.settingsIndex + delta, 0, 4);
+      this.settingsIndex = Phaser.Math.Wrap(this.settingsIndex + delta, 0, 5);
       this.drawSettings();
+    } else if (this.mode === "bindings") {
+      if (this.capturingBinding) return;
+      this.bindingIndex = Phaser.Math.Wrap(this.bindingIndex + delta, 0, REBINDABLE_ACTIONS.length);
+      this.drawBindings();
     } else {
       this.creationRow = Phaser.Math.Wrap(this.creationRow + delta, 0, 4);
       this.drawCreation();
@@ -235,6 +310,7 @@ export class TitleScene extends Phaser.Scene {
       }
       return;
     }
+    if (this.mode === "bindings") return;
     if (this.mode !== "creation") return;
     if (this.creationRow === 0) this.nameIndex = Phaser.Math.Wrap(this.nameIndex + delta, 0, NAME_CHOICES.length);
     if (this.creationRow === 1) this.ancestryIndex = Phaser.Math.Wrap(this.ancestryIndex + delta, 0, ancestries.length);
@@ -262,9 +338,19 @@ export class TitleScene extends Phaser.Scene {
       if (this.settingsIndex === 0) gameSettingsStore.update({ highContrast: !settings.highContrast });
       else if (this.settingsIndex === 1) gameSettingsStore.update({ reducedMotion: !settings.reducedMotion });
       else if (this.settingsIndex === 2) gameSettingsStore.update({ soundEnabled: !settings.soundEnabled });
-      else gameSettingsStore.update({ soundVolume: settings.soundVolume >= 1 ? 0 : Math.min(1, settings.soundVolume + 0.1) });
+      else if (this.settingsIndex === 3) gameSettingsStore.update({ soundVolume: settings.soundVolume >= 1 ? 0 : Math.min(1, settings.soundVolume + 0.1) });
+      else {
+        this.capturingBinding = false;
+        this.drawBindings();
+        return;
+      }
       playSound(this, "sfx.confirm");
       this.drawSettings();
+      return;
+    }
+    if (this.mode === "bindings") {
+      this.capturingBinding = true;
+      this.drawBindings();
       return;
     }
     if (this.mode === "load") {
@@ -297,6 +383,13 @@ export class TitleScene extends Phaser.Scene {
   }
 
   private back(): void {
-    if (this.mode === "creation" || this.mode === "load" || this.mode === "settings") this.drawTitleMenu();
+    if (this.capturingBinding) {
+      this.capturingBinding = false;
+      this.drawBindings();
+    } else if (this.mode === "bindings") {
+      this.drawSettings();
+    } else if (this.mode === "creation" || this.mode === "load" || this.mode === "settings") {
+      this.drawTitleMenu();
+    }
   }
 }

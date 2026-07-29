@@ -1,6 +1,8 @@
 import Phaser from "phaser";
+import { gameSettingsStore } from "../../settings";
 import type { BattleAction, BattleView, GameBridge, GameSnapshot } from "../bridge";
 import { gamepadButtonAction } from "../gamepadControls";
+import { keyboardActionForCode, keyboardCodeLabel } from "../keyboardControls";
 import { announceScene, COLORS, getBridge, playSound, TEXT } from "../runtime";
 
 const ACTIONS: Array<{ id: BattleAction; label: string; hint: string }> = [
@@ -44,18 +46,23 @@ export class BattleScene extends Phaser.Scene {
   private bindKeys(): void {
     const keyboard = this.input.keyboard;
     if (!keyboard) return;
-    keyboard.on("keydown-UP", () => this.move(-1));
-    keyboard.on("keydown-W", () => this.move(-1));
-    keyboard.on("keydown-DOWN", () => this.move(1));
-    keyboard.on("keydown-S", () => this.move(1));
-    keyboard.on("keydown-ENTER", () => void this.confirm());
-    keyboard.on("keydown-SPACE", () => void this.confirm());
-    keyboard.on("keydown-ESC", () => {
+    keyboard.on("keydown", this.onKeyboard, this);
+    this.input.gamepad?.on("down", this.onGamepadButton, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      keyboard.off("keydown", this.onKeyboard, this);
+      this.input.gamepad?.off("down", this.onGamepadButton, this);
+    });
+  }
+
+  private onKeyboard(event: KeyboardEvent): void {
+    const action = keyboardActionForCode(event.code, gameSettingsStore.get().keyBindings);
+    if (action === "up" || action === "left") this.move(-1);
+    else if (action === "down" || action === "right") this.move(1);
+    else if (action === "confirm" || action === "interact") void this.confirm();
+    else if (action === "cancel") {
       this.actionIndex = ACTIONS.length - 1;
       this.render();
-    });
-    this.input.gamepad?.on("down", this.onGamepadButton, this);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.gamepad?.off("down", this.onGamepadButton, this));
+    }
   }
 
   private onGamepadButton(_pad: Phaser.Input.Gamepad.Gamepad, button: Phaser.Input.Gamepad.Button): void {
@@ -166,8 +173,15 @@ export class BattleScene extends Phaser.Scene {
       lineSpacing: 4,
       color: COLORS.cream
     });
-    this.add.text(36, 488, "D-pad moves actions · A confirms · B selects escape", TEXT.small);
-    this.add.text(36, 507, this.resolving ? "Resolving…" : "↑↓ Select   Enter Confirm", TEXT.small);
+    const bindings = gameSettingsStore.get().keyBindings;
+    this.add.text(
+      36,
+      488,
+      `${keyboardCodeLabel(bindings.up)}/${keyboardCodeLabel(bindings.down)} moves actions · `
+      + `${keyboardCodeLabel(bindings.confirm)} / A confirms · ${keyboardCodeLabel(bindings.cancel)} / B selects escape`,
+      TEXT.small
+    );
+    this.add.text(36, 507, this.resolving ? "Resolving…" : "Choose an action, then confirm.", TEXT.small);
   }
 
   private move(delta: number): void {

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added persistent keyboard rebinding for twelve exploration, menu, combat, and
+  quick-action commands. Conflicts swap atomically, scene prompts reflect the
+  active keys, and browser coverage verifies capture, use, and reload.
+- Added a deterministic campaign viability gate that walks all authored quests
+  and defeats every boss across fixed seeds while activating every boss phase.
 - Added persistent high-contrast, reduced-motion, sound toggle, and volume
   settings to the title and in-game system menus, plus offline CC0 interface,
   movement, travel, battle, and restorative sound effects.

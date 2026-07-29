@@ -1,6 +1,8 @@
 import type Phaser from "phaser";
 import {
   DEFAULT_GAME_SETTINGS,
+  DEFAULT_KEYBOARD_BINDINGS,
+  REBINDABLE_ACTIONS,
   SETTINGS_STORAGE_KEY,
   type GameSettings,
   type GameSettingsPatch
@@ -38,15 +40,32 @@ function readVolume(value: unknown, fallback: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
+function readKeyBindings(value: unknown): GameSettings["keyBindings"] {
+  const record = isRecord(value) ? value : {};
+  const bindings = Object.fromEntries(
+    REBINDABLE_ACTIONS.map((action) => {
+      const candidate = record[action];
+      const code = typeof candidate === "string" && /^[A-Za-z0-9]{1,24}$/.test(candidate)
+        ? candidate
+        : DEFAULT_KEYBOARD_BINDINGS[action];
+      return [action, code];
+    })
+  ) as GameSettings["keyBindings"];
+  return new Set(Object.values(bindings)).size === REBINDABLE_ACTIONS.length
+    ? bindings
+    : { ...DEFAULT_KEYBOARD_BINDINGS };
+}
+
 function copySettings(settings: GameSettings): GameSettings {
-  return { ...settings };
+  return { ...settings, keyBindings: { ...settings.keyBindings } };
 }
 
 function settingsEqual(left: GameSettings, right: GameSettings): boolean {
   return left.highContrast === right.highContrast
     && left.reducedMotion === right.reducedMotion
     && left.soundEnabled === right.soundEnabled
-    && left.soundVolume === right.soundVolume;
+    && left.soundVolume === right.soundVolume
+    && REBINDABLE_ACTIONS.every((action) => left.keyBindings[action] === right.keyBindings[action]);
 }
 
 /**
@@ -64,7 +83,8 @@ export function sanitizeGameSettings(value: unknown): GameSettings {
     highContrast: readBoolean(value.highContrast, DEFAULT_GAME_SETTINGS.highContrast),
     reducedMotion: readBoolean(value.reducedMotion, DEFAULT_GAME_SETTINGS.reducedMotion),
     soundEnabled: readBoolean(value.soundEnabled, DEFAULT_GAME_SETTINGS.soundEnabled),
-    soundVolume: readVolume(value.soundVolume, DEFAULT_GAME_SETTINGS.soundVolume)
+    soundVolume: readVolume(value.soundVolume, DEFAULT_GAME_SETTINGS.soundVolume),
+    keyBindings: readKeyBindings(value.keyBindings)
   };
 }
 
@@ -104,7 +124,15 @@ export function saveGameSettings(
 ): GameSettings {
   const current = loadGameSettings(storage);
   const safePatch = isRecord(patch) ? patch : {};
-  const next = sanitizeGameSettings({ ...current, ...safePatch, version: 1 });
+  const next = sanitizeGameSettings({
+    ...current,
+    ...safePatch,
+    keyBindings: {
+      ...current.keyBindings,
+      ...(isRecord(safePatch.keyBindings) ? safePatch.keyBindings : {})
+    },
+    version: 1
+  });
 
   if (storage) {
     try {

@@ -39,6 +39,9 @@ jobs:
       - name: Validate authored campaign
         run: npm run validate:content
 
+      - name: Simulate campaign and boss viability
+        run: npm run simulate:campaign
+
       - name: Build production bundles
         run: npm run build
 
