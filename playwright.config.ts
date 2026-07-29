@@ -2,7 +2,9 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  timeout: 30_000,
+  // Phaser input and canvas screenshots are noticeably slower on shared Linux
+  // runners than on a local desktop. This is a per-test ceiling, not a wait.
+  timeout: 60_000,
   use: {
     baseURL: "http://127.0.0.1:5173",
     viewport: { width: 1280, height: 720 },

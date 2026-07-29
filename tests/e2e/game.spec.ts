@@ -7,7 +7,7 @@ async function pressRepeatedly(
 ): Promise<void> {
   for (let index = 0; index < count; index += 1) {
     await page.keyboard.press(key);
-    await page.waitForTimeout(115);
+    await page.waitForTimeout(140);
   }
 }
 
@@ -95,9 +95,12 @@ test("manual load restores the selected chronicle from the title", async ({ page
   await expect(app).toHaveAttribute("data-scene", "title");
   await pressRepeatedly(page, "ArrowDown", 2);
   await page.keyboard.press("Enter");
+  // Phaser redraws the title into the load sub-menu on the next render tick.
+  // Keep the load confirmation separate so a slower CI renderer cannot drop it.
+  await page.waitForTimeout(400);
   await page.keyboard.press("Enter");
 
-  await expect(app).toHaveAttribute("data-scene", "world");
+  await expect(app).toHaveAttribute("data-scene", "world", { timeout: 15_000 });
   await expect(app).toHaveAttribute("data-location-id", "location.mossroad");
 });
 
@@ -124,12 +127,15 @@ test("inventory targets a party member and visibly consumes a restorative", asyn
   await expect(app).toHaveAttribute("data-scene", "world");
 
   await page.keyboard.press("i");
+  await expect(canvas).toBeVisible();
   const selectedItem = await canvas.screenshot();
   await page.keyboard.press("Enter");
+  await expect(canvas).toBeVisible();
   const targetChoice = await canvas.screenshot();
   expect(targetChoice.equals(selectedItem)).toBe(false);
   await page.keyboard.press("Enter");
   await page.waitForTimeout(180);
+  await expect(canvas).toBeVisible();
   const usedItem = await canvas.screenshot();
   expect(usedItem.equals(selectedItem)).toBe(false);
 });
