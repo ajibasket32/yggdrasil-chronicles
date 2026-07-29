@@ -16,11 +16,7 @@ test("new chronicle reaches exploration and deterministic battle", async ({ page
   const canvas = page.locator("canvas");
   await expect(canvas).toBeVisible();
 
-  await page.keyboard.press("Enter");
-  await page.keyboard.press("Enter");
-  await page.keyboard.press("Enter");
-  await page.keyboard.press("Enter");
-  await page.keyboard.press("Enter");
+  await pressRepeatedly(page, "Enter", 5);
 
   await expect(canvas).toBeVisible();
   const app = page.locator("#app");
