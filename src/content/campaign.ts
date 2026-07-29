@@ -372,9 +372,6 @@ const authoredSpecialConsequences: Readonly<Record<string, readonly QuestConsequ
     { type: "adjust_faction", factionId: FACTIONS.freebound, amount: 4 },
     { type: "adjust_faction", factionId: FACTIONS.lanternArchive, amount: 4 },
     { type: "adjust_faction", factionId: FACTIONS.quietChoir, amount: -3 }
-  ],
-  "quest.a-new-concord": [
-    { type: "set_flag", key: "ending.concord-remade", value: true }
   ]
 };
 

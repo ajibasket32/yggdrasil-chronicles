@@ -81,8 +81,15 @@ export interface BattleView {
 export interface InteractionView {
   speaker: string;
   lines: readonly string[];
+  choices?: InteractionChoiceView[];
   recruitedMember?: PartyMemberView;
   startedQuestId?: string;
+}
+
+export interface InteractionChoiceView {
+  id: string;
+  label: string;
+  description: string;
 }
 
 export interface GameSnapshot {
@@ -99,6 +106,11 @@ export interface GameSnapshot {
     completedMainQuests: number;
     totalMainQuests: number;
     complete: boolean;
+    ending?: {
+      id: string;
+      title: string;
+      body: string;
+    };
   };
   reputation?: {
     factions: Array<{ id: string; name: string; standing: number }>;
@@ -129,6 +141,7 @@ export interface GameBridge {
   load(slot: GameSaveSlot): void | Promise<void>;
   travel(locationId: string): void | Promise<void>;
   interactNpc(npcId: string): InteractionView | Promise<InteractionView>;
+  resolveInteractionChoice(choiceId: string): InteractionView | Promise<InteractionView>;
   startEncounter(encounterId: string): void | Promise<void>;
   chooseBattleAction(action: BattleAction): void | Promise<void>;
   leaveBattle(): void | Promise<void>;

@@ -10,9 +10,24 @@ export function getBridge(scene: Phaser.Scene): GameBridge {
   return bridge;
 }
 
-export function announceScene(sceneName: "title" | "world" | "battle"): void {
-  const app = document.querySelector<HTMLElement>("#app");
+export function announceScene(
+  sceneName: "title" | "world" | "battle",
+  documentRef: Document | undefined = typeof document === "undefined" ? undefined : document
+): void {
+  const app = documentRef?.querySelector<HTMLElement>("#app");
   if (app) app.dataset.scene = sceneName;
+  const sceneMessages = {
+    title: "Title screen. Use your assigned navigation keys to choose an option, then confirm.",
+    world: "Exploration screen. Use your assigned movement keys to travel and the menu key for system options.",
+    battle: "Battle screen. Use your assigned navigation keys to choose an action and confirm it."
+  } as const;
+  announceGameStatus(sceneMessages[sceneName], documentRef);
+}
+
+/** Announces concise player-facing state from the canvas game to screen readers. */
+export function announceGameStatus(message: string, documentRef: Document | undefined = typeof document === "undefined" ? undefined : document): void {
+  const status = documentRef?.querySelector<HTMLElement>("#game-status");
+  if (status) status.textContent = message;
 }
 
 export function motionDuration(milliseconds: number): number {

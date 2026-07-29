@@ -42,11 +42,17 @@ jobs:
       - name: Simulate campaign and boss viability
         run: npm run simulate:campaign
 
+      - name: Audit campaign breadth and duration evidence status
+        run: npm run audit:duration
+
       - name: Audit assets and license evidence
         run: npm run audit:assets
 
       - name: Build production bundles
         run: npm run build
+
+      - name: Audit production release package
+        run: npm run audit:release
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium

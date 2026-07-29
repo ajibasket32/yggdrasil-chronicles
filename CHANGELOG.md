@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Replaced the automatic single campaign ending with a persisted three-way
+  authored decision, distinct ending presentations, deterministic faction
+  consequences, keyboard/gamepad choice navigation, and legacy-save backfill.
+- Added screen-reader live announcements for scene changes, settings, dialogue,
+  and the selected final-story choice.
+- Production builds now split the Phaser runtime from app code, omit unused
+  source archives and vendor files, preserve only browser-referenced assets,
+  package attribution evidence, and enforce deterministic release-size and
+  static-package integrity budgets in CI.
 - Made all 35 authored quest completions produce validated, one-time persistent
   relationship, faction, and outcome consequences. NPC dialogue and the compact
   journal reputation view now react to that state, including safe backfill for

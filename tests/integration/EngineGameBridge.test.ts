@@ -370,11 +370,67 @@ describe("EngineGameBridge campaign persistence", () => {
 
     await bridge.continueGame();
 
-    expect(bridge.getSnapshot().campaign).toEqual({
+    expect(bridge.getSnapshot().campaign).toMatchObject({
       completedMainQuests: 15,
       totalMainQuests: 15,
-      complete: true
+      complete: true,
+      ending: {
+        id: "ending.concord-remade",
+        title: "THE CONCORD REMADE"
+      }
     });
+    expect((await saves.load("autosave"))?.world.flags["ending.concord-remade"]).toBe(true);
+  });
+
+  it("requires a persisted three-way choice before completing the authored campaign", async () => {
+    const { bridge, saves } = createBridge();
+    await startChronicle(bridge);
+    const saved = await saves.load("autosave");
+    if (!saved) throw new Error("Expected an initial autosave");
+    await saves.save("autosave", {
+      ...saved,
+      quests: saved.quests.map((quest) =>
+        quest.questId === "quest.a-new-concord"
+          ? { ...quest, state: "active" as const, currentStep: 2 }
+          : { ...quest, state: "completed" as const }
+      )
+    });
+    await bridge.continueGame();
+
+    const decision = await bridge.interactNpc("npc.sable-voss");
+    expect(decision.choices?.map(({ id }) => id)).toEqual([
+      "ending.concord-remade",
+      "ending.rootways-freed",
+      "ending.lantern-covenant"
+    ]);
+    expect(bridge.getSnapshot().campaign).toMatchObject({
+      completedMainQuests: 14,
+      complete: false
+    });
+
+    const resolution = await bridge.resolveInteractionChoice("ending.rootways-freed");
+    expect(resolution.lines[0]).toContain("No single covenant");
+    expect(bridge.getSnapshot().campaign).toMatchObject({
+      completedMainQuests: 15,
+      complete: true,
+      ending: {
+        id: "ending.rootways-freed",
+        title: "THE ROOTWAYS FREED"
+      }
+    });
+
+    const persisted = await saves.load("autosave");
+    expect(persisted?.world.flags["ending.rootways-freed"]).toBe(true);
+    expect(persisted?.world.flags["ending.concord-remade"]).not.toBe(true);
+    expect(persisted?.world.factionStanding["faction.freebound"]).toBeGreaterThanOrEqual(8);
+    expect(persisted?.world.chronicle.some(({ tags }) =>
+      tags.includes("ending.rootways-freed")
+    )).toBe(true);
+
+    await bridge.resolveInteractionChoice("ending.lantern-covenant");
+    const unchanged = await saves.load("autosave");
+    expect(unchanged?.world.flags["ending.rootways-freed"]).toBe(true);
+    expect(unchanged?.world.flags["ending.lantern-covenant"]).not.toBe(true);
   });
 });
 

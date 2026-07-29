@@ -12,7 +12,7 @@ import type {
 import { gamepadButtonAction } from "../gamepadControls";
 import { keyboardActionForCode, keyboardCodeLabel } from "../keyboardControls";
 import { getNpcSpawnPoints } from "../npcPlacement";
-import { announceScene, COLORS, getBridge, motionDuration, playSound, TEXT } from "../runtime";
+import { announceGameStatus, announceScene, COLORS, getBridge, motionDuration, playSound, TEXT } from "../runtime";
 import {
   getLocationExits,
   getObjectiveGuidance,
@@ -51,7 +51,7 @@ export class WorldScene extends Phaser.Scene {
   private systemBusy = false;
   private npcSprites: Array<{ id: string; point: Point; sprite: Phaser.GameObjects.Image }> = [];
   private encounterSprite?: Phaser.GameObjects.Image;
-  private activeInteraction?: { view: InteractionView; index: number };
+  private activeInteraction?: { view: InteractionView; index: number; choiceIndex: number };
   private endingShown = false;
 
   constructor() {
@@ -115,6 +115,21 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private handleDirection(direction: ExitDirection): void {
+    const activeChoices = this.activeInteraction?.view.choices;
+    if (
+      this.activeInteraction
+      && this.activeInteraction.index >= this.activeInteraction.view.lines.length - 1
+      && activeChoices?.length
+    ) {
+      const delta = direction === "up" || direction === "left" ? -1 : 1;
+      this.activeInteraction.choiceIndex = Phaser.Math.Wrap(
+        this.activeInteraction.choiceIndex + delta,
+        0,
+        activeChoices.length
+      );
+      this.drawDialogue();
+      return;
+    }
     if (this.overlayKind === "system") {
       if (direction === "up" || direction === "left") this.moveSystem(-1);
       else this.moveSystem(1);
@@ -405,7 +420,7 @@ export class WorldScene extends Phaser.Scene {
 
   private async interact(): Promise<void> {
     if (this.activeInteraction) {
-      this.advanceDialogue();
+      await this.advanceDialogue();
       return;
     }
     if (this.overlayKind === "system") {
@@ -425,7 +440,7 @@ export class WorldScene extends Phaser.Scene {
     if (npc) {
       this.locked = true;
       const view = await this.bridge.interactNpc(npc.id);
-      this.activeInteraction = { view, index: 0 };
+      this.activeInteraction = { view, index: 0, choiceIndex: 0 };
       this.drawDialogue();
       return;
     }
@@ -436,22 +451,69 @@ export class WorldScene extends Phaser.Scene {
     const active = this.activeInteraction;
     if (!active) return;
     this.overlay?.destroy();
-    const panel = this.add.rectangle(28, 366, 680, 146, 0x101622, 0.96).setOrigin(0).setStrokeStyle(2, 0x8aa394);
-    const speaker = this.add.text(50, 385, active.view.speaker.toUpperCase(), { ...TEXT.small, color: COLORS.gold });
-    const line = this.add.text(50, 414, active.view.lines[active.index] ?? "", {
+    const choices = active.index >= active.view.lines.length - 1 ? active.view.choices : undefined;
+    const panelY = choices?.length ? 286 : 366;
+    const panelHeight = choices?.length ? 226 : 146;
+    const panel = this.add.rectangle(28, panelY, 680, panelHeight, 0x101622, 0.96)
+      .setOrigin(0)
+      .setStrokeStyle(2, 0x8aa394);
+    const speaker = this.add.text(50, panelY + 19, active.view.speaker.toUpperCase(), {
+      ...TEXT.small,
+      color: COLORS.gold
+    });
+    const line = this.add.text(50, panelY + 48, active.view.lines[active.index] ?? "", {
       ...TEXT.body,
       wordWrap: { width: 622 },
       lineSpacing: 5
     });
-    const hint = this.add.text(647, 482, "Enter ▾", TEXT.small);
-    this.overlay = this.add.container(0, 0, [panel, speaker, line, hint]).setDepth(40);
+    const children: Phaser.GameObjects.GameObject[] = [panel, speaker, line];
+    if (choices?.length) {
+      const selectedChoice = choices[active.choiceIndex];
+      if (selectedChoice) {
+        announceGameStatus(
+          `Decision. ${selectedChoice.label}. ${selectedChoice.description} Use navigation keys to choose and confirm.`
+        );
+      }
+      choices.forEach((choice, index) => {
+        const selected = index === active.choiceIndex;
+        children.push(this.add.text(
+          50,
+          panelY + 104 + index * 32,
+          `${selected ? "◆" : " "} ${choice.label} — ${choice.description}`,
+          {
+            ...TEXT.small,
+            color: selected ? COLORS.gold : COLORS.cream,
+            backgroundColor: selected ? "#293847" : undefined,
+            padding: { x: 5, y: 3 },
+            wordWrap: { width: 620 }
+          }
+        ));
+      });
+      children.push(this.add.text(
+        684,
+        panelY + panelHeight - 27,
+        "↑↓ Choose  Enter Confirm",
+        TEXT.small
+      ).setOrigin(1, 0));
+    } else {
+      announceGameStatus(`${active.view.speaker}. ${active.view.lines[active.index] ?? ""}`);
+      children.push(this.add.text(647, panelY + panelHeight - 30, "Enter ▾", TEXT.small));
+    }
+    this.overlay = this.add.container(0, 0, children).setDepth(40);
   }
 
-  private advanceDialogue(): void {
+  private async advanceDialogue(): Promise<void> {
     const active = this.activeInteraction;
     if (!active) return;
     if (active.index < active.view.lines.length - 1) {
       active.index += 1;
+      this.drawDialogue();
+      return;
+    }
+    const choice = active.view.choices?.[active.choiceIndex];
+    if (choice) {
+      const view = await this.bridge.resolveInteractionChoice(choice.id);
+      this.activeInteraction = { view, index: 0, choiceIndex: 0 };
       this.drawDialogue();
       return;
     }
@@ -470,15 +532,19 @@ export class WorldScene extends Phaser.Scene {
     if (this.endingShown || !this.snapshot.campaign?.complete) return;
     this.endingShown = true;
     this.locked = true;
+    const ending = this.snapshot.campaign.ending ?? {
+      title: "THE CHRONICLE CONTINUES",
+      body: "The last covenant remains unsettled, but the roads remember every step that led here."
+    };
     const veil = this.add.rectangle(0, 0, 960, 540, 0x0b1119, 0.94).setOrigin(0);
-    const title = this.add.text(480, 112, "THE CONCORD REMADE", {
+    const title = this.add.text(480, 112, ending.title, {
       ...TEXT.title,
       color: COLORS.gold
     }).setOrigin(0.5);
     const body = this.add.text(
       480,
       206,
-      "The severed roads sing again—not as they once did, but in the voices of those who chose to mend them.\n\n"
+      `${ending.body}\n\n`
         + `${this.snapshot.playerName}'s chronicle remains open. The road can still be explored, and unfinished threads still wait.`,
       {
         ...TEXT.body,

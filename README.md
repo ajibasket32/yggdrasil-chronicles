@@ -32,6 +32,9 @@ become selectable at level 4.
 Completed authored quests permanently update NPC trust/respect/fear, faction
 standing, and outcome flags. The journal shows the strongest current standings,
 and NPC dialogue reacts when those persisted values cross meaningful thresholds.
+The final authored quest presents three non-AI story choices. The selected
+covenant is saved atomically, changes faction standing and the chronicle, and
+produces a distinct ending while leaving unfinished side threads playable.
 
 Continue loads the autosave. `Load Chronicle` on the title screen lists the
 three manual slots and restores the selected snapshot.
@@ -43,6 +46,8 @@ The title settings screen also supports persistent keyboard rebinding for
 movement, confirmation, menus, interaction, journal, inventory, party,
 encounters, and quick save. Assigning a key already in use swaps the two actions
 so no command becomes unreachable.
+The game also exposes concise scene and settings changes through a screen-reader
+live region, while keeping gameplay inside the canvas.
 
 The system menu can export the autosave as
 `yggdrasil-chronicles-save.json` and import it later. Imports validate the
@@ -63,8 +68,10 @@ npm test
 npm run typecheck
 npm run validate:content
 npm run simulate:campaign
+npm run audit:duration
 npm run audit:assets
 npm run build
+npm run audit:release
 npm run test:e2e
 ```
 

@@ -12,7 +12,7 @@ import {
   keyboardCodeLabel,
   rebindKeyboardAction
 } from "../keyboardControls";
-import { announceScene, COLORS, getBridge, motionDuration, playSound, TEXT } from "../runtime";
+import { announceGameStatus, announceScene, COLORS, getBridge, motionDuration, playSound, TEXT } from "../runtime";
 
 const NAME_CHOICES = ["Rowan", "Aster", "Marlowe", "Sage", "Kestrel", "Vale"] as const;
 const MANUAL_SLOTS = ["manual-1", "manual-2", "manual-3"] as const;
@@ -184,6 +184,8 @@ export class TitleScene extends Phaser.Scene {
       "Enter / A toggles options. Left / Right changes volume. Esc / B returns.",
       TEXT.small
     );
+    const selectedSetting = choices[this.settingsIndex] ?? choices[0];
+    announceGameStatus(`Settings. ${selectedSetting}. Use up and down to choose an option.`);
   }
 
   private drawBindings(): void {
@@ -216,6 +218,12 @@ export class TitleScene extends Phaser.Scene {
       "Select an action and confirm, then press its new key. Conflicts swap automatically.",
       TEXT.small
     );
+    const selectedAction = REBINDABLE_ACTIONS[this.bindingIndex];
+    if (selectedAction) {
+      announceGameStatus(this.capturingBinding
+        ? `Press a new key for ${keyboardActionLabel(selectedAction)}.`
+        : `Keyboard bindings. ${keyboardActionLabel(selectedAction)} is assigned to ${keyboardCodeLabel(bindings[selectedAction])}.`);
+    }
   }
 
   private drawLoadMenu(message?: string): void {

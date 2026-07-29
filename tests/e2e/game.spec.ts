@@ -161,12 +161,16 @@ test("accessibility and audio settings persist after a reload", async ({ page })
   await page.goto("/");
   const app = page.locator("#app");
   const root = page.locator("html");
+  const status = page.locator("#game-status");
   await expect(app).toHaveAttribute("data-scene", "title");
+  await expect(status).toContainText("Title screen");
 
   await pressRepeatedly(page, "ArrowDown", 3);
   await page.keyboard.press("Enter");
+  await expect(status).toContainText("Settings");
   await page.keyboard.press("Enter");
   await expect(root).toHaveAttribute("data-game-high-contrast", "true");
+  await expect(status).toContainText("HIGH CONTRAST       ON");
   // Each toggle rebuilds the Phaser settings panel and its input bindings.
   // Cross that redraw boundary before moving to the next setting.
   await page.waitForTimeout(350);

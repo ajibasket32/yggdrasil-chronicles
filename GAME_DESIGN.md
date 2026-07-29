@@ -44,6 +44,13 @@ applied exactly once with the quest reward, survive export/import, appear in the
 journal, and affect later NPC dialogue. Older rewarded saves receive missing
 consequences on load without receiving XP, currency, or items twice.
 
+The final main-story objective pauses before completion and requires one of
+three explicit player choices: renew the shared Concord, free the regional
+rootways, or establish a transparent Lantern covenant. The engine records the
+choice as canonical world state, applies its deterministic faction consequence,
+and selects the matching ending. Legacy completed saves without an ending flag
+backfill the original Concord ending to preserve compatibility.
+
 ## Persistence
 
 Boss deaths, discoveries, relationships, faction outcomes, generated branches, and chronicle entries persist. Respawnable ordinary encounters are explicit gameplay abstractions; named world changes never silently reset.

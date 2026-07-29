@@ -1,5 +1,6 @@
 import {
   addItem,
+  adjustFactionStanding,
   advanceCombatRound,
   applyQuestConsequences,
   applyQuestObjective,
@@ -64,6 +65,38 @@ import type {
 const STARTING_LOCATION = "location.hearthcross";
 const CORE_PACK_VERSION = "0.1.0";
 const FIRST_QUEST = "quest.first-silence";
+const CONCORD_QUEST = "quest.a-new-concord";
+const CONCORD_FINAL_NPC = "npc.sable-voss";
+
+const CONCORD_CHOICES = [
+  {
+    id: "ending.concord-remade",
+    label: "Restore the Concord",
+    description: "Bind the factions to a renewed shared covenant.",
+    factionId: "faction.rootwardens",
+    title: "THE CONCORD REMADE",
+    resolution: "The old promise is rewritten with mortal voices at its center.",
+    body: "The severed roads sing again—not as they once did, but in the voices of those who chose to mend them."
+  },
+  {
+    id: "ending.rootways-freed",
+    label: "Free the Rootways",
+    description: "End central rule and let every region govern its own memories.",
+    factionId: "faction.freebound",
+    title: "THE ROOTWAYS FREED",
+    resolution: "No single covenant owns the roads now; each settlement carries its own truth and risk.",
+    body: "The rootways open without a throne above them. Their songs disagree, overlap, and finally belong to the people who travel them."
+  },
+  {
+    id: "ending.lantern-covenant",
+    label: "Entrust the Archive",
+    description: "Create a transparent covenant of witnesses and public records.",
+    factionId: "faction.lantern-archive",
+    title: "THE LANTERN COVENANT",
+    resolution: "The Archive accepts stewardship under laws that make every hidden revision visible.",
+    body: "Lanterns burn beside every living record. Memory has keepers again, but never again an unseen hand."
+  }
+] as const;
 
 const BASE_STATS: Stats = {
   maxHp: 72,
@@ -336,6 +369,7 @@ export class EngineGameBridge implements GameBridge {
     const completedMainQuests = this.#state.quests.filter(({ questId, state }) =>
       mainQuestIds.has(questId) && state === "completed"
     ).length;
+    const endingChoice = CONCORD_CHOICES.find(({ id }) => this.#state?.world.flags[id] === true);
     return {
       hasSave: this.#hasSave,
       playerName: party[0]?.name ?? "",
@@ -365,7 +399,12 @@ export class EngineGameBridge implements GameBridge {
       campaign: {
         completedMainQuests,
         totalMainQuests: mainQuestIds.size,
-        complete: mainQuestIds.size > 0 && completedMainQuests === mainQuestIds.size
+        complete: mainQuestIds.size > 0 && completedMainQuests === mainQuestIds.size,
+        ending: endingChoice ? {
+          id: endingChoice.id,
+          title: endingChoice.title,
+          body: endingChoice.body
+        } : undefined
       },
       reputation: {
         factions: Object.entries(this.#state.world.factionStanding)
@@ -449,7 +488,8 @@ export class EngineGameBridge implements GameBridge {
     this.#hasSave = Boolean(this.#state);
     if (this.#state) {
       const recoveredCanonicalState = this.applyCompletedQuestRewards();
-      if (recoveredCanonicalState) await this.persist(slot);
+      const recoveredLegacyEnding = this.backfillLegacyEndingChoice();
+      if (recoveredCanonicalState || recoveredLegacyEnding) await this.persist(slot);
       else this.emit();
     } else {
       this.emit();
@@ -502,9 +542,16 @@ export class EngineGameBridge implements GameBridge {
         progress = startQuest(progress, definition.id);
       }
     }
+    const awaitsConcordChoice = this.isAwaitingConcordChoice(progress, npcId);
     this.#state = {
       ...state,
-      quests: this.applyObjectiveToActiveQuests(progress, "talk", npcId)
+      quests: this.applyObjectiveToActiveQuests(
+        progress,
+        "talk",
+        npcId,
+        1,
+        awaitsConcordChoice ? new Set([CONCORD_QUEST]) : undefined
+      )
     };
     this.applyInventoryObjectives();
     this.advanceCampaign();
@@ -536,7 +583,64 @@ export class EngineGameBridge implements GameBridge {
     const npc = npcId.replace("npc.", "").split("-").map((word) =>
       `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`
     ).join(" ");
-    return { speaker: npc, lines: this.responsiveDialogue(npcId), recruitedMember };
+    return {
+      speaker: npc,
+      lines: awaitsConcordChoice
+        ? [
+            ...this.responsiveDialogue(npcId),
+            "Three futures remain possible. The last word belongs to the chronicle you have made."
+          ]
+        : this.responsiveDialogue(npcId),
+      choices: awaitsConcordChoice
+        ? CONCORD_CHOICES.map(({ id, label, description }) => ({ id, label, description }))
+        : undefined,
+      recruitedMember
+    };
+  }
+
+  async resolveInteractionChoice(choiceId: string): Promise<InteractionView> {
+    const state = this.requireState();
+    const choice = CONCORD_CHOICES.find(({ id }) => id === choiceId);
+    if (!choice || !this.isAwaitingConcordChoice(state.quests, CONCORD_FINAL_NPC)) {
+      return {
+        speaker: "Sable Voss",
+        lines: ["That decision is no longer available to this chronicle."]
+      };
+    }
+    const worldMinute = state.world.worldMinutes;
+    this.#state = {
+      ...state,
+      quests: this.applyObjectiveToActiveQuests(state.quests, "talk", CONCORD_FINAL_NPC),
+      world: {
+        ...state.world,
+        factionStanding: adjustFactionStanding(state.world.factionStanding, choice.factionId, 8),
+        flags: {
+          ...state.world.flags,
+          [choice.id]: true
+        },
+        chronicle: [
+          ...state.world.chronicle,
+          {
+            id: crypto.randomUUID(),
+            worldMinute,
+            title: choice.label,
+            body: choice.resolution,
+            tags: ["main-story", "ending", choice.id]
+          }
+        ]
+      }
+    };
+    this.applyInventoryObjectives();
+    this.advanceCampaign();
+    this.applyCompletedQuestRewards();
+    await this.persist("autosave");
+    return {
+      speaker: "Sable Voss",
+      lines: [
+        choice.resolution,
+        "Then let every witness remember that this future was chosen, not inherited."
+      ]
+    };
   }
 
   private responsiveDialogue(npcId: string): readonly string[] {
@@ -950,10 +1054,12 @@ export class EngineGameBridge implements GameBridge {
     progress: GameState["quests"],
     kind: QuestDefinition["steps"][number]["kind"],
     targetId: string,
-    count = 1
+    count = 1,
+    excludedQuestIds: ReadonlySet<string> = new Set()
   ): GameState["quests"] {
     let next = progress;
     for (const definition of quests) {
+      if (excludedQuestIds.has(definition.id)) continue;
       const entry = next.find(({ questId }) => questId === definition.id);
       const firstObjective = definition.steps[0];
       if (
@@ -966,6 +1072,38 @@ export class EngineGameBridge implements GameBridge {
       next = applyQuestObjective(next, definition, { kind, targetId, count });
     }
     return next;
+  }
+
+  private isAwaitingConcordChoice(progress: GameState["quests"], npcId: string): boolean {
+    if (npcId !== CONCORD_FINAL_NPC) return false;
+    if (CONCORD_CHOICES.some(({ id }) => this.#state?.world.flags[id] === true)) return false;
+    const definition = quests.find(({ id }) => id === CONCORD_QUEST);
+    const entry = progress.find(({ questId }) => questId === CONCORD_QUEST);
+    const objective = definition?.steps[entry?.currentStep ?? -1];
+    return entry?.state === "active"
+      && objective?.kind === "talk"
+      && objective.targetId === CONCORD_FINAL_NPC;
+  }
+
+  private backfillLegacyEndingChoice(): boolean {
+    const state = this.#state;
+    if (!state) return false;
+    const finalQuestComplete = state.quests.some(
+      ({ questId, state: questState }) => questId === CONCORD_QUEST && questState === "completed"
+    );
+    const hasEndingChoice = CONCORD_CHOICES.some(({ id }) => state.world.flags[id] === true);
+    if (!finalQuestComplete || hasEndingChoice) return false;
+    this.#state = {
+      ...state,
+      world: {
+        ...state.world,
+        flags: {
+          ...state.world.flags,
+          "ending.concord-remade": true
+        }
+      }
+    };
+    return true;
   }
 
   private advanceCampaign(): void {

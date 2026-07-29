@@ -128,6 +128,13 @@ export class DemoGameBridge implements GameBridge {
     return { speaker, lines: getDialogue(npcId), recruitedMember };
   }
 
+  resolveInteractionChoice(_choiceId: string): InteractionView {
+    return {
+      speaker: "Wayfarer",
+      lines: ["The demo road records no binding choices."]
+    };
+  }
+
   startEncounter(encounterId: string): void {
     const encounter = encounters.find(({ id }) => id === encounterId) ?? encounters[0];
     if (!encounter) return;

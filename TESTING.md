@@ -8,8 +8,10 @@ npm run typecheck
 npm test
 npm run validate:content
 npm run simulate:campaign
+npm run audit:duration
 npm run audit:assets
 npm run build
+npm run audit:release
 npm run test:e2e
 ```
 
@@ -33,6 +35,13 @@ npm run test:e2e
   Shaper/Ranger/Vanguard/Mender roster can defeat every boss across fixed seeds
   while each authored boss phase activates. This is a combat/regression gate,
   not evidence of a 20-hour playtime.
+- `npm run audit:duration` audits regional authored breadth
+  separately from time. It reports the 20-hour certificate as unverified unless
+  real offline playtest evidence is supplied. The release-only form adds
+  `--evidence=PATH --require-certified`; it rejects short, AI-enabled,
+  incomplete, or unreferenced records rather than inferring hours from
+  objectives or interaction counts. Release QA must verify the supplied
+  recording/archive reference itself.
 - Integration coverage verifies job-specific forms, starting equipment,
   atomic equip/unequip, restorative consumption, advanced-job unlocks,
   save interchange/corruption rejection, quest-gated recruitment,
@@ -41,9 +50,17 @@ npm run test:e2e
 - Quest-consequence coverage verifies one-time relationship/faction changes,
   responsive dialogue, journal snapshot exposure, and backfill of older
   rewarded saves without duplicate rewards.
+- Campaign-ending coverage verifies that the last authored objective cannot
+  complete before a three-way player decision, persists exactly one ending and
+  its faction effect, selects matching ending copy, and safely backfills legacy
+  completed saves.
 - `npm run audit:assets` verifies the committed asset catalog, direct and
   archive checksums, extracted-pack/license evidence, runtime path coverage,
   and the absence of browser runtime downloads.
+- `npm run audit:release` verifies that the production package contains only
+  browser-referenced vendor assets, preserves their bytes, packages license
+  evidence, resolves its index bundles, and remains within the explicit gzip
+  budgets for app code, Phaser, and total JavaScript.
 
 ## Manual release checks
 

@@ -15,6 +15,24 @@ The automated readiness walk currently proves that all 35 authored quests and
 interactions. This is a reachability lower bound, not a duration claim; content
 expansion and timed playtesting remain required before certifying 20+ hours.
 
+## Duration certification
+
+`tools/campaign-duration-audit.ts` records two intentionally separate facts:
+the authored breadth structure (regional town/wilderness/dungeon loops, NPCs,
+quest touchpoints, bosses, companion arcs, dialogue, and persistent
+consequences) and the status of the 20-hour certificate. Breadth never becomes
+an hours estimate.
+
+The certificate remains **unverified** until a fresh, normal-exploratory,
+offline playthrough records every authored quest, reaches the ending with AI
+disabled, includes playtester notes, and lasts at least 1,200 observed minutes.
+Run `npx tsx tools/campaign-duration-audit.ts --evidence=PATH --require-certified`
+for the release decision. Evidence must include a reviewable recording or
+archive reference; the tool validates its structure, while release QA verifies
+that reference is authentic. No placeholder timing evidence is committed. As
+of this audit, the campaign has structural pacing coverage but no qualifying
+timed run, so the 20+ hour target must not be advertised as verified.
+
 ## Campaign
 
 Act I establishes Hearthcross, the Rootwardens, and the first silent root. Act II lets the party choose how the Reach shares evidence with the Brass Compact and Lantern Archive. Act III opens the Cinder March and reveals deliberate root cutting. Act IV follows contradictory memories into the Pale Canopy. Act V resolves whether the Concord is restored, replaced, or allowed to fracture.
