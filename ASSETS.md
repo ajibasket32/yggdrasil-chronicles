@@ -10,3 +10,10 @@ Runtime downloads are forbidden. Every committed asset must have a verified lice
 | RPG sound effects | https://kenney.nl/assets/rpg-audio | Kenney | CC0 | `public/assets/vendor/kenney-rpg-audio/Audio/` | Archive: `6dbeaf8544da958d8f2adcb4a4a4b76c1ade34a05f8ab9edccd327da7375f38b` | Unmodified OGG files |
 
 Music, portraits, battle sprites, UI, and VFX remain blocked until a CC0/public-domain source is verified. Do not use search-preview images or files whose license applies ambiguously.
+
+## Verified license evidence
+
+- `puny-characters`: the original [Puny Characters source listing](https://opengameart.org/content/puny-characters) identifies Shade's pack as CC0. The committed `puny-characters.zip` checksum above is the archive used to populate the extracted directory.
+- `kenney-rpg-audio`: the extracted pack includes [`License.txt`](public/assets/vendor/kenney-rpg-audio/License.txt), which identifies the CC0 1.0 dedication. The committed `kenney-rpg-audio.zip` checksum above is the archive used to populate the extracted directory.
+
+Run `npm run audit:assets` before release. It verifies the catalog, direct-file and archive checksums, non-empty extracted directories, local or documented license evidence, all referenced runtime asset paths, and the absence of external runtime asset URLs in browser entrypoints. The audit is intentionally offline and does not re-download or re-verify publisher web pages.

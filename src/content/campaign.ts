@@ -4,6 +4,7 @@ import type {
   ItemDefinition,
   LocationDefinition,
   NpcDefinition,
+  QuestConsequence,
   QuestDefinition,
   RegionDefinition
 } from "../shared/types";
@@ -362,6 +363,49 @@ const hiddenQuestSeeds: QuestSeed[] = [
   { id: "what-the-tree-forgot", title: "What the Tree Forgot", summary: "Piece together a memory the world tree rejected.", prerequisites: ["quest.choir-without-voices"], steps: [step("collect", "item.memory-shard", 7), step("talk", "npc.mother-hush")], rewardTier: "major" }
 ];
 
+const authoredSpecialConsequences: Readonly<Record<string, readonly QuestConsequence[]>> = {
+  "quest.silent-kiln": [
+    { type: "adjust_faction", factionId: FACTIONS.rootwardens, amount: 3 },
+    { type: "adjust_faction", factionId: FACTIONS.brassCompact, amount: 3 }
+  ],
+  "quest.architect-of-severance": [
+    { type: "adjust_faction", factionId: FACTIONS.freebound, amount: 4 },
+    { type: "adjust_faction", factionId: FACTIONS.lanternArchive, amount: 4 },
+    { type: "adjust_faction", factionId: FACTIONS.quietChoir, amount: -3 }
+  ],
+  "quest.a-new-concord": [
+    { type: "set_flag", key: "ending.concord-remade", value: true }
+  ]
+};
+
+function completionConsequences(seed: QuestSeed): QuestConsequence[] {
+  const questId = `quest.${seed.id}`;
+  const mainStory = seed.mainStory ?? false;
+  const talkNpcIds = [...new Set(
+    seed.steps.filter(({ kind }) => kind === "talk").map(({ targetId }) => targetId)
+  )];
+  const factionIds = [...new Set(
+    talkNpcIds
+      .map((npcId) => npcs.find(({ id }) => id === npcId)?.factionId)
+      .filter((factionId): factionId is string => Boolean(factionId) && factionId !== FACTIONS.unaffiliated)
+  )];
+  return [
+    ...talkNpcIds.map((npcId): QuestConsequence => ({
+      type: "adjust_relationship",
+      npcId,
+      axis: mainStory ? "respect" : "trust",
+      amount: mainStory ? 6 : 4
+    })),
+    ...factionIds.map((factionId): QuestConsequence => ({
+      type: "adjust_faction",
+      factionId,
+      amount: mainStory ? 3 : 2
+    })),
+    { type: "set_flag", key: `outcome.${questId}`, value: true },
+    ...(authoredSpecialConsequences[questId] ?? [])
+  ];
+}
+
 const makeQuests = (seeds: QuestSeed[]): QuestDefinition[] =>
   seeds.map((seed) => ({
     id: `quest.${seed.id}`,
@@ -370,7 +414,8 @@ const makeQuests = (seeds: QuestSeed[]): QuestDefinition[] =>
     prerequisites: seed.prerequisites ?? [],
     steps: seed.steps,
     rewardTier: seed.rewardTier ?? "minor",
-    mainStory: seed.mainStory ?? false
+    mainStory: seed.mainStory ?? false,
+    consequences: completionConsequences(seed)
   }));
 
 export const quests: QuestDefinition[] = makeQuests([

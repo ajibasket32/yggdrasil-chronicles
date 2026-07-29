@@ -397,6 +397,7 @@ export function validateContentPack(pack: ContentPack): ContentValidationResult 
   const regionIds = new Set(pack.regions.map(({ id }) => id));
   const locationIds = new Set(pack.locations.map(({ id }) => id));
   const npcIds = new Set(pack.npcs.map(({ id }) => id));
+  const factionIds = new Set(pack.npcs.map(({ factionId }) => factionId));
   const questIds = new Set(pack.quests.map(({ id }) => id));
   const encounterEnemyIds = new Set(pack.encounters.flatMap(({ enemyIds }) => enemyIds));
   const itemIds = new Set(pack.items.map(({ id }) => id));
@@ -429,6 +430,26 @@ export function validateContentPack(pack: ContentPack): ContentValidationResult 
         (questStep.kind === "defeat" && encounterEnemyIds.has(questStep.targetId));
       if (!targetExists) errors.push(`${quest.id} has unknown ${questStep.kind} target ${questStep.targetId}`);
       if (questStep.count < 1) errors.push(`${quest.id} has a non-positive objective count`);
+    }
+    if (quest.consequences.length === 0) warnings.push(`${quest.id} has no persistent world consequence`);
+    for (const consequence of quest.consequences) {
+      if (consequence.type === "adjust_relationship") {
+        if (!npcIds.has(consequence.npcId)) {
+          errors.push(`${quest.id} has unknown relationship target ${consequence.npcId}`);
+        }
+        if (!Number.isFinite(consequence.amount) || consequence.amount === 0 || Math.abs(consequence.amount) > 100) {
+          errors.push(`${quest.id} has invalid relationship consequence amount`);
+        }
+      } else if (consequence.type === "adjust_faction") {
+        if (!factionIds.has(consequence.factionId)) {
+          errors.push(`${quest.id} has unknown faction consequence target ${consequence.factionId}`);
+        }
+        if (!Number.isFinite(consequence.amount) || consequence.amount === 0 || Math.abs(consequence.amount) > 100) {
+          errors.push(`${quest.id} has invalid faction consequence amount`);
+        }
+      } else if (!/^(outcome|ending)\.[a-z0-9.-]+$/.test(consequence.key)) {
+        errors.push(`${quest.id} has unsafe consequence flag ${consequence.key}`);
+      }
     }
   }
 

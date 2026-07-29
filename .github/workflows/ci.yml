@@ -42,6 +42,9 @@ jobs:
       - name: Simulate campaign and boss viability
         run: npm run simulate:campaign
 
+      - name: Audit assets and license evidence
+        run: npm run audit:assets
+
       - name: Build production bundles
         run: npm run build
 

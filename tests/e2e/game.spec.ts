@@ -166,7 +166,11 @@ test("accessibility and audio settings persist after a reload", async ({ page })
   await page.keyboard.press("Enter");
   await page.keyboard.press("Enter");
   await expect(root).toHaveAttribute("data-game-high-contrast", "true");
-  await pressRepeatedly(page, "ArrowDown", 1);
+  // Each toggle rebuilds the Phaser settings panel and its input bindings.
+  // Cross that redraw boundary before moving to the next setting.
+  await page.waitForTimeout(350);
+  await page.keyboard.press("ArrowDown");
+  await page.waitForTimeout(350);
   await page.keyboard.press("Enter");
   await expect(root).toHaveAttribute("data-game-reduced-motion", "true");
 
@@ -211,4 +215,28 @@ test("a rebound journal key persists and controls the world scene", async ({ pag
   expect(await page.evaluate(() =>
     window.localStorage.getItem("yggdrasil-chronicles.settings.v1")
   )).toContain('"journal":"KeyK"');
+});
+
+test("an authored quest permanently updates world reputation and the journal", async ({ page }) => {
+  await page.goto("/");
+  const app = page.locator("#app");
+  const canvas = page.locator("canvas");
+  await expect(canvas).toBeVisible();
+  await expect(app).toHaveAttribute("data-scene", "title");
+  await pressRepeatedly(page, "Enter", 5);
+  await expect(app).toHaveAttribute("data-scene", "world");
+  await expect(app).toHaveAttribute("data-faction-standing-count", "0");
+
+  // Speak with Mara and Orren to resolve The First Silence.
+  await pressRepeatedly(page, "ArrowRight", 2);
+  await pressRepeatedly(page, "e", 3);
+  await pressRepeatedly(page, "ArrowDown", 3);
+  await pressRepeatedly(page, "e", 3);
+
+  await expect(app).toHaveAttribute("data-faction-standing-count", "2");
+  await expect(app).toHaveAttribute("data-relationship-count", "2");
+  const world = await canvas.screenshot();
+  await page.keyboard.press("j");
+  const journal = await canvas.screenshot();
+  expect(journal.equals(world)).toBe(false);
 });

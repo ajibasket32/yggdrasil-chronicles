@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Made all 35 authored quest completions produce validated, one-time persistent
+  relationship, faction, and outcome consequences. NPC dialogue and the compact
+  journal reputation view now react to that state, including safe backfill for
+  older rewarded saves.
+- Added an offline release asset gate covering checksums, extracted packs,
+  license evidence, runtime references, catalog coverage, and external URL
+  rejection.
 - Added persistent keyboard rebinding for twelve exploration, menu, combat, and
   quick-action commands. Conflicts swap atomically, scene prompts reflect the
   active keys, and browser coverage verifies capture, use, and reload.

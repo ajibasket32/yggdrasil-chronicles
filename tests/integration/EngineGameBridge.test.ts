@@ -278,13 +278,82 @@ describe("EngineGameBridge campaign persistence", () => {
     if (!rewarded) throw new Error("Expected a quest reward autosave");
     const protagonist = rewarded.party.find(({ id }) => id === "party.protagonist");
     expect(rewarded.world.flags["content.quest-reward.quest.first-silence"]).toBe(true);
+    expect(rewarded.world.flags["outcome.quest.first-silence"]).toBe(true);
     expect(protagonist?.experience).toBeGreaterThan(0);
+    expect(rewarded.world.relationships).toEqual(expect.arrayContaining([
+      expect.objectContaining({ npcId: "npc.mara-vell", respect: 6 }),
+      expect.objectContaining({ npcId: "npc.orren-pike", respect: 6 })
+    ]));
+    expect(rewarded.world.factionStanding).toMatchObject({
+      "faction.rootwardens": 3,
+      "faction.lantern-archive": 3
+    });
     expect(rewarded.world.chronicle.filter(({ title }) => title === "The First Silence resolved")).toHaveLength(1);
 
     await bridge.interactNpc("npc.orren-pike");
     const repeated = await saves.load("autosave");
     expect(repeated?.party.find(({ id }) => id === "party.protagonist")?.experience).toBe(protagonist?.experience);
     expect(repeated?.world.chronicle.filter(({ title }) => title === "The First Silence resolved")).toHaveLength(1);
+    expect(repeated?.world.factionStanding).toEqual(rewarded.world.factionStanding);
+  });
+
+  it("makes persisted personal and faction standing visible in NPC dialogue and snapshots", async () => {
+    const { bridge, saves } = createBridge();
+    await startChronicle(bridge);
+    const saved = await saves.load("autosave");
+    if (!saved) throw new Error("Expected an initial autosave");
+    await saves.save("autosave", {
+      ...saved,
+      world: {
+        ...saved.world,
+        relationships: [{ npcId: "npc.mara-vell", trust: 9, respect: 14, fear: 0 }],
+        factionStanding: { "faction.rootwardens": 12 }
+      }
+    });
+    await bridge.continueGame();
+
+    const interaction = await bridge.interactNpc("npc.mara-vell");
+    expect(interaction.lines.join(" ")).toContain("kept faith");
+    expect(interaction.lines.join(" ")).toContain("proven allies");
+    expect(bridge.getSnapshot().reputation).toMatchObject({
+      factions: [expect.objectContaining({ id: "faction.rootwardens", standing: 12 })],
+      relationships: [expect.objectContaining({ npcId: "npc.mara-vell", trust: 9, respect: 14 })]
+    });
+  });
+
+  it("backfills authored consequences into older rewarded saves without paying twice", async () => {
+    const { bridge, saves } = createBridge();
+    await startChronicle(bridge);
+    const saved = await saves.load("autosave");
+    if (!saved) throw new Error("Expected an initial autosave");
+    const experience = saved.party[0]?.experience ?? 0;
+    await saves.save("autosave", {
+      ...saved,
+      quests: saved.quests.map((quest) =>
+        quest.questId === "quest.first-silence"
+          ? { ...quest, state: "completed" as const, currentStep: 2 }
+          : quest
+      ),
+      world: {
+        ...saved.world,
+        flags: {
+          ...saved.world.flags,
+          "content.quest-reward.quest.first-silence": true
+        },
+        relationships: [],
+        factionStanding: {}
+      }
+    });
+
+    await bridge.continueGame();
+
+    const recovered = await saves.load("autosave");
+    expect(recovered?.party[0]?.experience).toBe(experience);
+    expect(recovered?.world.flags["content.quest-consequence.quest.first-silence"]).toBe(true);
+    expect(recovered?.world.relationships).toEqual(expect.arrayContaining([
+      expect.objectContaining({ npcId: "npc.mara-vell", respect: 6 })
+    ]));
+    expect(recovered?.world.factionStanding["faction.rootwardens"]).toBe(3);
   });
 
   it("reports authored campaign completion from persisted main quest state", async () => {

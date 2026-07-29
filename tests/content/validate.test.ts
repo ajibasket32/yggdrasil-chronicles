@@ -38,4 +38,22 @@ describe("content validator", () => {
     const result = validateContentPack(pack);
     expect(result.errors).toContain(`${location.id} connects to unknown location location.nowhere`);
   });
+
+  it("rejects quest consequences with unknown world-state targets", () => {
+    const pack = copyPack();
+    const quest = pack.quests[0];
+    if (!quest) throw new Error("Fixture must contain a quest");
+    quest.consequences = [
+      { type: "adjust_relationship", npcId: "npc.unknown", axis: "trust", amount: 4 },
+      { type: "adjust_faction", factionId: "faction.unknown", amount: 2 },
+      { type: "set_flag", key: "unsafe flag", value: true }
+    ];
+
+    const result = validateContentPack(pack);
+    expect(result.errors).toEqual(expect.arrayContaining([
+      `${quest.id} has unknown relationship target npc.unknown`,
+      `${quest.id} has unknown faction consequence target faction.unknown`,
+      `${quest.id} has unsafe consequence flag unsafe flag`
+    ]));
+  });
 });

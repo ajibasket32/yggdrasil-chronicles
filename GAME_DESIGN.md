@@ -39,6 +39,11 @@ Actions include attack, skill, item, guard, and escape. Elements, resistances, s
 
 Authored quests form a validated graph with available, active, completed, and failed states. Main-story failure always exposes an intentional recovery branch. Faction standing and NPC trust, respect, and fear are numeric engine state; dialogue interprets them but cannot alter them directly.
 
+Every authored quest declares deterministic completion consequences. These are
+applied exactly once with the quest reward, survive export/import, appear in the
+journal, and affect later NPC dialogue. Older rewarded saves receive missing
+consequences on load without receiving XP, currency, or items twice.
+
 ## Persistence
 
 Boss deaths, discoveries, relationships, faction outcomes, generated branches, and chronicle entries persist. Respawnable ordinary encounters are explicit gameplay abstractions; named world changes never silently reset.

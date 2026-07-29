@@ -100,6 +100,16 @@ export interface GameSnapshot {
     totalMainQuests: number;
     complete: boolean;
   };
+  reputation?: {
+    factions: Array<{ id: string; name: string; standing: number }>;
+    relationships: Array<{
+      npcId: string;
+      name: string;
+      trust: number;
+      respect: number;
+      fear: number;
+    }>;
+  };
   saveSlots?: GameSaveSlot[];
   autosave: "idle" | "saving" | "saved" | "error";
   chronicleHint: string;

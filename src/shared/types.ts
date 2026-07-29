@@ -238,7 +238,26 @@ export interface QuestDefinition {
   steps: Array<{ kind: "talk" | "defeat" | "collect" | "travel"; targetId: EntityId; count: number }>;
   rewardTier: RewardTier;
   mainStory: boolean;
+  consequences: QuestConsequence[];
 }
+
+export type QuestConsequence =
+  | {
+      type: "adjust_relationship";
+      npcId: EntityId;
+      axis: "trust" | "respect" | "fear";
+      amount: number;
+    }
+  | {
+      type: "adjust_faction";
+      factionId: EntityId;
+      amount: number;
+    }
+  | {
+      type: "set_flag";
+      key: string;
+      value: boolean | number | string;
+    };
 
 export interface EncounterDefinition {
   id: EntityId;

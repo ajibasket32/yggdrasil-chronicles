@@ -539,9 +539,26 @@ export class WorldScene extends Phaser.Scene {
 
   private overlayContent(kind: OverlayKind): string {
     if (kind === "journal") {
-      return this.snapshot.quests.length
-        ? this.snapshot.quests.map((quest) => `${quest.state === "active" ? "◆" : "◇"} ${quest.title}\n   ${quest.objective}`).join("\n\n")
-        : "No threads have been recorded.";
+      const active = this.snapshot.quests.filter(({ state }) => state === "active");
+      const available = this.snapshot.quests.filter(({ state }) => state === "available");
+      const completed = this.snapshot.quests.filter(({ state }) => state === "completed").length;
+      const threads = [
+        ...active.slice(0, 2).map((quest) => `◆ ${quest.title}\n   ${quest.objective}`),
+        ...available.slice(0, Math.max(0, 2 - active.length)).map((quest) => `◇ ${quest.title}\n   Available`)
+      ];
+      const factions = this.snapshot.reputation?.factions.slice(0, 4)
+        .map(({ name, standing }) => `${name.toUpperCase()}: ${standing > 0 ? "+" : ""}${standing}`)
+        ?? [];
+      const relationships = this.snapshot.reputation?.relationships.slice(0, 3)
+        .map(({ name, trust, respect, fear }) => `${name}: T ${trust} · R ${respect} · F ${fear}`)
+        ?? [];
+      return [
+        threads.length ? threads.join("\n\n") : "No active threads.",
+        `\nRESOLVED THREADS: ${completed}/${this.snapshot.quests.length}`,
+        factions.length || relationships.length
+          ? `\nWORLD REPUTATION\n${[...factions, ...relationships].join("\n")}`
+          : "\nWORLD REPUTATION\nNo faction or personal standing has changed yet."
+      ].join("\n");
     }
     if (kind === "inventory") {
       return this.snapshot.inventory.length

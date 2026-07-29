@@ -7,7 +7,11 @@ import {
   refreshQuestAvailability,
   startQuest
 } from "../../src/engine/quests";
-import { adjustFactionStanding, adjustRelationship } from "../../src/engine/relationships";
+import {
+  adjustFactionStanding,
+  adjustRelationship,
+  applyQuestConsequences
+} from "../../src/engine/relationships";
 import type { QuestDefinition } from "../../src/shared/types";
 import { makePlayerCharacter } from "./fixtures";
 
@@ -50,7 +54,8 @@ describe("quests and relationships", () => {
       prerequisites: [],
       steps: [{ kind: "talk", targetId: "npc-ferryman", count: 1 }],
       rewardTier: "minor",
-      mainStory: true
+      mainStory: true,
+      consequences: []
     },
     {
       id: "quest-second",
@@ -59,7 +64,8 @@ describe("quests and relationships", () => {
       prerequisites: ["quest-first"],
       steps: [{ kind: "travel", targetId: "causeway", count: 1 }],
       rewardTier: "standard",
-      mainStory: true
+      mainStory: true,
+      consequences: []
     }
   ];
 
@@ -77,5 +83,27 @@ describe("quests and relationships", () => {
     expect(relationships[0]?.trust).toBe(100);
     expect(adjustFactionStanding({}, "faction-reeds", -400)["faction-reeds"]).toBe(-100);
   });
-});
 
+  it("applies authored quest consequences without mutating the prior world", () => {
+    const world = {
+      currentLocationId: "location.hearthcross",
+      discoveredLocationIds: ["location.hearthcross"],
+      flags: {},
+      defeatedBossIds: [],
+      factionStanding: {},
+      relationships: [],
+      chronicle: [],
+      worldMinutes: 0
+    };
+    const next = applyQuestConsequences(world, [
+      { type: "adjust_relationship", npcId: "npc-ferryman", axis: "trust", amount: 6 },
+      { type: "adjust_faction", factionId: "faction-reeds", amount: 4 },
+      { type: "set_flag", key: "outcome.quest-first", value: true }
+    ]);
+
+    expect(next.relationships[0]).toMatchObject({ npcId: "npc-ferryman", trust: 6 });
+    expect(next.factionStanding["faction-reeds"]).toBe(4);
+    expect(next.flags["outcome.quest-first"]).toBe(true);
+    expect(world).toMatchObject({ flags: {}, factionStanding: {}, relationships: [] });
+  });
+});

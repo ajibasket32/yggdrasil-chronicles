@@ -29,6 +29,10 @@ Inventory and party screens use the same directional controls. Consumables
 select a party target; gear can be equipped or removed; advanced job branches
 become selectable at level 4.
 
+Completed authored quests permanently update NPC trust/respect/fear, faction
+standing, and outcome flags. The journal shows the strongest current standings,
+and NPC dialogue reacts when those persisted values cross meaningful thresholds.
+
 Continue loads the autosave. `Load Chronicle` on the title screen lists the
 three manual slots and restores the selected snapshot.
 
@@ -58,6 +62,8 @@ combat, travel, and saves remain available when the proxy is offline.
 npm test
 npm run typecheck
 npm run validate:content
+npm run simulate:campaign
+npm run audit:assets
 npm run build
 npm run test:e2e
 ```

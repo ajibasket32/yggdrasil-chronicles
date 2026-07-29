@@ -12,6 +12,8 @@ if (app) {
   const reflectSnapshot = (snapshot: ReturnType<EngineGameBridge["getSnapshot"]>): void => {
     app.dataset.locationId = snapshot.locationId;
     app.dataset.battleState = snapshot.battle?.phase ?? "none";
+    app.dataset.factionStandingCount = String(snapshot.reputation?.factions.length ?? 0);
+    app.dataset.relationshipCount = String(snapshot.reputation?.relationships.length ?? 0);
   };
   reflectSnapshot(bridge.getSnapshot());
   bridge.subscribe(reflectSnapshot);

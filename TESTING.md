@@ -8,6 +8,7 @@ npm run typecheck
 npm test
 npm run validate:content
 npm run simulate:campaign
+npm run audit:assets
 npm run build
 npm run test:e2e
 ```
@@ -37,6 +38,12 @@ npm run test:e2e
   save interchange/corruption rejection, quest-gated recruitment,
   deterministic party turns, boss phase thresholds, and safe preference
   storage when browser storage is corrupt or unavailable.
+- Quest-consequence coverage verifies one-time relationship/faction changes,
+  responsive dialogue, journal snapshot exposure, and backfill of older
+  rewarded saves without duplicate rewards.
+- `npm run audit:assets` verifies the committed asset catalog, direct and
+  archive checksums, extracted-pack/license evidence, runtime path coverage,
+  and the absence of browser runtime downloads.
 
 ## Manual release checks
 

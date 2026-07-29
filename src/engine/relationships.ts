@@ -1,4 +1,9 @@
-import type { EntityId, Relationship } from "../shared/types";
+import type {
+  EntityId,
+  QuestConsequence,
+  Relationship,
+  WorldState
+} from "../shared/types";
 
 export type RelationshipAxis = "trust" | "respect" | "fear";
 
@@ -40,3 +45,35 @@ export function adjustFactionStanding(
   };
 }
 
+export function applyQuestConsequences(
+  world: Readonly<WorldState>,
+  consequences: readonly QuestConsequence[]
+): WorldState {
+  let relationships = world.relationships.map((relationship) => ({ ...relationship }));
+  let factionStanding = { ...world.factionStanding };
+  let flags = { ...world.flags };
+  for (const consequence of consequences) {
+    if (consequence.type === "adjust_relationship") {
+      relationships = adjustRelationship(
+        relationships,
+        consequence.npcId,
+        consequence.axis,
+        consequence.amount
+      );
+    } else if (consequence.type === "adjust_faction") {
+      factionStanding = adjustFactionStanding(
+        factionStanding,
+        consequence.factionId,
+        consequence.amount
+      );
+    } else {
+      flags = { ...flags, [consequence.key]: consequence.value };
+    }
+  }
+  return {
+    ...world,
+    flags,
+    factionStanding,
+    relationships
+  };
+}

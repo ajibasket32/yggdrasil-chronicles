@@ -1,6 +1,7 @@
 import {
   addItem,
   advanceCombatRound,
+  applyQuestConsequences,
   applyQuestObjective,
   calculateBattleReward,
   chooseEnemyAction,
@@ -366,6 +367,30 @@ export class EngineGameBridge implements GameBridge {
         totalMainQuests: mainQuestIds.size,
         complete: mainQuestIds.size > 0 && completedMainQuests === mainQuestIds.size
       },
+      reputation: {
+        factions: Object.entries(this.#state.world.factionStanding)
+          .filter(([, standing]) => standing !== 0)
+          .map(([id, standing]) => ({
+            id,
+            name: id.replace("faction.", "").replaceAll("-", " "),
+            standing
+          }))
+          .sort((left, right) => Math.abs(right.standing) - Math.abs(left.standing)),
+        relationships: this.#state.world.relationships
+          .filter(({ trust, respect, fear }) => trust !== 0 || respect !== 0 || fear !== 0)
+          .map((relationship) => ({
+            npcId: relationship.npcId,
+            name: npcs.find(({ id }) => id === relationship.npcId)?.name
+              ?? relationship.npcId.replace("npc.", "").replaceAll("-", " "),
+            trust: relationship.trust,
+            respect: relationship.respect,
+            fear: relationship.fear
+          }))
+          .sort((left, right) =>
+            Math.max(Math.abs(right.trust), Math.abs(right.respect), Math.abs(right.fear))
+            - Math.max(Math.abs(left.trust), Math.abs(left.respect), Math.abs(left.fear))
+          )
+      },
       saveSlots: [...this.#saveSlots],
       autosave: this.#autosave,
       chronicleHint: this.#state.world.chronicle.at(-1)?.body ?? "The road is waiting."
@@ -422,7 +447,13 @@ export class EngineGameBridge implements GameBridge {
   async load(slot: GameSaveSlot): Promise<void> {
     this.#state = await this.#saves.load(slot);
     this.#hasSave = Boolean(this.#state);
-    this.emit();
+    if (this.#state) {
+      const recoveredCanonicalState = this.applyCompletedQuestRewards();
+      if (recoveredCanonicalState) await this.persist(slot);
+      else this.emit();
+    } else {
+      this.emit();
+    }
   }
 
   async travel(locationId: string): Promise<void> {
@@ -505,7 +536,33 @@ export class EngineGameBridge implements GameBridge {
     const npc = npcId.replace("npc.", "").split("-").map((word) =>
       `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`
     ).join(" ");
-    return { speaker: npc, lines: getDialogue(npcId), recruitedMember };
+    return { speaker: npc, lines: this.responsiveDialogue(npcId), recruitedMember };
+  }
+
+  private responsiveDialogue(npcId: string): readonly string[] {
+    const state = this.requireState();
+    const definition = npcs.find(({ id }) => id === npcId);
+    const relationship = state.world.relationships.find(({ npcId: candidate }) => candidate === npcId);
+    const factionStanding = definition ? state.world.factionStanding[definition.factionId] ?? 0 : 0;
+    const lines = [...getDialogue(npcId)];
+    if ((relationship?.trust ?? 0) >= 8) {
+      lines.push("You kept faith when the road made that difficult. I have not forgotten.");
+    } else if ((relationship?.trust ?? 0) <= -8) {
+      lines.push("I remember what your choice cost. Do not mistake conversation for trust.");
+    }
+    if ((relationship?.respect ?? 0) >= 12) {
+      lines.push("Your deeds now arrive before you. That earns a hearing, if not agreement.");
+    } else if ((relationship?.fear ?? 0) >= 12) {
+      lines.push("People lower their voices when your chronicle is named. I wonder if that pleases you.");
+    }
+    if (definition && factionStanding >= 10) {
+      const factionName = definition.factionId.replace("faction.", "").replaceAll("-", " ");
+      lines.push(`Word has traveled through the ${factionName}. Its people now count you among their proven allies.`);
+    } else if (definition && factionStanding <= -10) {
+      const factionName = definition.factionId.replace("faction.", "").replaceAll("-", " ");
+      lines.push(`The ${factionName} has not forgiven your interference. Tread carefully.`);
+    }
+    return lines;
   }
 
   startEncounter(encounterId: string): void {
@@ -923,9 +980,9 @@ export class EngineGameBridge implements GameBridge {
    * from its stable seed once and marked in the saved world flags. This also
    * lets older saves with completed-but-unpaid quests recover safely.
    */
-  private applyCompletedQuestRewards(): void {
+  private applyCompletedQuestRewards(): boolean {
     const state = this.#state;
-    if (!state) return;
+    if (!state) return false;
     const averageLevel = Math.max(
       1,
       Math.round(state.party.reduce((sum, member) => sum + member.level, 0) / state.party.length)
@@ -934,41 +991,73 @@ export class EngineGameBridge implements GameBridge {
     let inventory = state.inventory;
     let flags = state.world.flags;
     let chronicle = state.world.chronicle;
+    let relationships = state.world.relationships;
+    let factionStanding = state.world.factionStanding;
+    let changed = false;
 
     for (const definition of quests) {
       const progress = state.quests.find(({ questId }) => questId === definition.id);
       const rewardFlag = `content.quest-reward.${definition.id}`;
-      if (progress?.state !== "completed" || flags[rewardFlag] === true) continue;
+      const consequenceFlag = `content.quest-consequence.${definition.id}`;
+      if (progress?.state !== "completed") continue;
 
-      const reward = calculateBattleReward(
-        definition.rewardTier,
-        averageLevel,
-        `${state.seed}:quest:${definition.id}`
-      );
-      party = party.map((member) => grantExperience(member, reward.experience).character);
-      if (reward.itemRoll < 350) {
-        inventory = this.addWithinStackLimit(inventory, "item.root-tonic", 1);
+      if (flags[consequenceFlag] !== true) {
+        changed = true;
+        const consequenceWorld = applyQuestConsequences(
+          {
+            ...state.world,
+            flags,
+            chronicle,
+            relationships,
+            factionStanding
+          },
+          definition.consequences
+        );
+        relationships = consequenceWorld.relationships;
+        factionStanding = consequenceWorld.factionStanding;
+        flags = { ...consequenceWorld.flags, [consequenceFlag]: true };
       }
-      flags = {
-        ...flags,
-        [rewardFlag]: true,
-        currency: Number(flags.currency ?? 0) + reward.currency
-      };
-      chronicle = [...chronicle, {
-        id: crypto.randomUUID(),
-        worldMinute: state.world.worldMinutes,
-        title: `${definition.title} resolved`,
-        body: `The party claimed the reward for ${definition.title}.`,
-        tags: ["quest", "reward", definition.rewardTier]
-      }];
+
+      if (flags[rewardFlag] !== true) {
+        changed = true;
+        const reward = calculateBattleReward(
+          definition.rewardTier,
+          averageLevel,
+          `${state.seed}:quest:${definition.id}`
+        );
+        party = party.map((member) => grantExperience(member, reward.experience).character);
+        if (reward.itemRoll < 350) {
+          inventory = this.addWithinStackLimit(inventory, "item.root-tonic", 1);
+        }
+        flags = {
+          ...flags,
+          [rewardFlag]: true,
+          currency: Number(flags.currency ?? 0) + reward.currency
+        };
+        chronicle = [...chronicle, {
+          id: crypto.randomUUID(),
+          worldMinute: state.world.worldMinutes,
+          title: `${definition.title} resolved`,
+          body: `The party claimed the reward for ${definition.title}.`,
+          tags: ["quest", "reward", definition.rewardTier]
+        }];
+      }
     }
 
+    if (!changed) return false;
     this.#state = {
       ...state,
       party,
       inventory,
-      world: { ...state.world, flags, chronicle }
+      world: {
+        ...state.world,
+        flags,
+        chronicle,
+        relationships,
+        factionStanding
+      }
     };
+    return true;
   }
 
   private addWithinStackLimit(
