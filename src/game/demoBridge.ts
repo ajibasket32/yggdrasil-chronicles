@@ -213,6 +213,21 @@ export class DemoGameBridge implements GameBridge {
     this.emit();
   }
 
+  rest(): void {
+    this.state = {
+      ...this.state,
+      worldMinutes: this.state.worldMinutes + 480,
+      party: this.state.party.map((member) => ({
+        ...member,
+        hp: member.maxHp,
+        mp: member.maxMp
+      })),
+      autosave: "saved",
+      chronicleHint: "The party rested while the roots whispered beyond the fire."
+    };
+    this.emit();
+  }
+
   save(_slot: "autosave" | "manual-1" | "manual-2" | "manual-3"): void {
     this.state = { ...this.state, autosave: "saving" };
     this.emit();

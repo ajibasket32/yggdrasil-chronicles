@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import type { BattleAction, BattleView, GameBridge, GameSnapshot } from "../bridge";
+import { gamepadButtonAction } from "../gamepadControls";
 import { announceScene, COLORS, getBridge, TEXT } from "../runtime";
 
 const ACTIONS: Array<{ id: BattleAction; label: string; hint: string }> = [
@@ -53,6 +54,19 @@ export class BattleScene extends Phaser.Scene {
       this.actionIndex = ACTIONS.length - 1;
       this.render();
     });
+    this.input.gamepad?.on("down", this.onGamepadButton, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.gamepad?.off("down", this.onGamepadButton, this));
+  }
+
+  private onGamepadButton(_pad: Phaser.Input.Gamepad.Gamepad, button: Phaser.Input.Gamepad.Button): void {
+    const action = gamepadButtonAction(button.index);
+    if (action === "up" || action === "left") this.move(-1);
+    else if (action === "down" || action === "right") this.move(1);
+    else if (action === "confirm") void this.confirm();
+    else if (action === "cancel") {
+      this.actionIndex = ACTIONS.length - 1;
+      this.render();
+    }
   }
 
   private render(): void {
@@ -82,6 +96,7 @@ export class BattleScene extends Phaser.Scene {
       const y = 245 - (index % 2) * 45;
       const sprite = this.add.image(x, y, "sprite.player").setScale(1.8).setFlipX(true);
       if (actor.hp <= 0) sprite.setTint(0x4d545d);
+      this.drawActiveActorMarker(x, y, actor.id === battle.activeActorId, actor.name);
       this.drawHealth(x - 48, y + 38, 96, actor.hp, actor.maxHp, actor.name, true);
     });
     enemies.forEach((actor, index) => {
@@ -89,8 +104,21 @@ export class BattleScene extends Phaser.Scene {
       const y = 200 + Math.floor(index / 2) * 90;
       const sprite = this.add.image(x, y, "sprite.enemy").setScale(actor.maxHp > 80 ? 2 : 1.45);
       if (actor.hp <= 0) sprite.setAlpha(0.25);
+      this.drawActiveActorMarker(x, y, actor.id === battle.activeActorId, this.titleCase(actor.name));
       this.drawHealth(x - 48, y + 42, 96, actor.hp, actor.maxHp, this.titleCase(actor.name), false);
     });
+  }
+
+  private drawActiveActorMarker(x: number, y: number, active: boolean, name: string): void {
+    if (!active) return;
+    this.add.circle(x, y, 42, 0xf2c66d, 0.1).setStrokeStyle(3, 0xf2c66d);
+    this.add.text(x, y - 62, "ACTIVE", {
+      ...TEXT.small,
+      color: COLORS.gold,
+      backgroundColor: "#101622dd",
+      padding: { x: 4, y: 2 }
+    }).setOrigin(0.5);
+    this.add.text(28, 74, `ACTING: ${name.toUpperCase()}`, { ...TEXT.small, color: COLORS.gold });
   }
 
   private drawHealth(x: number, y: number, width: number, hp: number, maxHp: number, name: string, party: boolean): void {
@@ -129,6 +157,7 @@ export class BattleScene extends Phaser.Scene {
       lineSpacing: 4,
       color: COLORS.cream
     });
+    this.add.text(36, 488, "D-pad moves actions · A confirms · B selects escape", TEXT.small);
     this.add.text(36, 507, this.resolving ? "Resolving…" : "↑↓ Select   Enter Confirm", TEXT.small);
   }
 

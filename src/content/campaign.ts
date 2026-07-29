@@ -331,7 +331,7 @@ const mainQuestSeeds: QuestSeed[] = [
     summary: "Decide what will replace the failing Rootbound Concord.",
     prerequisites: ["quest.architect-of-severance"],
     steps: [step("talk", "npc.mara-vell"), step("talk", "npc.ira-sorn"), step("talk", "npc.sable-voss")],
-    rewardTier: "boss",
+    rewardTier: "major",
     mainStory: true
   }
 ];
@@ -358,8 +358,8 @@ const hiddenQuestSeeds: QuestSeed[] = [
   { id: "root-that-dreams", title: "The Root That Dreams", summary: "Follow a melody heard only while standing still.", prerequisites: ["quest.hollow-witness"], steps: [step("talk", "npc.old-cairn"), step("collect", "item.dream-resin")], rewardTier: "major" },
   { id: "yarrow-speaks", title: "Yarrow Speaks", summary: "Restore a name erased from the Silent Kiln.", prerequisites: ["quest.silent-kiln"], steps: [step("talk", "npc.yarrow-kest"), step("collect", "item.yarrow-seal")], rewardTier: "major" },
   { id: "unburned-recipe", title: "The Unburned Recipe", summary: "Cook a meal using an ember that gives no heat.", steps: [step("collect", "item.cold-ember"), step("talk", "npc.cask-ember")] },
-  { id: "thirteenth-star", title: "The Thirteenth Star", summary: "Align the observatory to a star absent from every chart.", prerequisites: ["quest.buried-constellation"], steps: [step("collect", "item.star-key", 3), step("talk", "npc.sable-voss")], rewardTier: "boss" },
-  { id: "what-the-tree-forgot", title: "What the Tree Forgot", summary: "Piece together a memory the world tree rejected.", prerequisites: ["quest.choir-without-voices"], steps: [step("collect", "item.memory-shard", 7), step("talk", "npc.mother-hush")], rewardTier: "boss" }
+  { id: "thirteenth-star", title: "The Thirteenth Star", summary: "Align the observatory to a star absent from every chart.", prerequisites: ["quest.buried-constellation"], steps: [step("collect", "item.star-key", 3), step("talk", "npc.sable-voss")], rewardTier: "major" },
+  { id: "what-the-tree-forgot", title: "What the Tree Forgot", summary: "Piece together a memory the world tree rejected.", prerequisites: ["quest.choir-without-voices"], steps: [step("collect", "item.memory-shard", 7), step("talk", "npc.mother-hush")], rewardTier: "major" }
 ];
 
 const makeQuests = (seeds: QuestSeed[]): QuestDefinition[] =>
@@ -488,7 +488,11 @@ export const dialogueByNpcId: Readonly<Record<string, readonly string[]>> = {
   "npc.veska-reed": ["Bring me vesleaf if you see it. Heroics are easier with clean bandages."],
   "npc.old-cairn": ["Be still. The hollow is not silent. It is holding its breath."],
   "npc.ira-sorn": ["Emberwake deals in proof, not frontier panic. Show me what you carried through the ash."],
+  "npc.brannic-quill": ["The foundry does not need another decree. It needs a promise the workers can survive."],
+  "npc.solvi-renn": ["The ledger is genuine. The names inside it are not merely crooked; they are organized."],
   "npc.sable-voss": ["The oldest chart has thirteen guide stars. The sky insists there are twelve."],
+  "npc.eira-lune": ["The bridge is alive enough to suffer. Help me mend it, and I will show you the high road."],
+  "npc.mother-hush": ["We did not come to erase the present. We came because the past has learned to devour it."],
   "npc.varn-rootless": ["Memory is a wound the world refuses to close. I chose the knife."]
 };
 

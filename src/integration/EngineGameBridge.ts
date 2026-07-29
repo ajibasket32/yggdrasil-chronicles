@@ -84,6 +84,8 @@ interface ActiveBattle {
   state: CombatState;
   phase: BattleView["phase"];
   log: string[];
+  /** Index of the party member whose player turn is awaiting an action. */
+  partyTurnIndex: number;
 }
 
 function playerFromDraft(draft: CharacterCreationDraft): PlayerCharacter {
@@ -161,7 +163,7 @@ function enemyCombatant(id: string, index: number, boss: boolean, level: number)
 
 export class EngineGameBridge implements GameBridge {
   readonly #listeners = new Set<SnapshotListener>();
-  readonly #saves = new SaveRepository();
+  readonly #saves: SaveRepository;
   #state?: GameState;
   #battle?: ActiveBattle;
   #autosave: GameSnapshot["autosave"] = "idle";
@@ -178,6 +180,10 @@ export class EngineGameBridge implements GameBridge {
       forbiddenCanonTerms: ["world item", "super-tier", "ainz", "nazarick"]
     }
   });
+
+  constructor(saves = new SaveRepository()) {
+    this.#saves = saves;
+  }
 
   async initialize(): Promise<void> {
     this.#hasSave = (await this.#saves.list()).some(({ slot }) => slot === "autosave");
@@ -199,6 +205,10 @@ export class EngineGameBridge implements GameBridge {
       };
     }
     const location = locations.find(({ id }) => id === this.#state?.world.currentLocationId);
+    const mainQuestIds = new Set(quests.filter(({ mainStory }) => mainStory).map(({ id }) => id));
+    const completedMainQuests = this.#state.quests.filter(({ questId, state }) =>
+      mainQuestIds.has(questId) && state === "completed"
+    ).length;
     return {
       hasSave: this.#hasSave,
       playerName: this.#state.party[0]?.name ?? "",
@@ -220,6 +230,11 @@ export class EngineGameBridge implements GameBridge {
         return definition ? [this.toQuestView(definition, progress.currentStep, progress.state)] : [];
       }),
       battle: this.#battle ? this.toBattleView(this.#battle) : undefined,
+      campaign: {
+        completedMainQuests,
+        totalMainQuests: mainQuestIds.size,
+        complete: mainQuestIds.size > 0 && completedMainQuests === mainQuestIds.size
+      },
       autosave: this.#autosave,
       chronicleHint: this.#state.world.chronicle.at(-1)?.body ?? "The road is waiting."
     };
@@ -271,9 +286,13 @@ export class EngineGameBridge implements GameBridge {
     const discovered = state.world.discoveredLocationIds.includes(locationId)
       ? state.world.discoveredLocationIds
       : [...state.world.discoveredLocationIds, locationId];
+    const findFlag = this.findFlag("location", locationId);
+    const hasClaimedFinds = state.world.flags[findFlag] === true;
     let inventory = state.inventory;
-    for (const [itemId, quantity] of locationFinds[locationId] ?? []) {
-      inventory = this.addWithinStackLimit(inventory, itemId, quantity);
+    if (!hasClaimedFinds) {
+      for (const [itemId, quantity] of locationFinds[locationId] ?? []) {
+        inventory = this.addWithinStackLimit(inventory, itemId, quantity);
+      }
     }
     this.#state = {
       ...state,
@@ -283,11 +302,15 @@ export class EngineGameBridge implements GameBridge {
         ...state.world,
         currentLocationId: locationId,
         discoveredLocationIds: discovered,
-        worldMinutes: state.world.worldMinutes + 35
+        worldMinutes: state.world.worldMinutes + 35,
+        flags: hasClaimedFinds
+          ? state.world.flags
+          : { ...state.world.flags, [findFlag]: true }
       }
     };
     this.applyInventoryObjectives();
     this.advanceCampaign();
+    this.applyCompletedQuestRewards();
     await this.persist("autosave");
     this.enqueueNarrativeCheckpoint("world_event", `The party crossed into ${locationId.replace("location.", "").replaceAll("-", " ")}.`);
   }
@@ -296,7 +319,7 @@ export class EngineGameBridge implements GameBridge {
     const state = this.requireState();
     let recruitedMember: PartyMemberView | undefined;
     let party = state.party;
-    if (npcId === "npc.tovin-ash" && !party.some(({ id }) => id === "party.tovin")) {
+    if (npcId === "npc.tovin-ash" && party.length < 4 && !party.some(({ id }) => id === "party.tovin")) {
       const recruited = tovinCharacter();
       party = [...party, recruited];
       recruitedMember = this.toPartyView(recruited, party.length - 1);
@@ -316,6 +339,7 @@ export class EngineGameBridge implements GameBridge {
     };
     this.applyInventoryObjectives();
     this.advanceCampaign();
+    this.applyCompletedQuestRewards();
     await this.persist("autosave");
     const npc = npcId.replace("npc.", "").split("-").map((word) =>
       `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`
@@ -327,13 +351,15 @@ export class EngineGameBridge implements GameBridge {
     const state = this.requireState();
     const encounter = encounters.find(({ id }) => id === encounterId);
     if (!encounter) throw new Error(`Unknown encounter '${encounterId}'`);
+    if (encounter.boss && state.world.defeatedBossIds.includes(encounterId)) return;
     const averageLevel = Math.max(1, Math.round(state.party.reduce((sum, member) => sum + member.level, 0) / state.party.length));
     const enemies = encounter.enemyIds.map((id, index) => enemyCombatant(id, index, encounter.boss, averageLevel));
     this.#battle = {
       encounterId,
       state: createCombatState(state.party, enemies, `${state.seed}:${encounterId}:${state.world.worldMinutes}`),
       phase: "choosing",
-      log: [`${encounter.name} bars the road.`]
+      log: [`${encounter.name} bars the road.`],
+      partyTurnIndex: this.firstLivingPartyIndex(state.party)
     };
     this.emit();
   }
@@ -341,9 +367,9 @@ export class EngineGameBridge implements GameBridge {
   async chooseBattleAction(action: BattleAction): Promise<void> {
     const active = this.#battle;
     if (!active || active.phase !== "choosing") return;
-    const actor = active.state.party.find(({ hp }) => hp > 0);
+    const actor = active.state.party[active.partyTurnIndex];
     const target = active.state.enemies.find(({ hp }) => hp > 0);
-    if (!actor || !target) return;
+    if (!actor || actor.hp <= 0 || !target) return;
     if (action === "escape") {
       const encounter = encounters.find(({ id }) => id === active.encounterId);
       if (!encounter?.boss) {
@@ -378,6 +404,11 @@ export class EngineGameBridge implements GameBridge {
       active.log.push(...resolution.events.map((event) => this.describeEvent(event, active.state)));
     }
 
+    if (active.state.outcome === "ongoing" && this.advancePartyTurn(active)) {
+      this.emit();
+      return;
+    }
+
     if (active.state.outcome === "ongoing") {
       for (const enemy of active.state.enemies.filter(({ hp }) => hp > 0)) {
         const enemyAction = chooseEnemyAction(active.state, enemy.id);
@@ -391,6 +422,9 @@ export class EngineGameBridge implements GameBridge {
       const advanced = advanceCombatRound(active.state);
       active.state = advanced.state;
       active.log.push(...advanced.events.map((event) => this.describeEvent(event, active.state)));
+      if (active.state.outcome === "ongoing") {
+        active.partyTurnIndex = this.firstLivingPartyIndex(active.state.party);
+      }
     }
     if (active.state.outcome === "victory") await this.resolveVictory(active);
     if (active.state.outcome === "defeat") active.phase = "defeat";
@@ -411,6 +445,33 @@ export class EngineGameBridge implements GameBridge {
     }
     this.#battle = undefined;
     await this.persist("autosave");
+  }
+
+  async rest(): Promise<void> {
+    const state = this.requireState();
+    if (this.#battle) return;
+    this.#state = {
+      ...state,
+      party: state.party.map((member) => ({
+        ...member,
+        hp: member.stats.maxHp,
+        mp: member.stats.maxMp,
+        statuses: []
+      })),
+      world: {
+        ...state.world,
+        worldMinutes: state.world.worldMinutes + 480,
+        chronicle: [...state.world.chronicle, {
+          id: crypto.randomUUID(),
+          worldMinute: state.world.worldMinutes + 480,
+          title: "A Quiet Rest",
+          body: "The party made camp, tended its wounds, and listened to the rootways.",
+          tags: ["rest", state.world.currentLocationId]
+        }]
+      }
+    };
+    await this.persist("autosave");
+    this.enqueueNarrativeCheckpoint("world_event", "The party rested and gave the world time to answer.");
   }
 
   async save(slot: SaveSlot): Promise<void> {
@@ -434,19 +495,19 @@ export class EngineGameBridge implements GameBridge {
       return grantExperience({ ...original, hp: member.hp, mp: member.mp, statuses: member.statuses }, reward.experience).character;
     });
     let inventory = state.inventory;
-    if (reward.itemRoll < 350) inventory = addItem(inventory, "item.root-tonic");
+    if (reward.itemRoll < 350) inventory = this.addWithinStackLimit(inventory, "item.root-tonic", 1);
     let progress = state.quests;
+    let flags = state.world.flags;
     for (const enemyId of new Set(encounter.enemyIds)) {
-      const activeRequirement = quests.flatMap((definition) => {
-        const entry = progress.find(({ questId, state: questState }) =>
-          questId === definition.id && questState === "active"
-        );
-        const objective = entry ? definition.steps[entry.currentStep] : undefined;
-        return objective?.kind === "defeat" && objective.targetId === enemyId ? [objective.count] : [];
-      });
-      const count = Math.max(encounter.enemyIds.filter((id) => id === enemyId).length, ...activeRequirement, 1);
-      progress = this.applyObjectiveToActiveQuests(progress, "defeat", enemyId, count);
+      const defeatedThisBattle = encounter.enemyIds.filter((id) => id === enemyId).length;
+      const countFlag = `progress.defeat.${enemyId}`;
+      const lifetimeCount = Number(flags[countFlag] ?? 0) + defeatedThisBattle;
+      flags = { ...flags, [countFlag]: lifetimeCount };
+      progress = this.applyObjectiveToActiveQuests(progress, "defeat", enemyId, lifetimeCount);
     }
+    // Ordinary encounters are explicitly repeatable gameplay abstractions.
+    // Bosses cannot be started again once defeated, so their drops remain
+    // naturally one-time without suppressing the materials needed by quests.
     for (const [itemId, quantity] of encounterFinds[encounter.id] ?? []) {
       inventory = this.addWithinStackLimit(inventory, itemId, quantity);
     }
@@ -462,8 +523,8 @@ export class EngineGameBridge implements GameBridge {
         ...state.world,
         defeatedBossIds,
         flags: {
-          ...state.world.flags,
-          currency: Number(state.world.flags.currency ?? 0) + reward.currency
+          ...flags,
+          currency: Number(flags.currency ?? 0) + reward.currency
         },
         chronicle: encounter.boss ? [...state.world.chronicle, {
           id: crypto.randomUUID(),
@@ -476,6 +537,7 @@ export class EngineGameBridge implements GameBridge {
     };
     this.applyInventoryObjectives();
     this.advanceCampaign();
+    this.applyCompletedQuestRewards();
     active.phase = "victory";
     active.log.push(`Victory. The party earns ${reward.experience} experience and ${reward.currency} marks.`);
     await this.persist("autosave");
@@ -489,6 +551,15 @@ export class EngineGameBridge implements GameBridge {
   ): GameState["quests"] {
     let next = progress;
     for (const definition of quests) {
+      const entry = next.find(({ questId }) => questId === definition.id);
+      const firstObjective = definition.steps[0];
+      if (
+        entry?.state === "available"
+        && firstObjective?.kind === kind
+        && firstObjective.targetId === targetId
+      ) {
+        next = startQuest(next, definition.id);
+      }
       next = applyQuestObjective(next, definition, { kind, targetId, count });
     }
     return next;
@@ -507,21 +578,68 @@ export class EngineGameBridge implements GameBridge {
   private applyInventoryObjectives(): void {
     if (!this.#state) return;
     let progress = this.#state.quests;
-    for (const definition of quests) {
-      const entry = progress.find(({ questId, state }) => questId === definition.id && state === "active");
-      const objective = entry ? definition.steps[entry.currentStep] : undefined;
-      if (objective?.kind === "collect") {
-        const owned = inventoryQuantity(this.#state.inventory, objective.targetId);
-        if (owned >= objective.count) {
-          progress = applyQuestObjective(progress, definition, {
-            kind: "collect",
-            targetId: objective.targetId,
-            count: owned
-          });
-        }
-      }
+    for (const stack of this.#state.inventory) {
+      progress = this.applyObjectiveToActiveQuests(
+        progress,
+        "collect",
+        stack.itemId,
+        stack.quantity
+      );
     }
     this.#state = { ...this.#state, quests: progress };
+  }
+
+  /**
+   * Quest rewards are canonical campaign state, so a completed quest is paid
+   * from its stable seed once and marked in the saved world flags. This also
+   * lets older saves with completed-but-unpaid quests recover safely.
+   */
+  private applyCompletedQuestRewards(): void {
+    const state = this.#state;
+    if (!state) return;
+    const averageLevel = Math.max(
+      1,
+      Math.round(state.party.reduce((sum, member) => sum + member.level, 0) / state.party.length)
+    );
+    let party = state.party;
+    let inventory = state.inventory;
+    let flags = state.world.flags;
+    let chronicle = state.world.chronicle;
+
+    for (const definition of quests) {
+      const progress = state.quests.find(({ questId }) => questId === definition.id);
+      const rewardFlag = `content.quest-reward.${definition.id}`;
+      if (progress?.state !== "completed" || flags[rewardFlag] === true) continue;
+
+      const reward = calculateBattleReward(
+        definition.rewardTier,
+        averageLevel,
+        `${state.seed}:quest:${definition.id}`
+      );
+      party = party.map((member) => grantExperience(member, reward.experience).character);
+      if (reward.itemRoll < 350) {
+        inventory = this.addWithinStackLimit(inventory, "item.root-tonic", 1);
+      }
+      flags = {
+        ...flags,
+        [rewardFlag]: true,
+        currency: Number(flags.currency ?? 0) + reward.currency
+      };
+      chronicle = [...chronicle, {
+        id: crypto.randomUUID(),
+        worldMinute: state.world.worldMinutes,
+        title: `${definition.title} resolved`,
+        body: `The party claimed the reward for ${definition.title}.`,
+        tags: ["quest", "reward", definition.rewardTier]
+      }];
+    }
+
+    this.#state = {
+      ...state,
+      party,
+      inventory,
+      world: { ...state.world, flags, chronicle }
+    };
   }
 
   private addWithinStackLimit(
@@ -531,6 +649,28 @@ export class EngineGameBridge implements GameBridge {
   ): GameState["inventory"] {
     const room = 99 - inventoryQuantity(inventory, itemId);
     return room > 0 ? addItem(inventory, itemId, Math.min(quantity, room)) : inventory;
+  }
+
+  private firstLivingPartyIndex(party: readonly Combatant[]): number {
+    const index = party.findIndex(({ hp }) => hp > 0);
+    if (index < 0) throw new Error("A battle requires a living party member");
+    return index;
+  }
+
+  /** Returns true when another living party member must act before enemies. */
+  private advancePartyTurn(active: ActiveBattle): boolean {
+    for (let index = active.partyTurnIndex + 1; index < active.state.party.length; index += 1) {
+      const member = active.state.party[index];
+      if (member && member.hp > 0) {
+        active.partyTurnIndex = index;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private findFlag(source: "location" | "encounter", id: string): string {
+    return `content.find.${source}.${id}`;
   }
 
   private enqueueNarrativeCheckpoint(
@@ -643,7 +783,9 @@ export class EngineGameBridge implements GameBridge {
         isParty: actor.isPlayerControlled,
         status: actor.statuses[0]?.id
       })),
-      activeActorId: active.state.party.find(({ hp }) => hp > 0)?.id,
+      activeActorId: active.phase === "choosing"
+        ? active.state.party[active.partyTurnIndex]?.id
+        : undefined,
       log: active.log.slice(-8),
       round: active.state.round
     };

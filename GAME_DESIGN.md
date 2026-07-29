@@ -8,7 +8,10 @@ Yggdrasil Chronicles is a party-based JRPG about becoming part of an old world r
 
 Explore → talk and investigate → accept or discover goals → prepare the party → fight or negotiate → resolve consequences → rest and save → see the world react.
 
-The authored campaign is independently completable in 20+ hours. Generated narrative adds variation but never gates progress.
+The authored campaign is independently completable without generated narrative.
+The release target is 20+ hours in normal exploratory play; this duration must
+be established by a timed full playthrough and is not yet inferred from quest
+counts alone. Generated narrative adds variation but never gates progress.
 
 ## Exploration
 

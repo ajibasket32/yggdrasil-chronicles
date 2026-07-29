@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  auditCampaignReadiness,
   coreCampaign,
   encounterFinds,
   getReachableQuestIds,
@@ -87,5 +88,67 @@ describe("core campaign content", () => {
         if (objective.kind === "defeat") expect(placedEnemyIds.has(objective.targetId), quest.id).toBe(true);
       }
     }
+  });
+
+  it("walks the canonical main story from Hearthcross through the final boss without AI", () => {
+    const result = auditCampaignReadiness(coreCampaign, {
+      startLocationId: "location.hearthcross",
+      routes: worldRoutes,
+      locationEncounters,
+      locationFinds,
+      encounterFinds
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+    expect(result.mainQuestOrder).toEqual(
+      coreCampaign.quests.filter(({ mainStory }) => mainStory).map(({ id }) => id)
+    );
+    expect(result.completedMainQuestIds).toContain("quest.architect-of-severance");
+    expect(result.activityBudget.minimumPlayerActions).toBeGreaterThan(0);
+    expect(result.warnings.some((warning) => warning.includes("not an hours estimate"))).toBe(true);
+  });
+
+  it("rejects a main-story collect objective when its authored sources are removed", () => {
+    const result = auditCampaignReadiness(coreCampaign, {
+      startLocationId: "location.hearthcross",
+      routes: worldRoutes,
+      locationEncounters,
+      locationFinds: { ...locationFinds, "location.mossroad": [["item.vesleaf", 1]] },
+      encounterFinds: { ...encounterFinds, "encounter.mossroad-foragers": [["item.vesleaf", 2]] }
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("quest.marks-in-rain has an unsourced collect objective item.brass-rivet x3");
+  });
+
+  it("rejects ambiguous route inputs", () => {
+    const result = auditCampaignReadiness(coreCampaign, {
+      startLocationId: "location.hearthcross",
+      routes: [...worldRoutes, {
+        fromId: "location.hearthcross",
+        toId: "location.mossroad",
+        direction: "east"
+      }],
+      locationEncounters,
+      locationFinds,
+      encounterFinds
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("location.hearthcross has ambiguous east routes");
+  });
+
+  it("rejects an unplaced final boss", () => {
+    const result = auditCampaignReadiness(coreCampaign, {
+      startLocationId: "location.hearthcross",
+      routes: worldRoutes,
+      locationEncounters: { ...locationEncounters, "location.starless-vault": ["encounter.vault-echoes"] },
+      locationFinds,
+      encounterFinds
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("Boss encounter is not placed in the world: encounter.varn-rootless");
   });
 });

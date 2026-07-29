@@ -10,5 +10,11 @@
   resources, impossible battles, and unlearned skill use.
 - Added a client-side narrative timeout so a stalled AI request cannot block
   later checkpoints or core gameplay.
+- Added deterministic party turn cycles, one-time quest rewards, safe repeatable
+  encounter loot, party rest, and persistent campaign-completion reporting.
+- Added controller mappings, accessible NPC placement, a functional system
+  menu with three manual slots, and an authored campaign ending overlay.
+- Added an offline main-campaign readiness walk and corrected unsupported
+  20-hour wording pending a timed full playthrough.
 - Rebuilt the project contract around a simple Phaser/Vite browser game.
 - Established original world canon, deterministic engine boundaries, local saves, content packs, and validated living-world generation.

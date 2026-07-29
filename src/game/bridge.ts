@@ -76,6 +76,11 @@ export interface GameSnapshot {
   inventory: InventoryView[];
   quests: QuestView[];
   battle?: BattleView;
+  campaign?: {
+    completedMainQuests: number;
+    totalMainQuests: number;
+    complete: boolean;
+  };
   autosave: "idle" | "saving" | "saved" | "error";
   chronicleHint: string;
 }
@@ -96,6 +101,7 @@ export interface GameBridge {
   startEncounter(encounterId: string): void | Promise<void>;
   chooseBattleAction(action: BattleAction): void | Promise<void>;
   leaveBattle(): void | Promise<void>;
+  rest(): void | Promise<void>;
   save(slot: "autosave" | "manual-1" | "manual-2" | "manual-3"): void | Promise<void>;
 }
 

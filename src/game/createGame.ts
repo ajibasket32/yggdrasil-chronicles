@@ -18,6 +18,9 @@ export function createYggdrasilGame(options: GameLaunchOptions): Phaser.Game {
     pixelArt: true,
     antialias: false,
     roundPixels: true,
+    input: {
+      gamepad: true
+    },
     scale: {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -32,4 +35,3 @@ export function createYggdrasilGame(options: GameLaunchOptions): Phaser.Game {
 
   return new Phaser.Game(config);
 }
-

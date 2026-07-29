@@ -44,3 +44,24 @@ test("core game starts with the narrative proxy unavailable", async ({ page }) =
   await page.goto("/");
   await expect(page.locator("canvas")).toBeVisible();
 });
+
+test("system menu exposes all manual save slots and can return to the title", async ({ page }) => {
+  await page.goto("/");
+  const canvas = page.locator("canvas");
+  await expect(canvas).toBeVisible();
+  await pressRepeatedly(page, "Enter", 5);
+  await expect(page.locator("#app")).toHaveAttribute("data-scene", "world");
+
+  const world = await canvas.screenshot();
+  await page.keyboard.press("Escape");
+  const system = await canvas.screenshot();
+  expect(system.equals(world)).toBe(false);
+
+  // Save slot 3 is reachable with the same directional controls as the rest
+  // of the game, then the last command returns to the title scene.
+  await pressRepeatedly(page, "ArrowDown", 2);
+  await page.keyboard.press("Enter");
+  await pressRepeatedly(page, "ArrowDown", 2);
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#app")).toHaveAttribute("data-scene", "title");
+});

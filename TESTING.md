@@ -15,8 +15,12 @@ npm run test:e2e
 
 - Vitest unit tests cover seeded RNG, combat, progression, inventory, quest transitions, rewards, content validation, and AI boundaries.
 - IndexedDB integration tests cover atomic slots, backup, checksum, import/export, migration, and generated patch persistence.
-- Playwright covers new game, travel, recruitment, quest, combat, rewards, save/reload, and ending with AI enabled and disabled.
-- Campaign validation checks graph reachability, stable references, asset tags, boss viability, and recovery paths.
+- Playwright currently covers new game, exploration travel, combat entry,
+  system/manual-save controls, and startup with the narrative proxy unavailable.
+- Campaign validation walks the complete main quest through real routes, NPC
+  placements, encounter placements, and item sources; it checks graph
+  reachability, references, source quantities, boss placement, and route
+  ambiguity.
 
 ## Manual release checks
 

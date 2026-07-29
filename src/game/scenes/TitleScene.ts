@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { ancestries, jobs } from "../../content";
 import type { CharacterCreationDraft, GameBridge } from "../bridge";
+import { gamepadButtonAction } from "../gamepadControls";
 import { announceScene, COLORS, getBridge, TEXT } from "../runtime";
 
 const NAME_CHOICES = ["Rowan", "Aster", "Marlowe", "Sage", "Kestrel", "Vale"] as const;
@@ -28,7 +29,7 @@ export class TitleScene extends Phaser.Scene {
     this.add.text(64, 66, "YGGDRASIL", { ...TEXT.title, fontSize: "54px", letterSpacing: 7 });
     this.add.text(68, 126, "C H R O N I C L E S", { ...TEXT.body, color: COLORS.gold, letterSpacing: 4 });
     this.add.text(68, 164, "The Severed Concord", { ...TEXT.heading, fontStyle: "italic", color: COLORS.muted });
-    this.add.text(68, 470, "Arrow keys  Navigate     Enter  Confirm     Esc  Back", TEXT.small);
+    this.add.text(68, 470, "Arrows / D-pad  Navigate     Enter / A  Confirm     Esc / B  Back", TEXT.small);
     this.drawTitleMenu();
     this.bindKeys();
     announceScene("title");
@@ -71,6 +72,18 @@ export class TitleScene extends Phaser.Scene {
     keyboard.on("keydown-ENTER", () => void this.confirm());
     keyboard.on("keydown-SPACE", () => void this.confirm());
     keyboard.on("keydown-ESC", () => this.back());
+    this.input.gamepad?.on("down", this.onGamepadButton, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.gamepad?.off("down", this.onGamepadButton, this));
+  }
+
+  private onGamepadButton(_pad: Phaser.Input.Gamepad.Gamepad, button: Phaser.Input.Gamepad.Button): void {
+    const action = gamepadButtonAction(button.index);
+    if (action === "up") this.move(-1);
+    else if (action === "down") this.move(1);
+    else if (action === "left") this.adjust(-1);
+    else if (action === "right") this.adjust(1);
+    else if (action === "confirm") void this.confirm();
+    else if (action === "cancel") this.back();
   }
 
   private drawTitleMenu(): void {
@@ -154,8 +167,8 @@ export class TitleScene extends Phaser.Scene {
     }
     const draft: CharacterCreationDraft = {
       name: NAME_CHOICES[this.nameIndex] ?? "Rowan",
-      ancestryId: ancestries[this.ancestryIndex]?.name ?? "Hearthborn",
-      jobId: jobs[this.jobIndex]?.name ?? "Vanguard"
+      ancestryId: ancestries[this.ancestryIndex]?.id ?? "hearthborn",
+      jobId: jobs[this.jobIndex]?.id ?? "vanguard"
     };
     await this.bridge.newGame(draft);
     this.cameras.main.fadeOut(260, 10, 18, 24);

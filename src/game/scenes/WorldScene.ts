@@ -7,6 +7,8 @@ import type {
   OverlayKind,
   PartyMemberView
 } from "../bridge";
+import { gamepadButtonAction } from "../gamepadControls";
+import { getNpcSpawnPoints } from "../npcPlacement";
 import { announceScene, COLORS, getBridge, TEXT } from "../runtime";
 import {
   getLocationExits,
@@ -33,9 +35,12 @@ export class WorldScene extends Phaser.Scene {
   private hud?: Phaser.GameObjects.Container;
   private prompt?: Phaser.GameObjects.Text;
   private overlay?: Phaser.GameObjects.Container;
+  private overlayKind?: OverlayKind;
+  private systemIndex = 0;
   private npcSprites: Array<{ id: string; point: Point; sprite: Phaser.GameObjects.Image }> = [];
   private encounterSprite?: Phaser.GameObjects.Image;
   private activeInteraction?: { view: InteractionView; index: number };
+  private endingShown = false;
 
   constructor() {
     super("world");
@@ -55,19 +60,22 @@ export class WorldScene extends Phaser.Scene {
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unsubscribe?.());
     announceScene("world");
+    if (this.snapshot.campaign?.complete) {
+      this.time.delayedCall(250, () => this.showCampaignEnding());
+    }
   }
 
   private bindKeys(): void {
     const keyboard = this.input.keyboard;
     if (!keyboard) return;
-    keyboard.on("keydown-UP", () => void this.tryMove("up"));
-    keyboard.on("keydown-W", () => void this.tryMove("up"));
-    keyboard.on("keydown-DOWN", () => void this.tryMove("down"));
-    keyboard.on("keydown-S", () => void this.tryMove("down"));
-    keyboard.on("keydown-LEFT", () => void this.tryMove("left"));
-    keyboard.on("keydown-A", () => void this.tryMove("left"));
-    keyboard.on("keydown-RIGHT", () => void this.tryMove("right"));
-    keyboard.on("keydown-D", () => void this.tryMove("right"));
+    keyboard.on("keydown-UP", () => this.handleDirection("up"));
+    keyboard.on("keydown-W", () => this.handleDirection("up"));
+    keyboard.on("keydown-DOWN", () => this.handleDirection("down"));
+    keyboard.on("keydown-S", () => this.handleDirection("down"));
+    keyboard.on("keydown-LEFT", () => this.handleDirection("left"));
+    keyboard.on("keydown-A", () => this.handleDirection("left"));
+    keyboard.on("keydown-RIGHT", () => this.handleDirection("right"));
+    keyboard.on("keydown-D", () => this.handleDirection("right"));
     keyboard.on("keydown-E", () => void this.interact());
     keyboard.on("keydown-SPACE", () => void this.interact());
     keyboard.on("keydown-ENTER", () => void this.interact());
@@ -78,12 +86,35 @@ export class WorldScene extends Phaser.Scene {
     keyboard.on("keydown-B", () => void this.launchEncounter());
     keyboard.on("keydown-F5", () => void this.manualSave());
     keyboard.on("keydown-T", () => this.returnToTitle());
+    this.input.gamepad?.on("down", this.onGamepadButton, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.gamepad?.off("down", this.onGamepadButton, this));
+  }
+
+  private onGamepadButton(_pad: Phaser.Input.Gamepad.Gamepad, button: Phaser.Input.Gamepad.Button): void {
+    const action = gamepadButtonAction(button.index);
+    if (action === "up" || action === "down" || action === "left" || action === "right") this.handleDirection(action);
+    else if (action === "confirm") void this.interact();
+    else if (action === "cancel") this.escape();
+    else if (action === "journal") this.toggleOverlay("journal");
+    else if (action === "party") this.toggleOverlay("party");
+    else if (action === "inventory") this.toggleOverlay("inventory");
+    else if (action === "system") this.toggleOverlay("system");
+  }
+
+  private handleDirection(direction: ExitDirection): void {
+    if (this.overlayKind === "system") {
+      if (direction === "up" || direction === "left") this.moveSystem(-1);
+      else this.moveSystem(1);
+      return;
+    }
+    void this.tryMove(direction);
   }
 
   private renderLocation(resetPlayerPosition = true): void {
     this.children.removeAll();
     this.npcSprites = [];
     this.overlay = undefined;
+    this.overlayKind = undefined;
     this.prompt = undefined;
     this.encounterSprite = undefined;
     this.locked = false;
@@ -191,17 +222,11 @@ export class WorldScene extends Phaser.Scene {
 
   private spawnNpcs(locationId: string): void {
     const residents = npcs.filter((npc) => npc.locationId === locationId).slice(0, 6);
-    const points: Point[] = [
-      { x: 8, y: 9 },
-      { x: 13, y: 10 },
-      { x: 17, y: 6 },
-      { x: 6, y: 12 },
-      { x: 15, y: 13 },
-      { x: 11, y: 5 }
-    ];
+    const points = getNpcSpawnPoints(residents.length);
     const guidance = getObjectiveGuidance(this.snapshot);
     residents.forEach((npc, index) => {
-      const point = points[index] ?? { x: 10, y: 10 };
+      const point = points[index];
+      if (!point) return;
       const sprite = this.add.image(point.x * TILE + 16, point.y * TILE + 16, "sprite.npc").setDepth(8);
       const isObjective = guidance?.local && guidance.targetEntityId === npc.id;
       sprite.setTint(isObjective ? 0xffdf78 : index % 2 === 0 ? 0xffffff : 0xe8d4a8);
@@ -274,6 +299,14 @@ export class WorldScene extends Phaser.Scene {
     }));
     const saveLabel = snapshot.autosave === "saving" ? "Saving…" : snapshot.autosave === "error" ? "Save failed" : snapshot.autosave === "saved" ? "✓ Autosaved" : "Offline";
     children.push(this.add.text(HUD_X + 18, 524, saveLabel, { ...TEXT.small, fontSize: "9px", color: snapshot.autosave === "error" ? "#ef7882" : COLORS.muted }));
+    const campaign = snapshot.campaign;
+    if (campaign) {
+      children.push(this.add.text(HUD_X + 188, 524, `MAIN ${campaign.completedMainQuests}/${campaign.totalMainQuests}`, {
+        ...TEXT.small,
+        fontSize: "9px",
+        color: campaign.complete ? COLORS.gold : COLORS.muted
+      }).setOrigin(1, 0));
+    }
     this.hud = this.add.container(0, 0, children).setDepth(20);
   }
 
@@ -335,17 +368,21 @@ export class WorldScene extends Phaser.Scene {
     if (!this.prompt || this.locked) return;
     const npc = this.nearestNpc();
     if (npc) {
-      this.prompt.setText("E  Talk");
+      this.prompt.setText("E / A  Talk");
     } else if (this.isNearEncounter()) {
-      this.prompt.setText("E  Engage");
+      this.prompt.setText("E / A  Engage");
     } else {
-      this.prompt.setText("J Journal   I Pack   P Party   Esc Menu");
+      this.prompt.setText("D-pad Move   X Journal   Y Party   L1 Pack   Start Menu");
     }
   }
 
   private async interact(): Promise<void> {
     if (this.activeInteraction) {
       this.advanceDialogue();
+      return;
+    }
+    if (this.overlayKind === "system") {
+      await this.confirmSystemCommand();
       return;
     }
     if (this.overlay) return;
@@ -390,7 +427,38 @@ export class WorldScene extends Phaser.Scene {
     this.locked = false;
     if (recruited) this.showToast(`${recruited.name} joined the party.`);
     this.refreshObjectiveActors();
+    if (this.snapshot.campaign?.complete) this.showCampaignEnding();
     this.refreshPrompt();
+  }
+
+  private showCampaignEnding(): void {
+    if (this.endingShown || !this.snapshot.campaign?.complete) return;
+    this.endingShown = true;
+    this.locked = true;
+    const veil = this.add.rectangle(0, 0, 960, 540, 0x0b1119, 0.94).setOrigin(0);
+    const title = this.add.text(480, 112, "THE CONCORD REMADE", {
+      ...TEXT.title,
+      color: COLORS.gold
+    }).setOrigin(0.5);
+    const body = this.add.text(
+      480,
+      206,
+      "The severed roads sing again—not as they once did, but in the voices of those who chose to mend them.\n\n"
+        + `${this.snapshot.playerName}'s chronicle remains open. The road can still be explored, and unfinished threads still wait.`,
+      {
+        ...TEXT.body,
+        fontSize: "17px",
+        align: "center",
+        wordWrap: { width: 650 },
+        lineSpacing: 9,
+        color: COLORS.cream
+      }
+    ).setOrigin(0.5, 0);
+    const hint = this.add.text(480, 458, "Esc / B  Continue exploring", {
+      ...TEXT.small,
+      color: COLORS.muted
+    }).setOrigin(0.5);
+    this.overlay = this.add.container(0, 0, [veil, title, body, hint]).setDepth(100);
   }
 
   private refreshObjectiveActors(): void {
@@ -405,7 +473,10 @@ export class WorldScene extends Phaser.Scene {
       this.closeOverlay();
       return;
     }
+    const openingSystem = kind === "system" && this.overlayKind !== "system";
     this.locked = true;
+    this.overlayKind = kind;
+    if (openingSystem) this.systemIndex = 0;
     const panel = this.add.rectangle(60, 42, 640, 456, COLORS.panel, 0.98).setOrigin(0).setStrokeStyle(2, 0x6f8f82);
     const title = this.add.text(88, 70, kind.toUpperCase(), { ...TEXT.heading, color: COLORS.gold });
     const rule = this.add.rectangle(88, 105, 584, 1, COLORS.panelLight).setOrigin(0);
@@ -415,7 +486,7 @@ export class WorldScene extends Phaser.Scene {
       wordWrap: { width: 570 },
       lineSpacing: 8
     });
-    const hint = this.add.text(88, 462, "Esc  Close", TEXT.small);
+    const hint = this.add.text(88, 462, kind === "system" ? "Arrows / D-pad  Select     Enter / A  Confirm     Esc / B  Close" : "Esc / B  Close", TEXT.small);
     this.overlay = this.add.container(0, 0, [panel, title, rule, body, hint]).setDepth(50);
   }
 
@@ -433,7 +504,14 @@ export class WorldScene extends Phaser.Scene {
     if (kind === "party") {
       return this.snapshot.party.map((member) => this.memberSummary(member)).join("\n\n");
     }
-    return `SAVE\nPress F5 for Manual Slot 1\n\nRETURN TO TITLE\nPress T\n\n${this.snapshot.chronicleHint}`;
+    const commands = [
+      "Save to Manual Slot 1",
+      "Save to Manual Slot 2",
+      "Save to Manual Slot 3",
+      "Rest for eight hours",
+      "Return to Title"
+    ];
+    return `${this.snapshot.chronicleHint}\n\n${commands.map((label, index) => `${index === this.systemIndex ? "›" : " "} ${label}`).join("\n\n")}`;
   }
 
   private memberSummary(member: PartyMemberView): string {
@@ -453,6 +531,7 @@ export class WorldScene extends Phaser.Scene {
   private closeOverlay(): void {
     this.overlay?.destroy();
     this.overlay = undefined;
+    this.overlayKind = undefined;
     this.activeInteraction = undefined;
     this.locked = false;
     this.refreshPrompt();
@@ -464,8 +543,37 @@ export class WorldScene extends Phaser.Scene {
     this.showToast("Chronicle saved to Manual Slot 1.");
   }
 
+  private moveSystem(delta: number): void {
+    this.systemIndex = Phaser.Math.Wrap(this.systemIndex + delta, 0, 5);
+    this.drawSystemOverlay();
+  }
+
+  private drawSystemOverlay(): void {
+    if (this.overlayKind !== "system") return;
+    this.overlay?.destroy();
+    this.overlay = undefined;
+    this.toggleOverlay("system");
+  }
+
+  private async confirmSystemCommand(): Promise<void> {
+    if (this.systemIndex < 3) {
+      const slot = (["manual-1", "manual-2", "manual-3"] as const)[this.systemIndex];
+      if (!slot) return;
+      await this.bridge.save(slot);
+      this.showToast(`Chronicle saved to Manual Slot ${this.systemIndex + 1}.`);
+      return;
+    }
+    if (this.systemIndex === 3) {
+      await this.bridge.rest();
+      this.closeOverlay();
+      this.showToast("The party rests. HP and MP restored.");
+      return;
+    }
+    this.returnToTitle();
+  }
+
   private returnToTitle(): void {
-    if (!this.overlay || !this.locked) return;
+    if (this.overlayKind !== "system" || !this.overlay || !this.locked) return;
     this.cameras.main.fadeOut(180, 10, 18, 24);
     this.time.delayedCall(190, () => this.scene.start("title"));
   }
