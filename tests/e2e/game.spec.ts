@@ -23,15 +23,18 @@ test("new chronicle reaches exploration and deterministic battle", async ({ page
   await page.keyboard.press("Enter");
 
   await expect(canvas).toBeVisible();
-  await page.waitForTimeout(450);
+  const app = page.locator("#app");
+  await expect(app).toHaveAttribute("data-location-id", "location.hearthcross");
+  await expect(app).toHaveAttribute("data-scene", "world");
 
   // Leave the town's central NPC lane before walking to the east road.
   await pressRepeatedly(page, "ArrowUp", 2);
   await pressRepeatedly(page, "ArrowRight", 17);
-  await page.waitForTimeout(450);
+  await expect(app).toHaveAttribute("data-location-id", "location.mossroad");
   const road = await canvas.screenshot();
   await page.keyboard.press("b");
-  await page.waitForTimeout(350);
+  await expect(app).toHaveAttribute("data-battle-state", "choosing");
+  await expect(app).toHaveAttribute("data-scene", "battle");
   const battle = await canvas.screenshot();
 
   expect(battle.equals(road)).toBe(false);

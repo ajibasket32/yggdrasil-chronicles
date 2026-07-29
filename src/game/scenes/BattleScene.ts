@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import type { BattleAction, BattleView, GameBridge, GameSnapshot } from "../bridge";
-import { COLORS, getBridge, TEXT } from "../runtime";
+import { announceScene, COLORS, getBridge, TEXT } from "../runtime";
 
 const ACTIONS: Array<{ id: BattleAction; label: string; hint: string }> = [
   { id: "attack", label: "ATTACK", hint: "A reliable physical strike." },
@@ -37,6 +37,7 @@ export class BattleScene extends Phaser.Scene {
       this.render();
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unsubscribe?.());
+    announceScene("battle");
   }
 
   private bindKeys(): void {

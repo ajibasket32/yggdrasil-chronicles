@@ -9,6 +9,11 @@ export function getBridge(scene: Phaser.Scene): GameBridge {
   return bridge;
 }
 
+export function announceScene(sceneName: "title" | "world" | "battle"): void {
+  const app = document.querySelector<HTMLElement>("#app");
+  if (app) app.dataset.scene = sceneName;
+}
+
 export const COLORS = {
   ink: 0x101622,
   panel: 0x182333,
@@ -27,4 +32,3 @@ export const TEXT = {
   body: { fontFamily: "system-ui, sans-serif", fontSize: "14px", color: COLORS.cream },
   small: { fontFamily: "system-ui, sans-serif", fontSize: "11px", color: COLORS.muted }
 } as const;
-

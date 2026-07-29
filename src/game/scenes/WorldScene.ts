@@ -7,7 +7,7 @@ import type {
   OverlayKind,
   PartyMemberView
 } from "../bridge";
-import { COLORS, getBridge, TEXT } from "../runtime";
+import { announceScene, COLORS, getBridge, TEXT } from "../runtime";
 import {
   getLocationExits,
   getObjectiveGuidance,
@@ -54,6 +54,7 @@ export class WorldScene extends Phaser.Scene {
       else this.renderHud();
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unsubscribe?.());
+    announceScene("world");
   }
 
   private bindKeys(): void {

@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { ancestries, jobs } from "../../content";
 import type { CharacterCreationDraft, GameBridge } from "../bridge";
-import { COLORS, getBridge, TEXT } from "../runtime";
+import { announceScene, COLORS, getBridge, TEXT } from "../runtime";
 
 const NAME_CHOICES = ["Rowan", "Aster", "Marlowe", "Sage", "Kestrel", "Vale"] as const;
 
@@ -31,6 +31,7 @@ export class TitleScene extends Phaser.Scene {
     this.add.text(68, 470, "Arrow keys  Navigate     Enter  Confirm     Esc  Back", TEXT.small);
     this.drawTitleMenu();
     this.bindKeys();
+    announceScene("title");
   }
 
   private paintBackdrop(): void {
@@ -165,4 +166,3 @@ export class TitleScene extends Phaser.Scene {
     if (this.mode === "creation") this.drawTitleMenu();
   }
 }
-
