@@ -174,13 +174,17 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private spawnEncounter(locationId: string, kind: "wilderness" | "dungeon"): void {
+    const activeObjective = this.snapshot.quests.find(({ state }) => state === "active")?.objective ?? "";
     const encounter =
       locationId.includes("mossroad") ? "encounter.mossroad-foragers"
+      : locationId.includes("hollow") && activeObjective.includes("root gnawer") ? "encounter.mossroad-foragers"
       : locationId.includes("hollow") ? "encounter.mire-antler"
       : locationId.includes("ashfall") ? "encounter.ashfall-motes"
+      : locationId.includes("kiln") && activeObjective.includes("cinder wraith") ? "encounter.kiln-watch"
       : locationId.includes("kiln") ? "encounter.kiln-heart"
       : locationId.includes("whitebough") ? "encounter.whitebough-hunt"
-      : "encounter.varn-rootless";
+      : activeObjective.includes("varn rootless") ? "encounter.varn-rootless"
+      : "encounter.vault-echoes";
     this.encounterSprite = this.add.image(14 * TILE + 16, 8 * TILE + 16, "sprite.enemy").setDepth(8);
     this.encounterSprite.setData("encounterId", encounter);
     if (kind === "dungeon") this.encounterSprite.setTint(0xd98c73);

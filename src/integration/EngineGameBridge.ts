@@ -16,7 +16,8 @@ import {
   type CombatSkill,
   type CombatState
 } from "../engine";
-import { encounters, getDialogue, items, locations, quests } from "../content";
+import { applyGeneratedPatch, NarrativeCheckpointQueue } from "../ai";
+import { encounters, getDialogue, items, locations, npcs, quests } from "../content";
 import type {
   BattleAction,
   BattleView,
@@ -32,6 +33,7 @@ import { SaveRepository, type SaveSlot } from "../save";
 import type {
   Combatant,
   GameState,
+  NarrativeContext,
   PlayerCharacter,
   QuestDefinition,
   Stats
@@ -66,6 +68,25 @@ const ROOT_SPARK: CombatSkill = {
 
 const SKILLS: Readonly<Record<string, CombatSkill>> = {
   [ROOT_SPARK.id]: ROOT_SPARK
+};
+
+const LOCATION_FINDS: Readonly<Record<string, readonly [string, number][]>> = {
+  "location.mossroad": [["item.brass-rivet", 1], ["item.vesleaf", 1]],
+  "location.ashfall-trail": [["item.ash-memory", 1], ["item.ash-spice", 1]],
+  "location.silent-kiln": [["item.delver-token", 1]],
+  "location.whitebough": [["item.frost-resin", 1], ["item.memory-shard", 1]],
+  "location.starless-vault": [["item.star-key", 1], ["item.memory-shard", 1]]
+};
+
+const ENCOUNTER_FINDS: Readonly<Record<string, readonly [string, number][]>> = {
+  "encounter.mossroad-foragers": [["item.brass-rivet", 2], ["item.vesleaf", 2]],
+  "encounter.flooded-grove": [["item.lantern-wick", 3]],
+  "encounter.mire-antler": [["item.dream-resin", 1]],
+  "encounter.ashfall-motes": [["item.ash-memory", 2], ["item.calm-ember", 2]],
+  "encounter.kiln-watch": [["item.ash-memory", 2], ["item.yarrow-seal", 1]],
+  "encounter.kiln-heart": [["item.severance-ledger", 1], ["item.cold-ember", 1]],
+  "encounter.whitebough-hunt": [["item.frost-resin", 2], ["item.memory-shard", 2]],
+  "encounter.vault-echoes": [["item.star-key", 3], ["item.memory-shard", 3]]
 };
 
 interface ActiveBattle {
@@ -155,6 +176,18 @@ export class EngineGameBridge implements GameBridge {
   #battle?: ActiveBattle;
   #autosave: GameSnapshot["autosave"] = "idle";
   #hasSave = false;
+  readonly #narrative = new NarrativeCheckpointQueue({
+    validationCatalog: {
+      knownEntityIds: new Set([
+        ...locations.map(({ id }) => id),
+        ...npcs.map(({ id }) => id),
+        ...encounters.map(({ id }) => id),
+        ...items.map(({ id }) => id)
+      ]),
+      knownNpcIds: new Set(npcs.map(({ id }) => id)),
+      forbiddenCanonTerms: ["world item", "super-tier", "ainz", "nazarick"]
+    }
+  });
 
   async initialize(): Promise<void> {
     this.#hasSave = (await this.#saves.list()).some(({ slot }) => slot === "autosave");
@@ -248,8 +281,13 @@ export class EngineGameBridge implements GameBridge {
     const discovered = state.world.discoveredLocationIds.includes(locationId)
       ? state.world.discoveredLocationIds
       : [...state.world.discoveredLocationIds, locationId];
+    let inventory = state.inventory;
+    for (const [itemId, quantity] of LOCATION_FINDS[locationId] ?? []) {
+      inventory = this.addWithinStackLimit(inventory, itemId, quantity);
+    }
     this.#state = {
       ...state,
+      inventory,
       quests: this.applyObjectiveToActiveQuests(state.quests, "travel", locationId),
       world: {
         ...state.world,
@@ -258,8 +296,10 @@ export class EngineGameBridge implements GameBridge {
         worldMinutes: state.world.worldMinutes + 35
       }
     };
+    this.applyInventoryObjectives();
     this.advanceCampaign();
     await this.persist("autosave");
+    this.enqueueNarrativeCheckpoint("world_event", `The party crossed into ${locationId.replace("location.", "").replaceAll("-", " ")}.`);
   }
 
   async interactNpc(npcId: string): Promise<InteractionView> {
@@ -271,11 +311,20 @@ export class EngineGameBridge implements GameBridge {
       party = [...party, recruited];
       recruitedMember = this.toPartyView(recruited, party.length - 1);
     }
+    let progress = state.quests;
+    for (const definition of quests) {
+      const entry = progress.find(({ questId }) => questId === definition.id);
+      const introducesQuest = definition.steps[0]?.kind === "talk" && definition.steps[0].targetId === npcId;
+      if (entry?.state === "available" && introducesQuest) {
+        progress = startQuest(progress, definition.id);
+      }
+    }
     this.#state = {
       ...state,
       party,
-      quests: this.applyObjectiveToActiveQuests(state.quests, "talk", npcId)
+      quests: this.applyObjectiveToActiveQuests(progress, "talk", npcId)
     };
+    this.applyInventoryObjectives();
     this.advanceCampaign();
     await this.persist("autosave");
     const npc = npcId.replace("npc.", "").split("-").map((word) =>
@@ -398,8 +447,18 @@ export class EngineGameBridge implements GameBridge {
     if (reward.itemRoll < 350) inventory = addItem(inventory, "item.root-tonic");
     let progress = state.quests;
     for (const enemyId of new Set(encounter.enemyIds)) {
-      const count = encounter.enemyIds.filter((id) => id === enemyId).length;
+      const activeRequirement = quests.flatMap((definition) => {
+        const entry = progress.find(({ questId, state: questState }) =>
+          questId === definition.id && questState === "active"
+        );
+        const objective = entry ? definition.steps[entry.currentStep] : undefined;
+        return objective?.kind === "defeat" && objective.targetId === enemyId ? [objective.count] : [];
+      });
+      const count = Math.max(encounter.enemyIds.filter((id) => id === enemyId).length, ...activeRequirement, 1);
       progress = this.applyObjectiveToActiveQuests(progress, "defeat", enemyId, count);
+    }
+    for (const [itemId, quantity] of ENCOUNTER_FINDS[encounter.id] ?? []) {
+      inventory = this.addWithinStackLimit(inventory, itemId, quantity);
     }
     const defeatedBossIds = encounter.boss && !state.world.defeatedBossIds.includes(encounter.id)
       ? [...state.world.defeatedBossIds, encounter.id]
@@ -425,6 +484,7 @@ export class EngineGameBridge implements GameBridge {
         }] : state.world.chronicle
       }
     };
+    this.applyInventoryObjectives();
     this.advanceCampaign();
     active.phase = "victory";
     active.log.push(`Victory. The party earns ${reward.experience} experience and ${reward.currency} marks.`);
@@ -452,6 +512,81 @@ export class EngineGameBridge implements GameBridge {
     );
     if (nextMain) progress = startQuest(progress, nextMain.id);
     this.#state = { ...this.#state, quests: progress };
+  }
+
+  private applyInventoryObjectives(): void {
+    if (!this.#state) return;
+    let progress = this.#state.quests;
+    for (const definition of quests) {
+      const entry = progress.find(({ questId, state }) => questId === definition.id && state === "active");
+      const objective = entry ? definition.steps[entry.currentStep] : undefined;
+      if (objective?.kind === "collect") {
+        const owned = inventoryQuantity(this.#state.inventory, objective.targetId);
+        if (owned >= objective.count) {
+          progress = applyQuestObjective(progress, definition, {
+            kind: "collect",
+            targetId: objective.targetId,
+            count: owned
+          });
+        }
+      }
+    }
+    this.#state = { ...this.#state, quests: progress };
+  }
+
+  private addWithinStackLimit(
+    inventory: GameState["inventory"],
+    itemId: string,
+    quantity: number
+  ): GameState["inventory"] {
+    const room = 99 - inventoryQuantity(inventory, itemId);
+    return room > 0 ? addItem(inventory, itemId, Math.min(quantity, room)) : inventory;
+  }
+
+  private enqueueNarrativeCheckpoint(
+    kind: "unexpected_action" | "relationship_change" | "quest_outcome" | "world_event",
+    summary: string
+  ): void {
+    if (!this.#state) return;
+    const trigger = {
+      id: crypto.randomUUID(),
+      kind,
+      summary,
+      actorIds: this.#state.party.map(({ id }) => id),
+      locationId: this.#state.world.currentLocationId,
+      worldMinute: this.#state.world.worldMinutes,
+      createdAt: new Date().toISOString()
+    } as const;
+    this.#state = {
+      ...this.#state,
+      pendingTriggers: [...this.#state.pendingTriggers, trigger]
+    };
+    const context: NarrativeContext = {
+      promptVersion: "living-world-v1",
+      canonSummary: "Yggdrasil is an original living world tree. The Rootbound Concord is failing as rootways are deliberately severed.",
+      trigger,
+      worldDigest: JSON.stringify({
+        location: this.#state.world.currentLocationId,
+        flags: this.#state.world.flags,
+        quests: this.#state.quests.filter(({ state }) => state === "active" || state === "completed")
+      }),
+      relevantFlags: this.#state.world.flags,
+      npcMemories: this.#state.world.relationships.map(({ npcId }) => ({ npcId, memories: [] })),
+      factionState: this.#state.world.factionStanding,
+      availableResources: {
+        assetTags: [...new Set(npcs.map(({ assetTag }) => assetTag))],
+        encounterIds: encounters.map(({ id }) => id),
+        rewardTiers: ["minor", "standard", "major", "boss"]
+      }
+    };
+    void this.#narrative.enqueue(context).then(async ({ patch, report }) => {
+      if (!this.#state) return;
+      const applied = applyGeneratedPatch(this.#state, patch, report);
+      if (applied.applied) {
+        this.#state = applied.state;
+        await this.persist("autosave");
+      }
+    });
   }
 
   private async persist(slot: SaveSlot): Promise<void> {
