@@ -44,6 +44,15 @@ body {
   image-rendering: crisp-edges;
 }
 
+.game-high-contrast #app canvas {
+  filter: contrast(1.45) brightness(1.12);
+  border-color: #fff2a8;
+}
+
+.game-reduced-motion #app canvas {
+  transition: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

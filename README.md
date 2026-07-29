@@ -32,6 +32,10 @@ become selectable at level 4.
 Continue loads the autosave. `Load Chronicle` on the title screen lists the
 three manual slots and restores the selected snapshot.
 
+The title and in-game system menus expose persistent high-contrast,
+reduced-motion, sound on/off, and sound-volume controls. Sound effects use the
+committed CC0 Kenney RPG Audio pack and never require a network connection.
+
 The system menu can export the autosave as
 `yggdrasil-chronicles-save.json` and import it later. Imports validate the
 record checksum and schema, then retain a backup of the replaced autosave.

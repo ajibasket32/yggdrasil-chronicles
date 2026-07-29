@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Added persistent high-contrast, reduced-motion, sound toggle, and volume
+  settings to the title and in-game system menus, plus offline CC0 interface,
+  movement, travel, battle, and restorative sound effects.
+- Added defensive preference-storage tests and browser coverage proving visual
+  accessibility settings survive reload.
+- Hardened browser E2E timing for slower Linux runners and removed the final
+  seed-dependent outcome assumption from the Mender integration test.
 - Upgraded official GitHub Actions to their Node 24-backed releases, removing
   runner deprecation compatibility warnings.
 - Removed an environment-sensitive Mender integration assertion while retaining

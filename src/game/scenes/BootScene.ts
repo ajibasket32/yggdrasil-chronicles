@@ -16,6 +16,12 @@ export class BootScene extends Phaser.Scene {
       frameWidth: 32,
       frameHeight: 32
     });
+    const audio = "/assets/vendor/kenney-rpg-audio/Audio";
+    this.load.audio("sfx.confirm", `${audio}/bookFlip1.ogg`);
+    this.load.audio("sfx.step", `${audio}/footstep04.ogg`);
+    this.load.audio("sfx.attack", `${audio}/knifeSlice.ogg`);
+    this.load.audio("sfx.heal", `${audio}/handleSmallLeather.ogg`);
+    this.load.audio("sfx.door", `${audio}/doorOpen_1.ogg`);
   }
 
   create(): void {

@@ -1,4 +1,5 @@
 import type Phaser from "phaser";
+import { gameSettingsStore } from "../settings";
 import type { GameBridge } from "./bridge";
 
 export const BRIDGE_KEY = "yggdrasil.bridge";
@@ -12,6 +13,14 @@ export function getBridge(scene: Phaser.Scene): GameBridge {
 export function announceScene(sceneName: "title" | "world" | "battle"): void {
   const app = document.querySelector<HTMLElement>("#app");
   if (app) app.dataset.scene = sceneName;
+}
+
+export function motionDuration(milliseconds: number): number {
+  return gameSettingsStore.get().reducedMotion ? 0 : milliseconds;
+}
+
+export function playSound(scene: Phaser.Scene, key: string): void {
+  if (scene.cache.audio.exists(key)) scene.sound.play(key);
 }
 
 export const COLORS = {

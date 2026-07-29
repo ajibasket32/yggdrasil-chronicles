@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { locations, npcs } from "../../content";
+import { gameSettingsStore } from "../../settings";
 import type {
   GameBridge,
   GameSnapshot,
@@ -10,7 +11,7 @@ import type {
 } from "../bridge";
 import { gamepadButtonAction } from "../gamepadControls";
 import { getNpcSpawnPoints } from "../npcPlacement";
-import { announceScene, COLORS, getBridge, TEXT } from "../runtime";
+import { announceScene, COLORS, getBridge, motionDuration, playSound, TEXT } from "../runtime";
 import {
   getLocationExits,
   getObjectiveGuidance,
@@ -59,7 +60,7 @@ export class WorldScene extends Phaser.Scene {
   create(): void {
     this.bridge = getBridge(this);
     this.snapshot = this.bridge.getSnapshot();
-    this.cameras.main.fadeIn(280, 10, 18, 24);
+    this.cameras.main.fadeIn(motionDuration(280), 10, 18, 24);
     this.renderLocation();
     this.bindKeys();
     this.unsubscribe = this.bridge.subscribe((snapshot) => {
@@ -351,10 +352,11 @@ export class WorldScene extends Phaser.Scene {
       targets: this.player,
       x: next.x * TILE + 16,
       y: next.y * TILE + 16,
-      duration: 95,
+      duration: motionDuration(95),
       ease: "Sine.easeOut",
       onComplete: () => {
         this.moving = false;
+        playSound(this, "sfx.step");
         this.refreshPrompt();
       }
     });
@@ -364,10 +366,11 @@ export class WorldScene extends Phaser.Scene {
     const exit = getLocationExits(this.snapshot.locationId).find((candidate) => candidate.direction === direction);
     if (!exit) return;
     this.locked = true;
-    this.cameras.main.fadeOut(180, 10, 18, 24);
+    this.cameras.main.fadeOut(motionDuration(180), 10, 18, 24);
     await this.bridge.travel(exit.targetId);
-    this.time.delayedCall(200, () => {
-      this.cameras.main.fadeIn(180, 10, 18, 24);
+    this.time.delayedCall(motionDuration(200), () => {
+      this.cameras.main.fadeIn(motionDuration(180), 10, 18, 24);
+      playSound(this, "sfx.door");
       this.locked = false;
     });
   }
@@ -548,10 +551,14 @@ export class WorldScene extends Phaser.Scene {
       "Save to Manual Slot 3",
       "Export Autosave",
       "Import Autosave",
+      `High Contrast: ${gameSettingsStore.get().highContrast ? "ON" : "OFF"}`,
+      `Reduced Motion: ${gameSettingsStore.get().reducedMotion ? "ON" : "OFF"}`,
+      `Sound: ${gameSettingsStore.get().soundEnabled ? "ON" : "OFF"}`,
+      `Sound Volume: ${Math.round(gameSettingsStore.get().soundVolume * 100)}%`,
       "Rest for eight hours",
       "Return to Title"
     ];
-    return `${this.snapshot.chronicleHint}\n\n${commands.map((label, index) => `${index === this.systemIndex ? "›" : " "} ${label}`).join("\n\n")}`;
+    return `${this.snapshot.chronicleHint}\n\n${commands.map((label, index) => `${index === this.systemIndex ? "›" : " "} ${label}`).join("\n")}`;
   }
 
   private drawInteractiveOverlay(): void {
@@ -771,7 +778,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private moveSystem(delta: number): void {
-    this.systemIndex = Phaser.Math.Wrap(this.systemIndex + delta, 0, 7);
+    this.systemIndex = Phaser.Math.Wrap(this.systemIndex + delta, 0, 11);
     this.drawSystemOverlay();
   }
 
@@ -799,7 +806,17 @@ export class WorldScene extends Phaser.Scene {
       this.importAutosave();
       return;
     }
-    if (this.systemIndex === 5) {
+    if (this.systemIndex >= 5 && this.systemIndex <= 8) {
+      const settings = gameSettingsStore.get();
+      if (this.systemIndex === 5) gameSettingsStore.update({ highContrast: !settings.highContrast });
+      else if (this.systemIndex === 6) gameSettingsStore.update({ reducedMotion: !settings.reducedMotion });
+      else if (this.systemIndex === 7) gameSettingsStore.update({ soundEnabled: !settings.soundEnabled });
+      else gameSettingsStore.update({ soundVolume: settings.soundVolume >= 1 ? 0 : Math.min(1, settings.soundVolume + 0.1) });
+      playSound(this, "sfx.confirm");
+      this.drawSystemOverlay();
+      return;
+    }
+    if (this.systemIndex === 9) {
       await this.bridge.rest();
       this.closeOverlay();
       this.showToast("The party rests. HP and MP restored.");
@@ -886,8 +903,8 @@ export class WorldScene extends Phaser.Scene {
 
   private returnToTitle(): void {
     if (this.overlayKind !== "system" || !this.overlay || !this.locked) return;
-    this.cameras.main.fadeOut(180, 10, 18, 24);
-    this.time.delayedCall(190, () => this.scene.start("title"));
+    this.cameras.main.fadeOut(motionDuration(180), 10, 18, 24);
+    this.time.delayedCall(motionDuration(190), () => this.scene.start("title"));
   }
 
   private async launchEncounter(): Promise<void> {
@@ -896,8 +913,8 @@ export class WorldScene extends Phaser.Scene {
     if (!id) return;
     this.locked = true;
     await this.bridge.startEncounter(id);
-    this.cameras.main.flash(220, 238, 221, 179);
-    this.time.delayedCall(240, () => this.scene.start("battle"));
+    this.cameras.main.flash(motionDuration(220), 238, 221, 179);
+    this.time.delayedCall(motionDuration(240), () => this.scene.start("battle"));
   }
 
   private showToast(message: string): void {
@@ -907,7 +924,14 @@ export class WorldScene extends Phaser.Scene {
       padding: { x: 14, y: 9 },
       color: COLORS.gold
     }).setOrigin(0.5).setDepth(80);
-    this.tweens.add({ targets: toast, alpha: 0, y: 30, duration: 1600, delay: 900, onComplete: () => toast.destroy() });
+    this.tweens.add({
+      targets: toast,
+      alpha: 0,
+      y: 30,
+      duration: motionDuration(1600),
+      delay: motionDuration(900),
+      onComplete: () => toast.destroy()
+    });
   }
 
   private formatTime(minutes: number): string {

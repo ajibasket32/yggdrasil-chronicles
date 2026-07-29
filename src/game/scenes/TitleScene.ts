@@ -1,13 +1,14 @@
 import Phaser from "phaser";
 import { ancestries, jobs } from "../../content";
+import { gameSettingsStore } from "../../settings";
 import type { CharacterCreationDraft, GameBridge } from "../bridge";
 import { gamepadButtonAction } from "../gamepadControls";
-import { announceScene, COLORS, getBridge, TEXT } from "../runtime";
+import { announceScene, COLORS, getBridge, motionDuration, playSound, TEXT } from "../runtime";
 
 const NAME_CHOICES = ["Rowan", "Aster", "Marlowe", "Sage", "Kestrel", "Vale"] as const;
 const MANUAL_SLOTS = ["manual-1", "manual-2", "manual-3"] as const;
 
-type TitleMode = "title" | "creation" | "load";
+type TitleMode = "title" | "creation" | "load" | "settings";
 
 export class TitleScene extends Phaser.Scene {
   private bridge!: GameBridge;
@@ -22,7 +23,7 @@ export class TitleScene extends Phaser.Scene {
   private detailText?: Phaser.GameObjects.Text;
   private creationTexts: Phaser.GameObjects.Text[] = [];
   private loading = false;
-  private highContrast = false;
+  private settingsIndex = 0;
 
   constructor() {
     super("title");
@@ -106,15 +107,44 @@ export class TitleScene extends Phaser.Scene {
       "NEW CHRONICLE",
       hasSave ? "CONTINUE  —  AUTOSAVE" : "CONTINUE  —  NO AUTOSAVE",
       `LOAD CHRONICLE  —  ${manualSaveCount}/3 MANUAL`,
-      `ACCESSIBILITY  —  HIGH CONTRAST ${this.highContrast ? "ON" : "OFF"}`
+      "SETTINGS  —  ACCESSIBILITY & AUDIO"
     ];
     this.menuTexts = choices.map((label, index) =>
       this.add.text(72, 245 + index * 48, label, {
         ...TEXT.heading,
-        color: index === this.titleIndex ? COLORS.gold : index === 1 && !hasSave ? "#64727a" : this.highContrast ? "#ffffff" : COLORS.cream
+        color: index === this.titleIndex ? COLORS.gold : index === 1 && !hasSave ? "#64727a" : COLORS.cream
       })
     );
     this.mode = "title";
+  }
+
+  private drawSettings(): void {
+    this.menuTexts.forEach((text) => text.destroy());
+    this.creationTexts.forEach((text) => text.destroy());
+    this.detailText?.destroy();
+    this.creationTexts = [];
+    this.mode = "settings";
+    const settings = gameSettingsStore.get();
+    const choices = [
+      `HIGH CONTRAST       ${settings.highContrast ? "ON" : "OFF"}`,
+      `REDUCED MOTION      ${settings.reducedMotion ? "ON" : "OFF"}`,
+      `SOUND               ${settings.soundEnabled ? "ON" : "OFF"}`,
+      `SOUND VOLUME        ${Math.round(settings.soundVolume * 100)}%`
+    ];
+    const heading = this.add.text(72, 210, "SETTINGS", { ...TEXT.heading, color: COLORS.gold });
+    const rows = choices.map((label, index) =>
+      this.add.text(72, 258 + index * 48, `${index === this.settingsIndex ? "›" : " "} ${label}`, {
+        ...TEXT.heading,
+        color: index === this.settingsIndex ? COLORS.gold : COLORS.cream
+      })
+    );
+    this.menuTexts = [heading, ...rows];
+    this.detailText = this.add.text(
+      72,
+      438,
+      "Enter / A toggles options. Left / Right changes volume. Esc / B returns.",
+      TEXT.small
+    );
   }
 
   private drawLoadMenu(message?: string): void {
@@ -184,6 +214,9 @@ export class TitleScene extends Phaser.Scene {
     } else if (this.mode === "load") {
       this.loadIndex = Phaser.Math.Wrap(this.loadIndex + delta, 0, MANUAL_SLOTS.length);
       this.drawLoadMenu();
+    } else if (this.mode === "settings") {
+      this.settingsIndex = Phaser.Math.Wrap(this.settingsIndex + delta, 0, 4);
+      this.drawSettings();
     } else {
       this.creationRow = Phaser.Math.Wrap(this.creationRow + delta, 0, 4);
       this.drawCreation();
@@ -191,6 +224,17 @@ export class TitleScene extends Phaser.Scene {
   }
 
   private adjust(delta: number): void {
+    if (this.mode === "settings") {
+      if (this.settingsIndex === 3) {
+        const current = gameSettingsStore.get().soundVolume;
+        gameSettingsStore.update({
+          soundVolume: Phaser.Math.Clamp(Math.round((current + delta * 0.1) * 10) / 10, 0, 1)
+        });
+        playSound(this, "sfx.confirm");
+        this.drawSettings();
+      }
+      return;
+    }
     if (this.mode !== "creation") return;
     if (this.creationRow === 0) this.nameIndex = Phaser.Math.Wrap(this.nameIndex + delta, 0, NAME_CHOICES.length);
     if (this.creationRow === 1) this.ancestryIndex = Phaser.Math.Wrap(this.ancestryIndex + delta, 0, ancestries.length);
@@ -209,8 +253,18 @@ export class TitleScene extends Phaser.Scene {
       } else if (this.titleIndex === 2) {
         this.drawLoadMenu();
       } else if (this.titleIndex === 3) {
-        this.toggleHighContrast();
+        this.drawSettings();
       }
+      return;
+    }
+    if (this.mode === "settings") {
+      const settings = gameSettingsStore.get();
+      if (this.settingsIndex === 0) gameSettingsStore.update({ highContrast: !settings.highContrast });
+      else if (this.settingsIndex === 1) gameSettingsStore.update({ reducedMotion: !settings.reducedMotion });
+      else if (this.settingsIndex === 2) gameSettingsStore.update({ soundEnabled: !settings.soundEnabled });
+      else gameSettingsStore.update({ soundVolume: settings.soundVolume >= 1 ? 0 : Math.min(1, settings.soundVolume + 0.1) });
+      playSound(this, "sfx.confirm");
+      this.drawSettings();
       return;
     }
     if (this.mode === "load") {
@@ -223,8 +277,8 @@ export class TitleScene extends Phaser.Scene {
       this.loading = true;
       await this.bridge.load(slot);
       this.loading = false;
-      this.cameras.main.fadeOut(260, 10, 18, 24);
-      this.time.delayedCall(270, () => this.scene.start("world"));
+      this.cameras.main.fadeOut(motionDuration(260), 10, 18, 24);
+      this.time.delayedCall(motionDuration(270), () => this.scene.start("world"));
       return;
     }
     if (this.creationRow < 3) {
@@ -238,17 +292,11 @@ export class TitleScene extends Phaser.Scene {
       jobId: jobs[this.jobIndex]?.id ?? "vanguard"
     };
     await this.bridge.newGame(draft);
-    this.cameras.main.fadeOut(260, 10, 18, 24);
-    this.time.delayedCall(270, () => this.scene.start("world"));
+    this.cameras.main.fadeOut(motionDuration(260), 10, 18, 24);
+    this.time.delayedCall(motionDuration(270), () => this.scene.start("world"));
   }
 
   private back(): void {
-    if (this.mode === "creation" || this.mode === "load") this.drawTitleMenu();
-  }
-
-  private toggleHighContrast(): void {
-    this.highContrast = !this.highContrast;
-    this.game.canvas.style.filter = this.highContrast ? "contrast(1.45) brightness(1.12)" : "";
-    this.drawTitleMenu();
+    if (this.mode === "creation" || this.mode === "load" || this.mode === "settings") this.drawTitleMenu();
   }
 }

@@ -18,7 +18,8 @@ npm run test:e2e
 - Playwright currently covers new game, exploration travel, combat entry,
   system/manual-save controls, manual-slot restoration from the title, and
   targeted restorative use from the inventory, plus startup with the narrative
-  proxy unavailable. It also verifies the named autosave export download.
+  proxy unavailable. It also verifies the named autosave export download and
+  persistence of accessibility settings across a browser reload.
 - Campaign validation walks all 35 authored quests through real routes, NPC
   placements, encounter placements, and item sources; it checks graph
   reachability, references, source quantities, boss placement, and route
@@ -26,7 +27,8 @@ npm run test:e2e
 - Integration coverage verifies job-specific forms, starting equipment,
   atomic equip/unequip, restorative consumption, advanced-job unlocks,
   save interchange/corruption rejection, quest-gated recruitment,
-  deterministic party turns, and boss phase thresholds.
+  deterministic party turns, boss phase thresholds, and safe preference
+  storage when browser storage is corrupt or unavailable.
 
 ## Manual release checks
 

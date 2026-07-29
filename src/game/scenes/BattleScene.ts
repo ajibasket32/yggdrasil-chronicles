@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import type { BattleAction, BattleView, GameBridge, GameSnapshot } from "../bridge";
 import { gamepadButtonAction } from "../gamepadControls";
-import { announceScene, COLORS, getBridge, TEXT } from "../runtime";
+import { announceScene, COLORS, getBridge, playSound, TEXT } from "../runtime";
 
 const ACTIONS: Array<{ id: BattleAction; label: string; hint: string }> = [
   { id: "attack", label: "ATTACK", hint: "A reliable physical strike." },
@@ -188,6 +188,7 @@ export class BattleScene extends Phaser.Scene {
     }
     const action = ACTIONS[this.actionIndex];
     if (!action) return;
+    playSound(this, action.id === "skill" || action.id === "item" ? "sfx.heal" : action.id === "attack" ? "sfx.attack" : "sfx.confirm");
     this.resolving = true;
     this.render();
     await this.bridge.chooseBattleAction(action.id);

@@ -1,6 +1,7 @@
 import "./styles.css";
 import { createYggdrasilGame } from "./game";
 import { EngineGameBridge } from "./integration/EngineGameBridge";
+import { applySettingsToPhaserGame, gameSettingsStore } from "./settings";
 
 const bridge = new EngineGameBridge();
 await bridge.initialize();
@@ -15,4 +16,6 @@ if (app) {
   reflectSnapshot(bridge.getSnapshot());
   bridge.subscribe(reflectSnapshot);
 }
-createYggdrasilGame({ parent: "app", bridge });
+const game = createYggdrasilGame({ parent: "app", bridge });
+applySettingsToPhaserGame(gameSettingsStore.get(), game);
+gameSettingsStore.subscribe((settings) => applySettingsToPhaserGame(settings, game));
