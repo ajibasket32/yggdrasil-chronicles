@@ -24,6 +24,7 @@ export interface NarrativeCheckpointQueueOptions {
   endpoint?: string;
   clientId?: string;
   fetch?: typeof globalThis.fetch;
+  requestTimeoutMs?: number;
   validationCatalog?: PatchValidationCatalog;
   cache?: Map<string, NarrativeApiResponse>;
 }
@@ -55,6 +56,7 @@ export class NarrativeCheckpointQueue {
   readonly #endpoint: string;
   readonly #clientId: string;
   readonly #fetch: typeof globalThis.fetch;
+  readonly #requestTimeoutMs: number;
   readonly #catalog: PatchValidationCatalog;
   readonly #cache: Map<string, NarrativeApiResponse>;
   readonly #pending: PendingJob[] = [];
@@ -65,6 +67,7 @@ export class NarrativeCheckpointQueue {
     this.#endpoint = options.endpoint ?? "/api/narrative";
     this.#clientId = options.clientId ?? `browser-${Math.random().toString(36).slice(2)}`;
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
+    this.#requestTimeoutMs = options.requestTimeoutMs ?? 16_000;
     this.#catalog = options.validationCatalog ?? {};
     this.#cache = options.cache ?? new Map();
   }
@@ -126,15 +129,29 @@ export class NarrativeCheckpointQueue {
   }
 
   async #execute(context: NarrativeContext, cacheKey: string): Promise<CheckpointResult> {
+    const controller = new AbortController();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let didTimeOut = false;
     try {
-      const response = await this.#fetch(this.#endpoint, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-yggdrasil-client": this.#clientId
-        },
-        body: JSON.stringify({ context })
+      const timedOut = new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => {
+          didTimeOut = true;
+          controller.abort();
+          reject(new Error("Narrative service request timed out."));
+        }, this.#requestTimeoutMs);
       });
+      const response = await Promise.race([
+        this.#fetch(this.#endpoint, {
+          method: "POST",
+          signal: controller.signal,
+          headers: {
+            "content-type": "application/json",
+            "x-yggdrasil-client": this.#clientId
+          },
+          body: JSON.stringify({ context })
+        }),
+        timedOut
+      ]);
       if (!response.ok) {
         throw new Error(`Narrative service returned HTTP ${response.status}.`);
       }
@@ -153,7 +170,9 @@ export class NarrativeCheckpointQueue {
         report: validation.report
       };
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "Narrative service unavailable.";
+      const reason = didTimeOut
+        ? "Narrative service request timed out."
+        : error instanceof Error ? error.message : "Narrative service unavailable.";
       const patch = createScriptedFallback(context, "The distant boughs remain silent.");
       const validation = validateGeneratedPatch(patch, context, this.#catalog);
       return {
@@ -163,6 +182,10 @@ export class NarrativeCheckpointQueue {
         cacheKey,
         report: validation.report
       };
+    } finally {
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
     }
   }
 }

@@ -63,7 +63,9 @@ export class DemoGameBridge implements GameBridge {
           title: "The First Silence",
           summary: quests.find(({ id }) => id === "quest.first-silence")?.summary ?? "",
           state: "active",
-          objective: "Speak with Mara Vell near the Rootwardens' post."
+          objective: "Speak with Mara Vell near the Rootwardens' post.",
+          objectiveKind: "talk",
+          objectiveTargetId: "npc.mara-vell"
         }
       ],
       autosave: "saved",
@@ -223,4 +225,3 @@ export class DemoGameBridge implements GameBridge {
     for (const listener of this.listeners) listener(snapshot);
   }
 }
-

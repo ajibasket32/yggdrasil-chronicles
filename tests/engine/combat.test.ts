@@ -21,7 +21,7 @@ const burningBlade: CombatSkill = {
 
 describe("deterministic combat", () => {
   it("produces identical state and events from the same seed and action", () => {
-    const hero = makeCombatant("hero-one");
+    const hero = makeCombatant("hero-one", { skills: [burningBlade.id] });
     const enemy = makeCombatant("mireling");
     const first = resolveCombatAction(
       createCombatState([hero], [enemy], "battle-seed"),
@@ -70,5 +70,32 @@ describe("deterministic combat", () => {
     expect(calculateBattleReward("boss", 8, "wyrm").experience)
       .toBeGreaterThan(calculateBattleReward("standard", 8, "wyrm").experience);
   });
-});
 
+  it("rejects ambiguous or impossible combat setup", () => {
+    const hero = makeCombatant("same-id");
+    const duplicateEnemy = makeCombatant("same-id");
+    expect(() => createCombatState([hero], [duplicateEnemy], "duplicate"))
+      .toThrow(/IDs must be unique/);
+
+    const impossibleEnemy = makeCombatant("impossible", { hp: 101 });
+    expect(() => createCombatState([hero], [impossibleEnemy], "invalid-health"))
+      .toThrow(/invalid HP/);
+
+    const defeatedEnemy = makeCombatant("defeated", { hp: 0 });
+    expect(() => createCombatState([hero], [defeatedEnemy], "already-over"))
+      .toThrow(/living combatant/);
+  });
+
+  it("only resolves skills learned by the acting combatant", () => {
+    const hero = makeCombatant("hero-one");
+    const enemy = makeCombatant("mireling");
+    const state = createCombatState([hero], [enemy], "skill-ownership");
+
+    expect(() => resolveCombatAction(
+      state,
+      { type: "skill", actorId: hero.id, targetId: enemy.id, skillId: burningBlade.id },
+      { [burningBlade.id]: burningBlade }
+    )).toThrow(/does not know skill/);
+    expect(state.party[0]?.mp).toBe(hero.mp);
+  });
+});

@@ -1,5 +1,16 @@
 # Testing
 
+GitHub Actions runs the complete quality gate on every push to `main` and on
+every pull request. The same gate can be reproduced locally with:
+
+```bash
+npm run typecheck
+npm test
+npm run validate:content
+npm run build
+npm run test:e2e
+```
+
 ## Automated layers
 
 - Vitest unit tests cover seeded RNG, combat, progression, inventory, quest transitions, rewards, content validation, and AI boundaries.

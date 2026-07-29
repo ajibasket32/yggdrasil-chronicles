@@ -24,5 +24,14 @@ describe("initial game state", () => {
       contentPackVersions: { core: "1.0.0" }
     })).toThrow(/one and four/);
   });
-});
 
+  it("rejects duplicate IDs across the active party and reserves", () => {
+    expect(() => createInitialGameState({
+      seed: "duplicate-roster",
+      startingLocationId: "location-hushharbor",
+      party: [makePlayerCharacter("hero-one")],
+      reserve: [makePlayerCharacter("hero-one")],
+      contentPackVersions: { core: "1.0.0" }
+    })).toThrow(/Party and reserve character IDs must be unique/);
+  });
+});

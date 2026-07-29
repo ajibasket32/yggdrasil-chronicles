@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { coreCampaign, getReachableQuestIds, validateContentPack } from "../../src/content";
+import {
+  coreCampaign,
+  encounterFinds,
+  getReachableQuestIds,
+  locationEncounters,
+  locationFinds,
+  validateContentPack,
+  worldRoutes
+} from "../../src/content";
 
 describe("core campaign content", () => {
   it("meets the authored campaign budget", () => {
@@ -52,5 +60,32 @@ describe("core campaign content", () => {
     }
     expect(visited.size).toBe(coreCampaign.locations.length);
   });
-});
 
+  it("assigns one visible route direction to every location connection", () => {
+    for (const location of coreCampaign.locations) {
+      const routes = worldRoutes.filter(({ fromId }) => fromId === location.id);
+      expect(routes.map(({ toId }) => toId).sort()).toEqual([...location.connections].sort());
+      expect(new Set(routes.map(({ direction }) => direction)).size).toBe(routes.length);
+    }
+  });
+
+  it("provides a playable source for every authored collect and defeat objective", () => {
+    const availableItemIds = new Set([
+      ...Object.values(locationFinds).flatMap((finds) => finds.map(([itemId]) => itemId)),
+      ...Object.values(encounterFinds).flatMap((finds) => finds.map(([itemId]) => itemId))
+    ]);
+    const placedEncounterIds = new Set(Object.values(locationEncounters).flat());
+    const placedEnemyIds = new Set(
+      coreCampaign.encounters
+        .filter(({ id }) => placedEncounterIds.has(id))
+        .flatMap(({ enemyIds }) => enemyIds)
+    );
+
+    for (const quest of coreCampaign.quests) {
+      for (const objective of quest.steps) {
+        if (objective.kind === "collect") expect(availableItemIds.has(objective.targetId), quest.id).toBe(true);
+        if (objective.kind === "defeat") expect(placedEnemyIds.has(objective.targetId), quest.id).toBe(true);
+      }
+    }
+  });
+});

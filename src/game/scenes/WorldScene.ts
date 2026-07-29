@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { encounters, locations, npcs } from "../../content";
+import { locations, npcs } from "../../content";
 import type {
   GameBridge,
   GameSnapshot,
@@ -8,6 +8,12 @@ import type {
   PartyMemberView
 } from "../bridge";
 import { COLORS, getBridge, TEXT } from "../runtime";
+import {
+  getLocationExits,
+  getObjectiveGuidance,
+  selectEncounterForLocation,
+  type ExitDirection
+} from "../worldNavigation";
 
 const TILE = 32;
 const MAP_COLUMNS = 23;
@@ -73,14 +79,14 @@ export class WorldScene extends Phaser.Scene {
     keyboard.on("keydown-T", () => this.returnToTitle());
   }
 
-  private renderLocation(): void {
+  private renderLocation(resetPlayerPosition = true): void {
     this.children.removeAll();
     this.npcSprites = [];
     this.overlay = undefined;
     this.prompt = undefined;
     this.encounterSprite = undefined;
     this.locked = false;
-    this.playerGrid = { x: 5, y: 9 };
+    if (resetPlayerPosition) this.playerGrid = { x: 5, y: 9 };
     const location = locations.find(({ id }) => id === this.snapshot.locationId) ?? locations[0];
     if (!location) return;
 
@@ -97,7 +103,7 @@ export class WorldScene extends Phaser.Scene {
       }
     }
     this.paintLandmarks(kind);
-    this.paintExits(location.connections);
+    this.paintExits(location.id);
     this.spawnNpcs(location.id);
     if (kind !== "town") this.spawnEncounter(location.id, kind);
     this.player = this.add.image(this.playerGrid.x * TILE + 16, this.playerGrid.y * TILE + 16, "sprite.player");
@@ -140,12 +146,45 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  private paintExits(connectionIds: readonly string[]): void {
+  private paintExits(locationId: string): void {
     const graphics = this.add.graphics().setDepth(5);
-    graphics.fillStyle(0xf2c66d, 0.8).fillTriangle(8, 8 * TILE, 24, 7.6 * TILE, 24, 8.4 * TILE);
-    graphics.fillStyle(0xf2c66d, 0.8).fillTriangle(HUD_X - 8, 8 * TILE, HUD_X - 24, 7.6 * TILE, HUD_X - 24, 8.4 * TILE);
-    if (connectionIds.length > 2) {
-      graphics.fillStyle(0xf2c66d, 0.8).fillTriangle(11 * TILE, 8, 10.6 * TILE, 24, 11.4 * TILE, 24);
+    const guidance = getObjectiveGuidance(this.snapshot);
+    for (const exit of getLocationExits(locationId)) {
+      const highlighted = guidance?.nextExit?.targetId === exit.targetId;
+      graphics.fillStyle(highlighted ? 0xffe39a : 0xf2c66d, highlighted ? 1 : 0.82);
+      if (exit.direction === "left") {
+        graphics.fillTriangle(7, 8 * TILE, 25, 7.6 * TILE, 25, 8.4 * TILE);
+        this.add.text(31, 8 * TILE - 10, `← ${exit.targetName}`, {
+          ...TEXT.small,
+          color: highlighted ? "#ffe39a" : COLORS.cream,
+          backgroundColor: "#101622cc",
+          padding: { x: 5, y: 3 }
+        }).setDepth(6);
+      } else if (exit.direction === "right") {
+        graphics.fillTriangle(HUD_X - 7, 8 * TILE, HUD_X - 25, 7.6 * TILE, HUD_X - 25, 8.4 * TILE);
+        this.add.text(HUD_X - 31, 8 * TILE - 10, `${exit.targetName} →`, {
+          ...TEXT.small,
+          color: highlighted ? "#ffe39a" : COLORS.cream,
+          backgroundColor: "#101622cc",
+          padding: { x: 5, y: 3 }
+        }).setOrigin(1, 0).setDepth(6);
+      } else if (exit.direction === "up") {
+        graphics.fillTriangle(11.5 * TILE, 7, 11.1 * TILE, 25, 11.9 * TILE, 25);
+        this.add.text(11.5 * TILE, 31, `${exit.targetName} ↑`, {
+          ...TEXT.small,
+          color: highlighted ? "#ffe39a" : COLORS.cream,
+          backgroundColor: "#101622cc",
+          padding: { x: 5, y: 3 }
+        }).setOrigin(0.5, 0).setDepth(6);
+      } else {
+        graphics.fillTriangle(11.5 * TILE, MAP_ROWS * TILE - 7, 11.1 * TILE, MAP_ROWS * TILE - 25, 11.9 * TILE, MAP_ROWS * TILE - 25);
+        this.add.text(11.5 * TILE, MAP_ROWS * TILE - 31, `${exit.targetName} ↓`, {
+          ...TEXT.small,
+          color: highlighted ? "#ffe39a" : COLORS.cream,
+          backgroundColor: "#101622cc",
+          padding: { x: 5, y: 3 }
+        }).setOrigin(0.5, 1).setDepth(6);
+      }
     }
   }
 
@@ -159,11 +198,19 @@ export class WorldScene extends Phaser.Scene {
       { x: 15, y: 13 },
       { x: 11, y: 5 }
     ];
+    const guidance = getObjectiveGuidance(this.snapshot);
     residents.forEach((npc, index) => {
       const point = points[index] ?? { x: 10, y: 10 };
       const sprite = this.add.image(point.x * TILE + 16, point.y * TILE + 16, "sprite.npc").setDepth(8);
-      sprite.setTint(index % 2 === 0 ? 0xffffff : 0xe8d4a8);
+      const isObjective = guidance?.local && guidance.targetEntityId === npc.id;
+      sprite.setTint(isObjective ? 0xffdf78 : index % 2 === 0 ? 0xffffff : 0xe8d4a8);
       this.npcSprites.push({ id: npc.id, point, sprite });
+      if (isObjective) {
+        this.add.text(point.x * TILE + 16, point.y * TILE - 31, "◆", {
+          ...TEXT.small,
+          color: COLORS.gold
+        }).setOrigin(0.5).setDepth(10);
+      }
       this.add.text(point.x * TILE + 16, point.y * TILE - 15, npc.name.split(" ")[0] ?? npc.name, {
         ...TEXT.small,
         fontSize: "9px",
@@ -174,20 +221,23 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private spawnEncounter(locationId: string, kind: "wilderness" | "dungeon"): void {
-    const activeObjective = this.snapshot.quests.find(({ state }) => state === "active")?.objective ?? "";
-    const encounter =
-      locationId.includes("mossroad") ? "encounter.mossroad-foragers"
-      : locationId.includes("hollow") && activeObjective.includes("root gnawer") ? "encounter.mossroad-foragers"
-      : locationId.includes("hollow") ? "encounter.mire-antler"
-      : locationId.includes("ashfall") ? "encounter.ashfall-motes"
-      : locationId.includes("kiln") && activeObjective.includes("cinder wraith") ? "encounter.kiln-watch"
-      : locationId.includes("kiln") ? "encounter.kiln-heart"
-      : locationId.includes("whitebough") ? "encounter.whitebough-hunt"
-      : activeObjective.includes("varn rootless") ? "encounter.varn-rootless"
-      : "encounter.vault-echoes";
+    this.encounterSprite?.destroy();
+    const activeQuest = this.snapshot.quests.find(({ state }) => state === "active");
+    const encounter = selectEncounterForLocation(locationId, activeQuest);
+    if (!encounter) return;
     this.encounterSprite = this.add.image(14 * TILE + 16, 8 * TILE + 16, "sprite.enemy").setDepth(8);
     this.encounterSprite.setData("encounterId", encounter);
     if (kind === "dungeon") this.encounterSprite.setTint(0xd98c73);
+    const guidance = getObjectiveGuidance(this.snapshot);
+    if (guidance?.local && (activeQuest?.objectiveKind === "defeat" || activeQuest?.objectiveKind === "collect")) {
+      this.add.text(14 * TILE + 16, 8 * TILE - 15, "◆ OBJECTIVE", {
+        ...TEXT.small,
+        fontSize: "9px",
+        color: COLORS.gold,
+        backgroundColor: "#101622cc",
+        padding: { x: 4, y: 2 }
+      }).setOrigin(0.5).setDepth(9);
+    }
   }
 
   private renderHud(): void {
@@ -213,8 +263,16 @@ export class WorldScene extends Phaser.Scene {
       wordWrap: { width: 188 },
       lineSpacing: 3
     }));
+    const guidance = getObjectiveGuidance(snapshot);
+    children.push(this.add.text(HUD_X + 18, 469, "ROUTE", { ...TEXT.small, color: COLORS.gold }));
+    children.push(this.add.text(HUD_X + 18, 486, guidance?.message ?? "Explore and consult the journal.", {
+      ...TEXT.small,
+      color: guidance?.local ? "#ffe39a" : COLORS.cream,
+      wordWrap: { width: 188 },
+      lineSpacing: 2
+    }));
     const saveLabel = snapshot.autosave === "saving" ? "Saving…" : snapshot.autosave === "error" ? "Save failed" : snapshot.autosave === "saved" ? "✓ Autosaved" : "Offline";
-    children.push(this.add.text(HUD_X + 18, 511, saveLabel, { ...TEXT.small, color: snapshot.autosave === "error" ? "#ef7882" : COLORS.muted }));
+    children.push(this.add.text(HUD_X + 18, 524, saveLabel, { ...TEXT.small, fontSize: "9px", color: snapshot.autosave === "error" ? "#ef7882" : COLORS.muted }));
     this.hud = this.add.container(0, 0, children).setDepth(20);
   }
 
@@ -247,15 +305,12 @@ export class WorldScene extends Phaser.Scene {
     });
   }
 
-  private async travelFromEdge(direction: "up" | "down" | "left" | "right"): Promise<void> {
-    const location = locations.find(({ id }) => id === this.snapshot.locationId);
-    if (!location || location.connections.length === 0) return;
-    const index = direction === "left" ? 0 : direction === "up" || direction === "down" ? 1 : location.connections.length - 1;
-    const targetId = location.connections[Math.min(index, location.connections.length - 1)];
-    if (!targetId || targetId === this.snapshot.locationId) return;
+  private async travelFromEdge(direction: ExitDirection): Promise<void> {
+    const exit = getLocationExits(this.snapshot.locationId).find((candidate) => candidate.direction === direction);
+    if (!exit) return;
     this.locked = true;
     this.cameras.main.fadeOut(180, 10, 18, 24);
-    await this.bridge.travel(targetId);
+    await this.bridge.travel(exit.targetId);
     this.time.delayedCall(200, () => {
       this.cameras.main.fadeIn(180, 10, 18, 24);
       this.locked = false;
@@ -333,7 +388,14 @@ export class WorldScene extends Phaser.Scene {
     this.overlay = undefined;
     this.locked = false;
     if (recruited) this.showToast(`${recruited.name} joined the party.`);
+    this.refreshObjectiveActors();
     this.refreshPrompt();
+  }
+
+  private refreshObjectiveActors(): void {
+    const location = locations.find(({ id }) => id === this.snapshot.locationId);
+    if (!location) return;
+    this.renderLocation(false);
   }
 
   private toggleOverlay(kind: OverlayKind): void {
@@ -410,11 +472,9 @@ export class WorldScene extends Phaser.Scene {
   private async launchEncounter(): Promise<void> {
     if (this.locked) return;
     const id = this.encounterSprite?.getData("encounterId") as string | undefined;
-    const fallback = encounters.find(({ boss }) => !boss)?.id;
-    const encounterId = id ?? fallback;
-    if (!encounterId) return;
+    if (!id) return;
     this.locked = true;
-    await this.bridge.startEncounter(encounterId);
+    await this.bridge.startEncounter(id);
     this.cameras.main.flash(220, 238, 221, 179);
     this.time.delayedCall(240, () => this.scene.start("battle"));
   }

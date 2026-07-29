@@ -145,9 +145,34 @@ function blockingStatus(combatant: Combatant): StatusInstance | undefined {
   );
 }
 
+function assertValidCombatant(combatant: Combatant): void {
+  if (!combatant.id.trim()) {
+    throw new Error("Combatant IDs must not be empty");
+  }
+  if (!Number.isInteger(combatant.hp) || combatant.hp < 0 || combatant.hp > combatant.stats.maxHp) {
+    throw new RangeError(`Combatant '${combatant.id}' has invalid HP`);
+  }
+  if (!Number.isInteger(combatant.mp) || combatant.mp < 0 || combatant.mp > combatant.stats.maxMp) {
+    throw new RangeError(`Combatant '${combatant.id}' has invalid MP`);
+  }
+}
+
 export function createCombatState(party: Combatant[], enemies: Combatant[], seed: string): CombatState {
+  if (!seed.trim()) {
+    throw new Error("A deterministic combat seed is required");
+  }
   if (party.length === 0 || enemies.length === 0) {
     throw new Error("Combat requires at least one combatant on each side");
+  }
+  const combatants = [...party, ...enemies];
+  for (const combatant of combatants) {
+    assertValidCombatant(combatant);
+  }
+  if (new Set(combatants.map((combatant) => combatant.id)).size !== combatants.length) {
+    throw new Error("Combatant IDs must be unique across both sides");
+  }
+  if (!party.some(isAlive) || !enemies.some(isAlive)) {
+    throw new Error("Combat requires at least one living combatant on each side");
   }
   return {
     party: party.map(copyCombatant),
@@ -211,6 +236,9 @@ export function resolveCombatAction(
   const skill = action.type === "attack" ? BASIC_ATTACK : skills[skillId];
   if (!skill) {
     throw new Error(`Unknown combat skill '${skillId}'`);
+  }
+  if (action.type === "skill" && !actorMatch.combatant.skills.includes(skill.id)) {
+    throw new Error(`Combat actor '${action.actorId}' does not know skill '${skill.id}'`);
   }
   if (actorMatch.combatant.mp < skill.mpCost) {
     return {

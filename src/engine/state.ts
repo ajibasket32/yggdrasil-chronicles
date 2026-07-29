@@ -32,12 +32,19 @@ export function createInitialGameState(options: InitialGameStateOptions): GameSt
   if (!options.seed.trim()) {
     throw new Error("A deterministic game seed is required");
   }
+  if (!options.startingLocationId.trim()) {
+    throw new Error("A starting location is required");
+  }
   if (options.party.length < 1 || options.party.length > 4) {
     throw new RangeError("The active party must contain between one and four characters");
   }
-  const partyIds = new Set(options.party.map((character) => character.id));
-  if (partyIds.size !== options.party.length) {
-    throw new Error("Active party character IDs must be unique");
+  const roster = [...options.party, ...(options.reserve ?? [])];
+  const rosterIds = roster.map((character) => character.id);
+  if (rosterIds.some((id) => !id.trim())) {
+    throw new Error("Character IDs must not be empty");
+  }
+  if (new Set(rosterIds).size !== rosterIds.length) {
+    throw new Error("Party and reserve character IDs must be unique");
   }
   return {
     schemaVersion: CURRENT_GAME_SCHEMA_VERSION,
@@ -61,4 +68,3 @@ export function createInitialGameState(options: InitialGameStateOptions): GameSt
     pendingTriggers: []
   };
 }
-

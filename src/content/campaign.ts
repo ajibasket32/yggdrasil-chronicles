@@ -113,6 +113,33 @@ export const locations: LocationDefinition[] = [
   }
 ];
 
+export type RouteDirection = "north" | "east" | "south" | "west";
+
+export interface WorldRoute {
+  fromId: string;
+  toId: string;
+  direction: RouteDirection;
+}
+
+export const worldRoutes: readonly WorldRoute[] = [
+  { fromId: "location.hearthcross", toId: "location.mossroad", direction: "east" },
+  { fromId: "location.mossroad", toId: "location.hearthcross", direction: "west" },
+  { fromId: "location.mossroad", toId: "location.hollow-root", direction: "north" },
+  { fromId: "location.hollow-root", toId: "location.mossroad", direction: "south" },
+  { fromId: "location.mossroad", toId: "location.emberwake", direction: "east" },
+  { fromId: "location.emberwake", toId: "location.mossroad", direction: "west" },
+  { fromId: "location.emberwake", toId: "location.ashfall-trail", direction: "east" },
+  { fromId: "location.ashfall-trail", toId: "location.emberwake", direction: "west" },
+  { fromId: "location.ashfall-trail", toId: "location.silent-kiln", direction: "north" },
+  { fromId: "location.silent-kiln", toId: "location.ashfall-trail", direction: "south" },
+  { fromId: "location.ashfall-trail", toId: "location.larkspire", direction: "east" },
+  { fromId: "location.larkspire", toId: "location.ashfall-trail", direction: "west" },
+  { fromId: "location.larkspire", toId: "location.whitebough", direction: "east" },
+  { fromId: "location.whitebough", toId: "location.larkspire", direction: "west" },
+  { fromId: "location.whitebough", toId: "location.starless-vault", direction: "east" },
+  { fromId: "location.starless-vault", toId: "location.whitebough", direction: "west" }
+];
+
 type NpcSeed = readonly [
   id: string,
   name: string,
@@ -364,6 +391,36 @@ export const encounters: EncounterDefinition[] = [
   { id: "encounter.varn-rootless", name: "Varn, Architect of Severance", enemyIds: ["enemy.varn-rootless"], rewardTier: "boss", boss: true }
 ];
 
+export const locationEncounters: Readonly<Record<string, readonly string[]>> = {
+  "location.mossroad": ["encounter.mossroad-foragers", "encounter.flooded-grove"],
+  "location.hollow-root": ["encounter.mossroad-foragers", "encounter.mire-antler"],
+  "location.ashfall-trail": ["encounter.ashfall-motes"],
+  "location.silent-kiln": ["encounter.kiln-watch", "encounter.kiln-heart"],
+  "location.whitebough": ["encounter.whitebough-hunt"],
+  "location.starless-vault": ["encounter.vault-echoes", "encounter.varn-rootless"]
+};
+
+export type ContentFind = readonly [itemId: string, quantity: number];
+
+export const locationFinds: Readonly<Record<string, readonly ContentFind[]>> = {
+  "location.mossroad": [["item.brass-rivet", 1], ["item.vesleaf", 1]],
+  "location.ashfall-trail": [["item.ash-memory", 1], ["item.ash-spice", 1]],
+  "location.silent-kiln": [["item.delver-token", 1]],
+  "location.whitebough": [["item.frost-resin", 1], ["item.memory-shard", 1]],
+  "location.starless-vault": [["item.star-key", 1], ["item.memory-shard", 1]]
+};
+
+export const encounterFinds: Readonly<Record<string, readonly ContentFind[]>> = {
+  "encounter.mossroad-foragers": [["item.brass-rivet", 2], ["item.vesleaf", 2]],
+  "encounter.flooded-grove": [["item.lantern-wick", 3]],
+  "encounter.mire-antler": [["item.dream-resin", 1]],
+  "encounter.ashfall-motes": [["item.ash-memory", 2], ["item.calm-ember", 2]],
+  "encounter.kiln-watch": [["item.ash-memory", 2], ["item.yarrow-seal", 1]],
+  "encounter.kiln-heart": [["item.severance-ledger", 1], ["item.cold-ember", 1]],
+  "encounter.whitebough-hunt": [["item.frost-resin", 2], ["item.memory-shard", 2]],
+  "encounter.vault-echoes": [["item.star-key", 3], ["item.memory-shard", 3]]
+};
+
 export const items: ItemDefinition[] = [
   { id: "item.vesleaf", name: "Vesleaf", kind: "consumable", description: "A bitter medicinal leaf that closes small wounds.", value: 18 },
   { id: "item.root-tonic", name: "Root Tonic", kind: "consumable", description: "Restores a modest amount of vitality.", value: 45 },
@@ -443,4 +500,3 @@ export function getDialogue(npcId: string): readonly string[] {
     ? [`${npc.name} watches the road for a moment.`, `"Every place remembers differently," ${npc.name} says.`]
     : ["Only the rain answers."];
 }
-

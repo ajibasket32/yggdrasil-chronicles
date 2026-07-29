@@ -29,6 +29,8 @@ export interface QuestView {
   summary: string;
   state: QuestState;
   objective: string;
+  objectiveKind?: "talk" | "travel" | "collect" | "defeat";
+  objectiveTargetId?: string;
 }
 
 export interface InventoryView {
@@ -103,4 +105,3 @@ export interface GameLaunchOptions {
   width?: number;
   height?: number;
 }
-

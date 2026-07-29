@@ -65,4 +65,43 @@ describe("narrative checkpoint queue", () => {
     expect(result.patch.quests).toEqual([]);
     expect(result.fallbackReason).toContain("offline");
   });
+
+  it("times out a stalled request and continues draining later checkpoints", async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockImplementationOnce((_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new Error("aborted"));
+          }, { once: true });
+        }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        patch: validPatch({ id: "generated.patch-2", triggerId: "trigger-2" }),
+        source: "provider"
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      }));
+    const queue = new NarrativeCheckpointQueue({
+      fetch: fetchMock,
+      requestTimeoutMs: 10
+    });
+    const secondContext = narrativeContext({
+      trigger: { ...narrativeContext().trigger, id: "trigger-2" },
+      worldDigest: "world-digest-2"
+    });
+
+    const stalled = queue.enqueue(narrativeContext());
+    const later = queue.enqueue(secondContext);
+
+    await expect(stalled).resolves.toMatchObject({
+      source: "scripted",
+      fallbackReason: "Narrative service request timed out."
+    });
+    await expect(later).resolves.toMatchObject({
+      source: "provider",
+      patch: { triggerId: "trigger-2" }
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(queue.pendingCount).toBe(0);
+  });
 });

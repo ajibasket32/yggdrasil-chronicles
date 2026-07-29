@@ -17,7 +17,16 @@ import {
   type CombatState
 } from "../engine";
 import { applyGeneratedPatch, NarrativeCheckpointQueue } from "../ai";
-import { encounters, getDialogue, items, locations, npcs, quests } from "../content";
+import {
+  encounterFinds,
+  encounters,
+  getDialogue,
+  items,
+  locationFinds,
+  locations,
+  npcs,
+  quests
+} from "../content";
 import type {
   BattleAction,
   BattleView,
@@ -68,25 +77,6 @@ const ROOT_SPARK: CombatSkill = {
 
 const SKILLS: Readonly<Record<string, CombatSkill>> = {
   [ROOT_SPARK.id]: ROOT_SPARK
-};
-
-const LOCATION_FINDS: Readonly<Record<string, readonly [string, number][]>> = {
-  "location.mossroad": [["item.brass-rivet", 1], ["item.vesleaf", 1]],
-  "location.ashfall-trail": [["item.ash-memory", 1], ["item.ash-spice", 1]],
-  "location.silent-kiln": [["item.delver-token", 1]],
-  "location.whitebough": [["item.frost-resin", 1], ["item.memory-shard", 1]],
-  "location.starless-vault": [["item.star-key", 1], ["item.memory-shard", 1]]
-};
-
-const ENCOUNTER_FINDS: Readonly<Record<string, readonly [string, number][]>> = {
-  "encounter.mossroad-foragers": [["item.brass-rivet", 2], ["item.vesleaf", 2]],
-  "encounter.flooded-grove": [["item.lantern-wick", 3]],
-  "encounter.mire-antler": [["item.dream-resin", 1]],
-  "encounter.ashfall-motes": [["item.ash-memory", 2], ["item.calm-ember", 2]],
-  "encounter.kiln-watch": [["item.ash-memory", 2], ["item.yarrow-seal", 1]],
-  "encounter.kiln-heart": [["item.severance-ledger", 1], ["item.cold-ember", 1]],
-  "encounter.whitebough-hunt": [["item.frost-resin", 2], ["item.memory-shard", 2]],
-  "encounter.vault-echoes": [["item.star-key", 3], ["item.memory-shard", 3]]
 };
 
 interface ActiveBattle {
@@ -282,7 +272,7 @@ export class EngineGameBridge implements GameBridge {
       ? state.world.discoveredLocationIds
       : [...state.world.discoveredLocationIds, locationId];
     let inventory = state.inventory;
-    for (const [itemId, quantity] of LOCATION_FINDS[locationId] ?? []) {
+    for (const [itemId, quantity] of locationFinds[locationId] ?? []) {
       inventory = this.addWithinStackLimit(inventory, itemId, quantity);
     }
     this.#state = {
@@ -457,7 +447,7 @@ export class EngineGameBridge implements GameBridge {
       const count = Math.max(encounter.enemyIds.filter((id) => id === enemyId).length, ...activeRequirement, 1);
       progress = this.applyObjectiveToActiveQuests(progress, "defeat", enemyId, count);
     }
-    for (const [itemId, quantity] of ENCOUNTER_FINDS[encounter.id] ?? []) {
+    for (const [itemId, quantity] of encounterFinds[encounter.id] ?? []) {
       inventory = this.addWithinStackLimit(inventory, itemId, quantity);
     }
     const defeatedBossIds = encounter.boss && !state.world.defeatedBossIds.includes(encounter.id)
@@ -633,7 +623,9 @@ export class EngineGameBridge implements GameBridge {
       title: definition.title,
       summary: definition.summary,
       state,
-      objective: objective ? `${objective.kind} ${objective.count > 1 ? `${objective.count} × ` : ""}${target}` : "Completed"
+      objective: objective ? `${objective.kind} ${objective.count > 1 ? `${objective.count} × ` : ""}${target}` : "Completed",
+      objectiveKind: objective?.kind,
+      objectiveTargetId: objective?.targetId
     };
   }
 
