@@ -61,6 +61,7 @@ describe("EngineGameBridge party combat", () => {
   it("handles item and escape actions safely through the public bridge", async () => {
     const { bridge } = createBridge();
     await startChronicle(bridge);
+    const startingHp = bridge.getSnapshot().party[0]?.hp ?? 0;
     const tonicCount = bridge.getSnapshot().inventory.find(({ itemId }) => itemId === "item.root-tonic")?.quantity ?? 0;
     bridge.startEncounter("encounter.mossroad-foragers");
 
@@ -73,6 +74,7 @@ describe("EngineGameBridge party combat", () => {
     expect(bridge.getSnapshot().battle?.phase).toBe("escaped");
     await bridge.leaveBattle();
     expect(bridge.getSnapshot().battle).toBeUndefined();
+    expect(bridge.getSnapshot().party[0]?.hp).toBeLessThan(startingHp);
   });
 
   it("uses the selected job's authored form and applies starting equipment in battle", async () => {

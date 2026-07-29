@@ -126,18 +126,19 @@ test("inventory targets a party member and visibly consumes a restorative", asyn
   await page.keyboard.press("Enter");
   await expect(app).toHaveAttribute("data-scene", "world");
 
+  const quantityBeforeUse = Number(await app.getAttribute("data-inventory-total-quantity"));
+  const hpBeforeUse = Number(await app.getAttribute("data-party-current-hp"));
   await page.keyboard.press("i");
-  await expect(canvas).toBeVisible();
-  const selectedItem = await canvas.screenshot();
   await page.keyboard.press("Enter");
-  await expect(canvas).toBeVisible();
-  const targetChoice = await canvas.screenshot();
-  expect(targetChoice.equals(selectedItem)).toBe(false);
+  // Selecting an item rebuilds the inventory panel into its party-target view.
+  await page.waitForTimeout(350);
   await page.keyboard.press("Enter");
-  await page.waitForTimeout(180);
-  await expect(canvas).toBeVisible();
-  const usedItem = await canvas.screenshot();
-  expect(usedItem.equals(selectedItem)).toBe(false);
+  await expect
+    .poll(async () => Number(await app.getAttribute("data-inventory-total-quantity")))
+    .toBe(quantityBeforeUse - 1);
+  await expect
+    .poll(async () => Number(await app.getAttribute("data-party-current-hp")))
+    .toBeGreaterThan(hpBeforeUse);
 });
 
 test("system menu exports the autosave as a named JSON download", async ({ page }) => {

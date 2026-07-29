@@ -671,7 +671,24 @@ export class EngineGameBridge implements GameBridge {
   }
 
   async leaveBattle(): Promise<void> {
-    if (this.#battle?.phase === "defeat" && this.#state) {
+    if (this.#battle?.phase === "escaped" && this.#state) {
+      const escapedParty = this.#battle.state.party;
+      this.#state = {
+        ...this.#state,
+        party: this.#state.party.map((member) => {
+          const combatant = escapedParty.find(({ id }) => id === member.id);
+          if (!combatant) return member;
+          const missingHp = Math.max(0, combatant.stats.maxHp - combatant.hp);
+          const missingMp = Math.max(0, combatant.stats.maxMp - combatant.mp);
+          return {
+            ...member,
+            hp: Math.max(1, member.stats.maxHp - missingHp),
+            mp: Math.max(0, member.stats.maxMp - missingMp),
+            statuses: combatant.statuses
+          };
+        })
+      };
+    } else if (this.#battle?.phase === "defeat" && this.#state) {
       this.#state = {
         ...this.#state,
         party: this.#state.party.map((member) => ({
