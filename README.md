@@ -19,10 +19,15 @@ Open `http://127.0.0.1:5173`. The game remains playable without an AI key.
 - Interact/confirm: Enter, Space, or E
 - Cancel/menu: Escape
 - Journal: J
+- Inventory/use/equip: I
 - Party: P
 - Quick save: F5
 - System menu/manual saves: Escape, then choose a slot
 - Gamepad: D-pad/left stick to move, A to confirm, B to cancel
+
+Inventory and party screens use the same directional controls. Consumables
+select a party target; gear can be equipped or removed; advanced job branches
+become selectable at level 4.
 
 Continue loads the autosave. `Load Chronicle` on the title screen lists the
 three manual slots and restores the selected snapshot.

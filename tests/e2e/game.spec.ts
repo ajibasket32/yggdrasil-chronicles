@@ -100,3 +100,36 @@ test("manual load restores the selected chronicle from the title", async ({ page
   await expect(app).toHaveAttribute("data-scene", "world");
   await expect(app).toHaveAttribute("data-location-id", "location.mossroad");
 });
+
+test("inventory targets a party member and visibly consumes a restorative", async ({ page }) => {
+  await page.goto("/");
+  const app = page.locator("#app");
+  const canvas = page.locator("canvas");
+  await expect(canvas).toBeVisible();
+  await expect(app).toHaveAttribute("data-scene", "title");
+  await pressRepeatedly(page, "Enter", 5);
+  await expect(app).toHaveAttribute("data-scene", "world");
+
+  // Take one hit so the selected restorative has a meaningful target.
+  await pressRepeatedly(page, "ArrowUp", 2);
+  await pressRepeatedly(page, "ArrowRight", 17);
+  await page.keyboard.press("b");
+  await expect(app).toHaveAttribute("data-scene", "battle");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(180);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Enter");
+  await expect(app).toHaveAttribute("data-battle-state", "escaped");
+  await page.keyboard.press("Enter");
+  await expect(app).toHaveAttribute("data-scene", "world");
+
+  await page.keyboard.press("i");
+  const selectedItem = await canvas.screenshot();
+  await page.keyboard.press("Enter");
+  const targetChoice = await canvas.screenshot();
+  expect(targetChoice.equals(selectedItem)).toBe(false);
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(180);
+  const usedItem = await canvas.screenshot();
+  expect(usedItem.equals(selectedItem)).toBe(false);
+});

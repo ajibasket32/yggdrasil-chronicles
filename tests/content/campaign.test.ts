@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  advancedJobs,
   auditCampaignReadiness,
   bossPhases,
   coreCampaign,
@@ -8,6 +9,7 @@ import {
   getReachableQuestIds,
   locationEncounters,
   locationFinds,
+  jobs,
   recruitProfiles,
   startingBuildLoadouts,
   validateContentPack,
@@ -23,6 +25,14 @@ describe("core campaign content", () => {
     expect(coreCampaign.quests.filter(({ mainStory }) => mainStory)).toHaveLength(15);
     expect(coreCampaign.encounters.filter(({ boss }) => boss)).toHaveLength(3);
     expect(startingBuildLoadouts).toHaveLength(24);
+    expect(advancedJobs).toHaveLength(12);
+    for (const job of jobs) {
+      expect(advancedJobs.filter(({ baseJobId }) => baseJobId === job.id)).toHaveLength(2);
+    }
+    for (const branch of advancedJobs) {
+      const matchingBuilds = startingBuildLoadouts.filter(({ jobId }) => jobId === branch.baseJobId);
+      expect(matchingBuilds.every(({ startingSkills }) => startingSkills.includes(branch.signatureSkillId))).toBe(true);
+    }
     expect(recruitProfiles).toHaveLength(3);
     expect(bossPhases.filter(({ encounterId }) => encounterId === "encounter.varn-rootless")).toHaveLength(3);
   });

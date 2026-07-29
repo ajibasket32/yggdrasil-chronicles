@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Made inventory and party overlays interactive with keyboard/gamepad item
+  targeting, restorative use, atomic equip/unequip, and clear action feedback.
+- Added twelve level-gated advanced jobs, persistent branch unlocks, signature
+  form selection, and visible active/available/locked requirements.
+- Updated party HUD values to include equipped HP/MP bonuses while preserving
+  the underlying wound/focus deficit across gear changes and battles.
 - Added distinct authored loadouts for every ancestry/job pairing, including
   starting stats, practiced forms, inventory, resistances, and equipped gear.
 - Added quest-gated Tovin, Keva, and Eira recruitment plus data-driven

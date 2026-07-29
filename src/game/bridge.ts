@@ -22,6 +22,15 @@ export interface PartyMemberView {
   mp: number;
   maxMp: number;
   portraitTint: number;
+  equipment?: Partial<Record<"weapon" | "armor" | "accessory", { itemId: string; name: string }>>;
+  jobOptions?: JobOptionView[];
+}
+
+export interface JobOptionView {
+  id: string;
+  name: string;
+  state: "active" | "unlocked" | "available" | "locked";
+  requirement: string;
 }
 
 export interface QuestView {
@@ -39,6 +48,13 @@ export interface InventoryView {
   name: string;
   description: string;
   quantity: number;
+  kind?: "consumable" | "weapon" | "armor" | "accessory" | "key";
+  equippedBy?: string[];
+}
+
+export interface GameCommandResult {
+  success: boolean;
+  message: string;
 }
 
 export interface BattleActorView {
@@ -108,6 +124,13 @@ export interface GameBridge {
   leaveBattle(): void | Promise<void>;
   rest(): void | Promise<void>;
   save(slot: GameSaveSlot): void | Promise<void>;
+  useInventoryItem(itemId: string, memberId: string): GameCommandResult | Promise<GameCommandResult>;
+  setEquipment(
+    memberId: string,
+    slot: "weapon" | "armor" | "accessory",
+    itemId?: string
+  ): GameCommandResult | Promise<GameCommandResult>;
+  selectJob(memberId: string, jobId: string): GameCommandResult | Promise<GameCommandResult>;
 }
 
 export interface GameLaunchOptions {

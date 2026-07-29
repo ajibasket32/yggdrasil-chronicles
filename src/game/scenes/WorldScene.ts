@@ -3,6 +3,7 @@ import { locations, npcs } from "../../content";
 import type {
   GameBridge,
   GameSnapshot,
+  InventoryView,
   InteractionView,
   OverlayKind,
   PartyMemberView
@@ -21,8 +22,10 @@ const TILE = 32;
 const MAP_COLUMNS = 23;
 const MAP_ROWS = 17;
 const HUD_X = MAP_COLUMNS * TILE;
+const EQUIPMENT_SLOTS = ["weapon", "armor", "accessory"] as const;
 
 type Point = { x: number; y: number };
+type InteractiveOverlayMode = "browse" | "target" | "jobs" | "equipment";
 
 export class WorldScene extends Phaser.Scene {
   private bridge!: GameBridge;
@@ -37,6 +40,12 @@ export class WorldScene extends Phaser.Scene {
   private overlay?: Phaser.GameObjects.Container;
   private overlayKind?: OverlayKind;
   private systemIndex = 0;
+  private inventoryIndex = 0;
+  private partyIndex = 0;
+  private partyJobIndex = 0;
+  private equipmentIndex = 0;
+  private interactiveMode: InteractiveOverlayMode = "browse";
+  private selectedInventoryItemId?: string;
   private npcSprites: Array<{ id: string; point: Point; sprite: Phaser.GameObjects.Image }> = [];
   private encounterSprite?: Phaser.GameObjects.Image;
   private activeInteraction?: { view: InteractionView; index: number };
@@ -56,7 +65,10 @@ export class WorldScene extends Phaser.Scene {
       const changedLocation = snapshot.locationId !== this.snapshot.locationId;
       this.snapshot = snapshot;
       if (changedLocation) this.renderLocation();
-      else this.renderHud();
+      else {
+        this.renderHud();
+        if (this.overlayKind === "inventory" || this.overlayKind === "party") this.drawInteractiveOverlay();
+      }
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unsubscribe?.());
     announceScene("world");
@@ -105,6 +117,14 @@ export class WorldScene extends Phaser.Scene {
     if (this.overlayKind === "system") {
       if (direction === "up" || direction === "left") this.moveSystem(-1);
       else this.moveSystem(1);
+      return;
+    }
+    if (this.overlayKind === "inventory") {
+      this.moveInventory(direction === "up" || direction === "left" ? -1 : 1);
+      return;
+    }
+    if (this.overlayKind === "party") {
+      this.movePartyOverlay(direction);
       return;
     }
     void this.tryMove(direction);
@@ -385,6 +405,14 @@ export class WorldScene extends Phaser.Scene {
       await this.confirmSystemCommand();
       return;
     }
+    if (this.overlayKind === "inventory") {
+      await this.confirmInventory();
+      return;
+    }
+    if (this.overlayKind === "party") {
+      await this.confirmPartyOverlay();
+      return;
+    }
     if (this.overlay) return;
     const npc = this.nearestNpc();
     if (npc) {
@@ -477,6 +505,18 @@ export class WorldScene extends Phaser.Scene {
     this.locked = true;
     this.overlayKind = kind;
     if (openingSystem) this.systemIndex = 0;
+    if (kind === "inventory" || kind === "party") {
+      this.interactiveMode = "browse";
+      this.selectedInventoryItemId = undefined;
+      if (kind === "inventory") this.inventoryIndex = 0;
+      else {
+        this.partyIndex = 0;
+        this.partyJobIndex = 0;
+        this.equipmentIndex = 0;
+      }
+      this.drawInteractiveOverlay();
+      return;
+    }
     const panel = this.add.rectangle(60, 42, 640, 456, COLORS.panel, 0.98).setOrigin(0).setStrokeStyle(2, 0x6f8f82);
     const title = this.add.text(88, 70, kind.toUpperCase(), { ...TEXT.heading, color: COLORS.gold });
     const rule = this.add.rectangle(88, 105, 584, 1, COLORS.panelLight).setOrigin(0);
@@ -501,9 +541,6 @@ export class WorldScene extends Phaser.Scene {
         ? this.snapshot.inventory.map((item) => `${item.name} ×${item.quantity}\n   ${item.description}`).join("\n\n")
         : "The travel pack is empty.";
     }
-    if (kind === "party") {
-      return this.snapshot.party.map((member) => this.memberSummary(member)).join("\n\n");
-    }
     const commands = [
       "Save to Manual Slot 1",
       "Save to Manual Slot 2",
@@ -514,8 +551,188 @@ export class WorldScene extends Phaser.Scene {
     return `${this.snapshot.chronicleHint}\n\n${commands.map((label, index) => `${index === this.systemIndex ? "›" : " "} ${label}`).join("\n\n")}`;
   }
 
-  private memberSummary(member: PartyMemberView): string {
-    return `${member.name}  —  ${member.ancestry} ${member.job}  Lv ${member.level}\nHP ${member.hp}/${member.maxHp}    MP ${member.mp}/${member.maxMp}`;
+  private drawInteractiveOverlay(): void {
+    if (this.overlayKind !== "inventory" && this.overlayKind !== "party") return;
+    this.overlay?.destroy();
+    const panel = this.add.rectangle(60, 42, 640, 456, COLORS.panel, 0.98).setOrigin(0).setStrokeStyle(2, 0x6f8f82);
+    const title = this.add.text(88, 70, this.overlayKind === "inventory" ? "INVENTORY" : "PARTY", { ...TEXT.heading, color: COLORS.gold });
+    const rule = this.add.rectangle(88, 105, 584, 1, COLORS.panelLight).setOrigin(0);
+    const body = this.add.text(88, 126, this.interactiveOverlayContent(), {
+      ...TEXT.body,
+      wordWrap: { width: 570 },
+      lineSpacing: 6
+    });
+    const hint = this.add.text(88, 462, this.interactiveOverlayHint(), TEXT.small);
+    this.overlay = this.add.container(0, 0, [panel, title, rule, body, hint]).setDepth(50);
+  }
+
+  private interactiveOverlayContent(): string {
+    return this.overlayKind === "inventory" ? this.inventoryOverlayContent() : this.partyOverlayContent();
+  }
+
+  private interactiveOverlayHint(): string {
+    if (this.overlayKind === "inventory") {
+      return this.interactiveMode === "target"
+        ? "Arrows / D-pad  Choose target     Enter / A  Confirm     Esc / B  Back"
+        : "Arrows / D-pad  Select     Enter / A  Use or equip     Esc / B  Close";
+    }
+    if (this.interactiveMode === "jobs") {
+      return "Arrows / D-pad  Select job     Left  Member     Right  Equipment     Esc / B  Back";
+    }
+    if (this.interactiveMode === "equipment") {
+      return "Arrows / D-pad  Select slot     Enter / A  Unequip     Left  Member     Esc / B  Back";
+    }
+    return "Up / Down  Member     Right  Jobs     Left  Equipment     Enter / A  Jobs     Esc / B  Close";
+  }
+
+  private inventoryOverlayContent(): string {
+    const inventory = this.snapshot.inventory;
+    if (!inventory.length) return "The travel pack is empty.";
+    if (this.interactiveMode === "target") {
+      const item = this.selectedInventoryItem();
+      const action = this.itemKind(item) === "consumable" ? "USE" : "EQUIP";
+      const party = this.snapshot.party;
+      return `${action}: ${item?.name ?? "Unknown item"}\n${item?.description ?? ""}\n\n${party.map((member, index) => `${index === this.partyIndex ? "›" : " "} ${member.name}  Lv ${member.level}\n   HP ${member.hp}/${member.maxHp}  MP ${member.mp}/${member.maxMp}`).join("\n\n") || "No party member can receive this item."}`;
+    }
+    return inventory.map((item, index) => {
+      const kind = this.itemKind(item).toUpperCase();
+      const equipped = item.equippedBy?.length ? `  EQUIPPED: ${item.equippedBy.join(", ")}` : "";
+      return `${index === this.inventoryIndex ? "›" : " "} ${item.name} ×${item.quantity}  [${kind}]${equipped}\n   ${item.description}`;
+    }).join("\n\n");
+  }
+
+  private partyOverlayContent(): string {
+    const member = this.selectedPartyMember();
+    if (!member) return "No party members are available.";
+    if (this.interactiveMode === "jobs") {
+      const jobs = member.jobOptions ?? [];
+      return `${member.name.toUpperCase()}  —  ${member.ancestry}\nCurrent calling: ${member.job}\n\n${jobs.length ? jobs.map((job, index) => {
+        const detail = job.state === "locked" ? `LOCKED — ${job.requirement}` : `${job.state.toUpperCase()} — ${job.requirement}`;
+        return `${index === this.partyJobIndex ? "›" : " "} ${job.name}\n   ${detail}`;
+      }).join("\n\n") : "No job paths are available for this member yet."}`;
+    }
+    if (this.interactiveMode === "equipment") {
+      const equipment = member.equipment ?? {};
+      return `${member.name.toUpperCase()}  —  EQUIPMENT\n\n${EQUIPMENT_SLOTS.map((slot, index) => {
+        const equipped = equipment[slot];
+        return `${index === this.equipmentIndex ? "›" : " "} ${slot.toUpperCase().padEnd(10)} ${equipped?.name ?? "Empty"}${equipped ? "\n   Enter / A to unequip" : ""}`;
+      }).join("\n\n")}`;
+    }
+    const equipment = member.equipment ?? {};
+    return `${this.snapshot.party.map((candidate, index) => `${index === this.partyIndex ? "›" : " "} ${candidate.name}  Lv ${candidate.level}  ${candidate.job}`).join("\n")}\n\n${member.name.toUpperCase()}\nHP ${member.hp}/${member.maxHp}    MP ${member.mp}/${member.maxMp}\n\nEQUIPPED\nWeapon: ${equipment.weapon?.name ?? "Empty"}\nArmor: ${equipment.armor?.name ?? "Empty"}\nAccessory: ${equipment.accessory?.name ?? "Empty"}\n\nRight to review jobs · Left to manage equipment`;
+  }
+
+  private itemKind(item: InventoryView | undefined): NonNullable<InventoryView["kind"]> {
+    return item?.kind ?? "key";
+  }
+
+  private selectedInventoryItem(): InventoryView | undefined {
+    return this.snapshot.inventory.find((item) => item.itemId === this.selectedInventoryItemId)
+      ?? this.snapshot.inventory[this.inventoryIndex];
+  }
+
+  private selectedPartyMember(): PartyMemberView | undefined {
+    return this.snapshot.party[this.partyIndex];
+  }
+
+  private moveInventory(delta: number): void {
+    const count = this.interactiveMode === "target" ? this.snapshot.party.length : this.snapshot.inventory.length;
+    if (!count) return;
+    if (this.interactiveMode === "target") this.partyIndex = Phaser.Math.Wrap(this.partyIndex + delta, 0, count);
+    else this.inventoryIndex = Phaser.Math.Wrap(this.inventoryIndex + delta, 0, count);
+    this.drawInteractiveOverlay();
+  }
+
+  private movePartyOverlay(direction: ExitDirection): void {
+    const delta = direction === "up" || direction === "left" ? -1 : 1;
+    if (this.interactiveMode === "browse") {
+      if (direction === "right") {
+        this.interactiveMode = "jobs";
+        this.partyJobIndex = this.activeJobIndex(this.selectedPartyMember());
+      } else if (direction === "left") {
+        this.interactiveMode = "equipment";
+      } else if (this.snapshot.party.length) {
+        this.partyIndex = Phaser.Math.Wrap(this.partyIndex + delta, 0, this.snapshot.party.length);
+      }
+    } else if (this.interactiveMode === "jobs") {
+      if (direction === "left") this.interactiveMode = "browse";
+      else if (direction === "right") this.interactiveMode = "equipment";
+      else {
+        const jobs = this.selectedPartyMember()?.jobOptions ?? [];
+        if (jobs.length) this.partyJobIndex = Phaser.Math.Wrap(this.partyJobIndex + delta, 0, jobs.length);
+      }
+    } else if (this.interactiveMode === "equipment") {
+      if (direction === "left") this.interactiveMode = "browse";
+      else if (direction === "right") {
+        this.interactiveMode = "jobs";
+        this.partyJobIndex = this.activeJobIndex(this.selectedPartyMember());
+      } else this.equipmentIndex = Phaser.Math.Wrap(this.equipmentIndex + delta, 0, EQUIPMENT_SLOTS.length);
+    }
+    this.drawInteractiveOverlay();
+  }
+
+  private activeJobIndex(member: PartyMemberView | undefined): number {
+    const index = member?.jobOptions?.findIndex((job) => job.state === "active") ?? -1;
+    return index < 0 ? 0 : index;
+  }
+
+  private async confirmInventory(): Promise<void> {
+    if (this.interactiveMode === "browse") {
+      const item = this.snapshot.inventory[this.inventoryIndex];
+      if (!item) return;
+      const kind = this.itemKind(item);
+      if (kind !== "consumable" && kind !== "weapon" && kind !== "armor" && kind !== "accessory") {
+        this.showToast("That item cannot be used from the travel pack.");
+        return;
+      }
+      this.selectedInventoryItemId = item.itemId;
+      this.partyIndex = 0;
+      this.interactiveMode = "target";
+      this.drawInteractiveOverlay();
+      return;
+    }
+    const item = this.selectedInventoryItem();
+    const member = this.selectedPartyMember();
+    if (!item || !member) return;
+    const kind = this.itemKind(item);
+    if (kind !== "consumable" && kind !== "weapon" && kind !== "armor" && kind !== "accessory") return;
+    const result = kind === "consumable"
+      ? await this.bridge.useInventoryItem(item.itemId, member.id)
+      : await this.bridge.setEquipment(member.id, kind, item.itemId);
+    this.showToast(result.message);
+    this.interactiveMode = "browse";
+    this.selectedInventoryItemId = undefined;
+    this.drawInteractiveOverlay();
+  }
+
+  private async confirmPartyOverlay(): Promise<void> {
+    const member = this.selectedPartyMember();
+    if (!member) return;
+    if (this.interactiveMode === "browse") {
+      this.interactiveMode = "jobs";
+      this.partyJobIndex = this.activeJobIndex(member);
+      this.drawInteractiveOverlay();
+      return;
+    }
+    if (this.interactiveMode === "jobs") {
+      const job = member.jobOptions?.[this.partyJobIndex];
+      if (!job) return;
+      if (job.state === "locked") {
+        this.showToast(job.requirement);
+        return;
+      }
+      const result = await this.bridge.selectJob(member.id, job.id);
+      this.showToast(result.message);
+      return;
+    }
+    const slot = EQUIPMENT_SLOTS[this.equipmentIndex];
+    if (!slot) return;
+    if (!member.equipment?.[slot]) {
+      this.showToast(`${slot[0]?.toUpperCase() ?? ""}${slot.slice(1)} slot is already empty.`);
+      return;
+    }
+    const result = await this.bridge.setEquipment(member.id, slot);
+    this.showToast(result.message);
   }
 
   private escape(): void {
@@ -524,7 +741,14 @@ export class WorldScene extends Phaser.Scene {
       this.closeOverlay();
       return;
     }
-    if (this.overlay) this.closeOverlay();
+    if (this.overlayKind === "inventory" && this.interactiveMode === "target") {
+      this.interactiveMode = "browse";
+      this.selectedInventoryItemId = undefined;
+      this.drawInteractiveOverlay();
+    } else if (this.overlayKind === "party" && this.interactiveMode !== "browse") {
+      this.interactiveMode = "browse";
+      this.drawInteractiveOverlay();
+    } else if (this.overlay) this.closeOverlay();
     else this.toggleOverlay("system");
   }
 

@@ -17,14 +17,15 @@ npm run test:e2e
 - IndexedDB integration tests cover atomic slots, backup, checksum, import/export, migration, and generated patch persistence.
 - Playwright currently covers new game, exploration travel, combat entry,
   system/manual-save controls, manual-slot restoration from the title, and
-  startup with the narrative proxy unavailable.
+  targeted restorative use from the inventory, plus startup with the narrative
+  proxy unavailable.
 - Campaign validation walks all 35 authored quests through real routes, NPC
   placements, encounter placements, and item sources; it checks graph
   reachability, references, source quantities, boss placement, and route
   ambiguity.
 - Integration coverage verifies job-specific forms, starting equipment,
-  quest-gated recruitment, deterministic party turns, and boss phase
-  thresholds.
+  atomic equip/unequip, restorative consumption, advanced-job unlocks,
+  quest-gated recruitment, deterministic party turns, and boss phase thresholds.
 
 ## Manual release checks
 

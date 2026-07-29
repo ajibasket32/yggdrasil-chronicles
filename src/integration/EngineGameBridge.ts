@@ -24,8 +24,11 @@ import {
   encounterFinds,
   encounters,
   bossPhases,
+  advancedJobs,
+  ancestries,
   getDialogue,
   items,
+  jobs,
   locationFinds,
   locations,
   npcs,
@@ -38,6 +41,7 @@ import type {
   BattleAction,
   BattleView,
   CharacterCreationDraft,
+  GameCommandResult,
   GameBridge,
   GameSaveSlot,
   GameSnapshot,
@@ -133,6 +137,32 @@ const JOB_STATS: Readonly<Record<string, Partial<Stats>>> = {
   trickster: { maxMp: 5, dexterity: 3, agility: 2 },
   warden: { maxHp: 6, maxMp: 7, vitality: 1, wisdom: 3 }
 };
+
+const RECOVERY_ITEMS: Readonly<Record<string, Readonly<{ hp: number; mp: number }>>> = {
+  "item.vesleaf": { hp: 18, mp: 0 },
+  "item.root-tonic": { hp: 42, mp: 0 },
+  "item.aether-drop": { hp: 0, mp: 18 },
+  "item.frost-resin": { hp: 24, mp: 8 },
+  "item.cold-ember": { hp: 10, mp: 16 }
+};
+
+function commandFailure(message: string): GameCommandResult {
+  return { success: false, message };
+}
+
+function jobUnlockFlag(memberId: string, jobId: string): string {
+  return `progression.job.${memberId}.${jobId}`;
+}
+
+function baseJobIdFor(jobId: string): string {
+  return advancedJobs.find((job) => job.id === jobId)?.baseJobId ?? jobId;
+}
+
+function reorderSignatureSkill(skills: readonly string[], signatureSkillId: string): string[] {
+  return skills.includes(signatureSkillId)
+    ? [signatureSkillId, ...skills.filter((skillId) => skillId !== signatureSkillId)]
+    : [...skills];
+}
 
 interface ActiveBattle {
   encounterId: string;
@@ -299,6 +329,7 @@ export class EngineGameBridge implements GameBridge {
         chronicleHint: "A rain-heavy morning in Hearthcross."
       };
     }
+    const party = this.#state.party;
     const location = locations.find(({ id }) => id === this.#state?.world.currentLocationId);
     const mainQuestIds = new Set(quests.filter(({ mainStory }) => mainStory).map(({ id }) => id));
     const completedMainQuests = this.#state.quests.filter(({ questId, state }) =>
@@ -306,18 +337,23 @@ export class EngineGameBridge implements GameBridge {
     ).length;
     return {
       hasSave: this.#hasSave,
-      playerName: this.#state.party[0]?.name ?? "",
+      playerName: party[0]?.name ?? "",
       locationId: this.#state.world.currentLocationId,
       locationName: location?.name ?? "Unknown road",
       worldMinutes: this.#state.world.worldMinutes + 480,
-      party: this.#state.party.map((member, index) => this.toPartyView(member, index)),
+      party: party.map((member, index) => this.toPartyView(member, index)),
       inventory: this.#state.inventory.flatMap((stack) => {
         const definition = items.find(({ id }) => id === stack.itemId);
+        const equippedBy = party
+          .filter((member) => Object.values(member.equipment).includes(stack.itemId))
+          .map(({ id }) => id);
         return definition ? [{
           itemId: stack.itemId,
           name: definition.name,
           description: definition.description,
-          quantity: stack.quantity
+          quantity: stack.quantity,
+          kind: definition.kind,
+          equippedBy
         }] : [];
       }),
       quests: this.#state.quests.flatMap((progress) => {
@@ -622,6 +658,122 @@ export class EngineGameBridge implements GameBridge {
 
   async save(slot: SaveSlot): Promise<void> {
     await this.persist(slot);
+  }
+
+  async useInventoryItem(itemId: string, memberId: string): Promise<GameCommandResult> {
+    if (this.#battle) return commandFailure("Items can only be used while the party is out of battle.");
+    const state = this.requireState();
+    const memberIndex = state.party.findIndex(({ id }) => id === memberId);
+    const member = state.party[memberIndex];
+    if (!member) return commandFailure("That party member is unavailable.");
+    const recovery = RECOVERY_ITEMS[itemId];
+    if (!recovery) return commandFailure("That item has no usable restorative effect.");
+    if (inventoryQuantity(state.inventory, itemId) < 1) return commandFailure("That item is not in the inventory.");
+
+    const hp = Math.min(member.stats.maxHp, member.hp + recovery.hp);
+    const mp = Math.min(member.stats.maxMp, member.mp + recovery.mp);
+    if (hp === member.hp && mp === member.mp) {
+      return commandFailure(`${member.name} cannot benefit from that item right now.`);
+    }
+
+    const updatedMember: PlayerCharacter = { ...member, hp, mp };
+    this.#state = {
+      ...state,
+      party: state.party.map((candidate, index) => index === memberIndex ? updatedMember : candidate),
+      inventory: removeItem(state.inventory, itemId)
+    };
+    await this.persist("autosave");
+    return { success: true, message: `${member.name} uses ${items.find((item) => item.id === itemId)?.name ?? itemId}.` };
+  }
+
+  async setEquipment(
+    memberId: string,
+    slot: "weapon" | "armor" | "accessory",
+    itemId?: string
+  ): Promise<GameCommandResult> {
+    if (this.#battle) return commandFailure("Equipment can only be changed while the party is out of battle.");
+    const state = this.requireState();
+    const memberIndex = state.party.findIndex(({ id }) => id === memberId);
+    const member = state.party[memberIndex];
+    if (!member) return commandFailure("That party member is unavailable.");
+    const currentlyEquipped = member.equipment[slot];
+
+    if (itemId === undefined) {
+      if (currentlyEquipped === undefined) return commandFailure(`No ${slot} is equipped.`);
+      if (inventoryQuantity(state.inventory, currentlyEquipped) >= 99) {
+        return commandFailure("There is no inventory space to unequip that item.");
+      }
+      const equipment = { ...member.equipment };
+      delete equipment[slot];
+      this.#state = {
+        ...state,
+        party: state.party.map((candidate, index) => index === memberIndex ? { ...member, equipment } : candidate),
+        inventory: addItem(state.inventory, currentlyEquipped)
+      };
+      await this.persist("autosave");
+      return { success: true, message: `${member.name} unequips ${currentlyEquipped}.` };
+    }
+
+    const equipmentItem = EQUIPMENT[itemId];
+    if (!equipmentItem) return commandFailure("That item cannot be equipped.");
+    if (equipmentItem.kind !== slot) return commandFailure(`That item does not fit the ${slot} slot.`);
+    if (currentlyEquipped === itemId) return commandFailure(`${member.name} already has that item equipped.`);
+    if (inventoryQuantity(state.inventory, itemId) < 1) return commandFailure("That item is not in the inventory.");
+    if (currentlyEquipped !== undefined && inventoryQuantity(state.inventory, currentlyEquipped) >= 99) {
+      return commandFailure("There is no inventory space to replace that equipment.");
+    }
+
+    try {
+      const updatedMember = equipItem(member, equipmentItem);
+      let inventory = removeItem(state.inventory, itemId);
+      if (currentlyEquipped !== undefined) inventory = addItem(inventory, currentlyEquipped);
+      this.#state = {
+        ...state,
+        party: state.party.map((candidate, index) => index === memberIndex ? updatedMember : candidate),
+        inventory
+      };
+    } catch (error) {
+      return commandFailure(error instanceof Error ? error.message : "Unable to change equipment.");
+    }
+    await this.persist("autosave");
+    return { success: true, message: `${member.name} equips ${equipmentItem.name}.` };
+  }
+
+  async selectJob(memberId: string, jobId: string): Promise<GameCommandResult> {
+    if (this.#battle) return commandFailure("Jobs can only be changed while the party is out of battle.");
+    const state = this.requireState();
+    const memberIndex = state.party.findIndex(({ id }) => id === memberId);
+    const member = state.party[memberIndex];
+    if (!member) return commandFailure("That party member is unavailable.");
+    const baseJobId = baseJobIdFor(member.jobId);
+    const baseJob = jobs.find(({ id }) => id === baseJobId);
+    if (!baseJob) return commandFailure("That character has an unknown job path.");
+    if (jobId === member.jobId) return commandFailure(`${member.name} is already a ${member.jobId}.`);
+
+    let nextMember: PlayerCharacter;
+    let flags = state.world.flags;
+    if (jobId === baseJob.id) {
+      nextMember = { ...member, jobId: baseJob.id };
+    } else {
+      const advancedJob = advancedJobs.find((job) => job.id === jobId && job.baseJobId === baseJob.id);
+      if (!advancedJob) return commandFailure("That job is not part of this character's branch.");
+      if (member.level < advancedJob.minimumLevel) {
+        return commandFailure(`${advancedJob.name} unlocks at level ${advancedJob.minimumLevel}.`);
+      }
+      flags = { ...flags, [jobUnlockFlag(member.id, advancedJob.id)]: true };
+      nextMember = {
+        ...member,
+        jobId: advancedJob.id,
+        skills: reorderSignatureSkill(member.skills, advancedJob.signatureSkillId)
+      };
+    }
+    this.#state = {
+      ...state,
+      party: state.party.map((candidate, index) => index === memberIndex ? nextMember : candidate),
+      world: { ...state.world, flags }
+    };
+    await this.persist("autosave");
+    return { success: true, message: `${member.name} now follows the ${nextMember.jobId} path.` };
   }
 
   private requireState(): GameState {
@@ -965,17 +1117,59 @@ export class EngineGameBridge implements GameBridge {
 
   private toPartyView(member: PlayerCharacter, index: number): PartyMemberView {
     const tints = [0x72d6a1, 0xe8a95a, 0x8eb7df, 0xc29adb];
+    const baseJobId = baseJobIdFor(member.jobId);
+    const baseJob = jobs.find(({ id }) => id === baseJobId);
+    const displayStats = deriveCharacterCombatStats(member, EQUIPMENT);
+    const displayHp = Math.max(0, displayStats.maxHp - (member.stats.maxHp - member.hp));
+    const displayMp = Math.max(0, displayStats.maxMp - (member.stats.maxMp - member.mp));
+    const ancestryName = ancestries.find(({ id }) => id === member.raceId)?.name ?? member.raceId;
+    const jobName = advancedJobs.find(({ id }) => id === member.jobId)?.name
+      ?? jobs.find(({ id }) => id === member.jobId)?.name
+      ?? member.jobId;
+    const equipment = Object.fromEntries(
+      Object.entries(member.equipment).flatMap(([slot, itemId]) => {
+        const item = items.find(({ id }) => id === itemId);
+        return item ? [[slot, { itemId, name: item.name }]] : [];
+      })
+    ) as PartyMemberView["equipment"];
+    const jobOptions = baseJob === undefined ? [] : [
+      {
+        id: baseJob.id,
+        name: baseJob.name,
+        state: member.jobId === baseJob.id ? "active" as const : "unlocked" as const,
+        requirement: "Starting job"
+      },
+      ...advancedJobs
+        .filter((job) => job.baseJobId === baseJob.id)
+        .map((job) => {
+          const unlocked = this.#state?.world.flags[jobUnlockFlag(member.id, job.id)] === true;
+          return {
+            id: job.id,
+            name: job.name,
+            state: member.jobId === job.id
+              ? "active" as const
+              : unlocked
+                ? "unlocked" as const
+                : member.level >= job.minimumLevel
+                  ? "available" as const
+                  : "locked" as const,
+            requirement: unlocked ? "Unlocked" : `Level ${job.minimumLevel}`
+          };
+        })
+    ];
     return {
       id: member.id,
       name: member.name,
-      ancestry: member.raceId,
-      job: member.jobId,
+      ancestry: ancestryName,
+      job: jobName,
       level: member.level,
-      hp: member.hp,
-      maxHp: member.stats.maxHp,
-      mp: member.mp,
-      maxMp: member.stats.maxMp,
-      portraitTint: tints[index % tints.length] ?? 0xffffff
+      hp: displayHp,
+      maxHp: displayStats.maxHp,
+      mp: displayMp,
+      maxMp: displayStats.maxMp,
+      portraitTint: tints[index % tints.length] ?? 0xffffff,
+      equipment,
+      jobOptions
     };
   }
 

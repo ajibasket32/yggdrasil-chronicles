@@ -19,7 +19,15 @@ The world is a 16×16 orthogonal pixel grid rendered at integer scale. Three con
 
 ## Characters and progression
 
-Players choose one of four original ancestries and one of six starting jobs. Jobs branch through prerequisite levels and skills. A party holds four active characters plus reserves. Every build has explicit strengths, weaknesses, and counters.
+Players choose one of four original ancestries and one of six starting jobs.
+Each starting job exposes two advanced paths at level 4; unlocked paths persist
+and can be changed from the party screen. A party holds four active characters
+plus reserves. Every build has explicit strengths, weaknesses, and counters.
+
+The inventory screen targets consumables at individual party members and moves
+equipment atomically between the shared pack and character slots. Equipment
+bonuses preserve the current HP/MP deficit rather than healing through gear
+swaps.
 
 ## Combat
 

@@ -483,6 +483,29 @@ export const jobs = [
   { id: "warden", name: "Root Warden", role: "Nature magic and counters", branches: ["Thornspeaker", "Green Sentinel"] }
 ] as const;
 
+export interface AdvancedJobDefinition {
+  readonly id: string;
+  readonly name: string;
+  readonly baseJobId: (typeof jobs)[number]["id"];
+  readonly minimumLevel: number;
+  readonly signatureSkillId: string;
+}
+
+export const advancedJobs: readonly AdvancedJobDefinition[] = [
+  { id: "bulwark", name: "Bulwark", baseJobId: "vanguard", minimumLevel: 4, signatureSkillId: "skill.guard-line" },
+  { id: "banneret", name: "Banneret", baseJobId: "vanguard", minimumLevel: 4, signatureSkillId: "skill.shield-bash" },
+  { id: "pathfinder", name: "Pathfinder", baseJobId: "ranger", minimumLevel: 4, signatureSkillId: "skill.quickstep" },
+  { id: "beastwarden", name: "Beastwarden", baseJobId: "ranger", minimumLevel: 4, signatureSkillId: "skill.aimed-shot" },
+  { id: "lifebinder", name: "Lifebinder", baseJobId: "mender", minimumLevel: 4, signatureSkillId: "skill.mend" },
+  { id: "dawnkeeper", name: "Dawnkeeper", baseJobId: "mender", minimumLevel: 4, signatureSkillId: "skill.ward-thread" },
+  { id: "stormcaller", name: "Stormcaller", baseJobId: "shaper", minimumLevel: 4, signatureSkillId: "skill.ember-spark" },
+  { id: "resonant", name: "Resonant", baseJobId: "shaper", minimumLevel: 4, signatureSkillId: "skill.tide-pulse" },
+  { id: "veilhand", name: "Veilhand", baseJobId: "trickster", minimumLevel: 4, signatureSkillId: "skill.slow-mark" },
+  { id: "gambler", name: "Gambler", baseJobId: "trickster", minimumLevel: 4, signatureSkillId: "skill.feint" },
+  { id: "thornspeaker", name: "Thornspeaker", baseJobId: "warden", minimumLevel: 4, signatureSkillId: "skill.thorn-bind" },
+  { id: "green-sentinel", name: "Green Sentinel", baseJobId: "warden", minimumLevel: 4, signatureSkillId: "skill.rootward" }
+];
+
 type AncestryId = (typeof ancestries)[number]["id"];
 type StartingJobId = (typeof jobs)[number]["id"];
 
@@ -648,6 +671,7 @@ export function validateCampaignMetadata(): string[] {
   const npcIds = new Set(npcs.map(({ id }) => id));
   const questIds = new Set(quests.map(({ id }) => id));
   const itemIds = new Set(items.map(({ id }) => id));
+  const startingSkillIds = new Set(startingBuildLoadouts.flatMap(({ startingSkills }) => startingSkills));
   const encounterById = new Map(encounters.map((encounter) => [encounter.id, encounter]));
   const buildKeys = new Set<string>();
 
@@ -661,6 +685,14 @@ export function validateCampaignMetadata(): string[] {
   }
   for (const ancestry of ancestries) for (const job of jobs) {
     if (!buildKeys.has(`${ancestry.id}.${job.id}`)) errors.push(`Missing starting build ${ancestry.id}.${job.id}`);
+  }
+  const advancedJobIds = new Set<string>();
+  for (const job of advancedJobs) {
+    if (advancedJobIds.has(job.id)) errors.push(`Duplicate advanced job ${job.id}`);
+    advancedJobIds.add(job.id);
+    if (!jobIds.has(job.baseJobId)) errors.push(`${job.id} references unknown base job ${job.baseJobId}`);
+    if (job.minimumLevel < 2) errors.push(`${job.id} has an invalid minimum level`);
+    if (!startingSkillIds.has(job.signatureSkillId)) errors.push(`${job.id} references unknown signature skill ${job.signatureSkillId}`);
   }
   for (const recruit of recruitProfiles) {
     if (!npcIds.has(recruit.npcId)) errors.push(`${recruit.id} references unknown NPC ${recruit.npcId}`);

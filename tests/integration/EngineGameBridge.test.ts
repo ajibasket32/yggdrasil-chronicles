@@ -303,3 +303,106 @@ describe("EngineGameBridge campaign persistence", () => {
     });
   });
 });
+
+describe("EngineGameBridge runtime party management", () => {
+  it("publishes item kinds, equipment ownership, and the three-job branch view", async () => {
+    const { bridge } = createBridge();
+    await bridge.newGame({ name: "Bran", ancestryId: "stonekin", jobId: "vanguard" });
+    const snapshot = bridge.getSnapshot();
+    const protagonist = snapshot.party[0];
+
+    expect(snapshot.inventory.find(({ itemId }) => itemId === "item.vesleaf")).toMatchObject({
+      kind: "consumable",
+      equippedBy: []
+    });
+    expect(protagonist?.equipment?.armor).toEqual({ itemId: "item.resin-vest", name: "Resin Vest" });
+    expect(protagonist?.jobOptions).toEqual([
+      expect.objectContaining({ id: "vanguard", state: "active" }),
+      expect.objectContaining({ id: "bulwark", state: "locked" }),
+      expect.objectContaining({ id: "banneret", state: "locked" })
+    ]);
+  });
+
+  it("uses restorative inventory only when a member can benefit and persists each use", async () => {
+    const { bridge, saves } = createBridge();
+    await bridge.newGame({ name: "Eira", ancestryId: "sylvan", jobId: "mender" });
+    const initial = await saves.load("autosave");
+    if (!initial) throw new Error("Expected an initial autosave");
+    const protagonist = initial.party[0];
+    if (!protagonist) throw new Error("Expected a protagonist");
+    await saves.save("autosave", {
+      ...initial,
+      party: [{ ...protagonist, hp: 1, mp: 0 }],
+      inventory: [
+        ...initial.inventory,
+        { itemId: "item.frost-resin", quantity: 1 },
+        { itemId: "item.cold-ember", quantity: 1 }
+      ]
+    });
+    await bridge.continueGame();
+
+    expect((await bridge.useInventoryItem("item.vesleaf", protagonist.id)).success).toBe(true);
+    expect((await bridge.useInventoryItem("item.aether-drop", protagonist.id)).success).toBe(true);
+    expect((await bridge.useInventoryItem("item.frost-resin", protagonist.id)).success).toBe(true);
+    expect((await bridge.useInventoryItem("item.cold-ember", protagonist.id)).success).toBe(true);
+    const afterUses = await saves.load("autosave");
+    const restored = afterUses?.party[0];
+    expect(restored?.hp).toBeGreaterThan(1);
+    expect(restored?.mp).toBeGreaterThan(0);
+    expect(afterUses?.inventory.some(({ itemId }) => itemId === "item.frost-resin")).toBe(false);
+    expect(afterUses?.inventory.some(({ itemId }) => itemId === "item.cold-ember")).toBe(false);
+
+    await bridge.rest();
+    const fullItemCount = bridge.getSnapshot().inventory.find(({ itemId }) => itemId === "item.root-tonic")?.quantity;
+    const noEffect = await bridge.useInventoryItem("item.root-tonic", protagonist.id);
+    expect(noEffect.success).toBe(false);
+    expect(bridge.getSnapshot().inventory.find(({ itemId }) => itemId === "item.root-tonic")?.quantity).toBe(fullItemCount);
+  });
+
+  it("moves gear atomically between inventory and equipment without changing the HP deficit", async () => {
+    const { bridge, saves } = createBridge();
+    await bridge.newGame({ name: "Bran", ancestryId: "stonekin", jobId: "vanguard" });
+    const initial = await saves.load("autosave");
+    if (!initial) throw new Error("Expected an initial autosave");
+    const protagonist = initial.party[0];
+    if (!protagonist) throw new Error("Expected a protagonist");
+    await saves.save("autosave", {
+      ...initial,
+      party: [{ ...protagonist, hp: protagonist.stats.maxHp - 19 }]
+    });
+    await bridge.continueGame();
+
+    expect((await bridge.setEquipment(protagonist.id, "armor")).success).toBe(true);
+    expect(bridge.getSnapshot().inventory.find(({ itemId }) => itemId === "item.resin-vest")?.quantity).toBe(1);
+    expect(bridge.getSnapshot().party[0]?.equipment?.armor).toBeUndefined();
+
+    expect((await bridge.setEquipment(protagonist.id, "armor", "item.resin-vest")).success).toBe(true);
+    const equipped = await saves.load("autosave");
+    expect(equipped?.inventory.some(({ itemId }) => itemId === "item.resin-vest")).toBe(false);
+    expect(equipped?.party[0]?.equipment.armor).toBe("item.resin-vest");
+    expect(equipped?.party[0]?.hp).toBe(protagonist.stats.maxHp - 19);
+  });
+
+  it("unlocks advanced jobs at level four, persists the flag, and promotes the signature skill", async () => {
+    const { bridge, saves } = createBridge();
+    await bridge.newGame({ name: "Bran", ancestryId: "hearthborn", jobId: "vanguard" });
+    const initial = await saves.load("autosave");
+    if (!initial) throw new Error("Expected an initial autosave");
+    await saves.save("autosave", {
+      ...initial,
+      party: initial.party.map((member) => ({ ...member, level: 4 }))
+    });
+    await bridge.continueGame();
+
+    expect(bridge.getSnapshot().party[0]?.jobOptions?.map(({ state }) => state)).toEqual(["active", "available", "available"]);
+    expect((await bridge.selectJob("party.protagonist", "banneret")).success).toBe(true);
+    const advanced = await saves.load("autosave");
+    expect(advanced?.party[0]?.jobId).toBe("banneret");
+    expect(advanced?.party[0]?.skills[0]).toBe("skill.shield-bash");
+    expect(advanced?.world.flags["progression.job.party.protagonist.banneret"]).toBe(true);
+    expect(bridge.getSnapshot().party[0]?.jobOptions?.find(({ id }) => id === "banneret")?.state).toBe("active");
+
+    expect((await bridge.selectJob("party.protagonist", "vanguard")).success).toBe(true);
+    expect(bridge.getSnapshot().party[0]?.jobOptions?.find(({ id }) => id === "banneret")?.state).toBe("unlocked");
+  });
+});

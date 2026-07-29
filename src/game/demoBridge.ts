@@ -3,6 +3,7 @@ import type {
   BattleAction,
   CharacterCreationDraft,
   GameBridge,
+  GameCommandResult,
   GameSaveSlot,
   GameSnapshot,
   InteractionView,
@@ -238,6 +239,22 @@ export class DemoGameBridge implements GameBridge {
     this.emit();
     this.state = { ...this.state, autosave: "saved" };
     this.emit();
+  }
+
+  useInventoryItem(_itemId: string, _memberId: string): GameCommandResult {
+    return { success: false, message: "Inventory actions are unavailable in the demo bridge." };
+  }
+
+  setEquipment(
+    _memberId: string,
+    _slot: "weapon" | "armor" | "accessory",
+    _itemId?: string
+  ): GameCommandResult {
+    return { success: false, message: "Equipment actions are unavailable in the demo bridge." };
+  }
+
+  selectJob(_memberId: string, _jobId: string): GameCommandResult {
+    return { success: false, message: "Job actions are unavailable in the demo bridge." };
   }
 
   private emit(): void {
