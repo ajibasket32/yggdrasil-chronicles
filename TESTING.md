@@ -50,6 +50,9 @@ npm run test:e2e
 - Quest-consequence coverage verifies one-time relationship/faction changes,
   responsive dialogue, journal snapshot exposure, and backfill of older
   rewarded saves without duplicate rewards.
+- Dialogue coverage requires at least eight distinct, readability-bounded lines
+  for every named NPC. Integration tests verify that repeated conversations
+  rotate authored beats and preserve the counter through save reload.
 - Campaign-ending coverage verifies that the last authored objective cannot
   complete before a three-way player decision, persists exactly one ending and
   its faction effect, selects matching ending copy, and safely backfills legacy

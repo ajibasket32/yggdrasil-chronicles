@@ -32,6 +32,9 @@ become selectable at level 4.
 Completed authored quests permanently update NPC trust/respect/fear, faction
 standing, and outcome flags. The journal shows the strongest current standings,
 and NPC dialogue reacts when those persisted values cross meaningful thresholds.
+Each of the 30 named NPCs has an eight-line regional dialogue catalog. Repeated
+conversations rotate through that authored material using a conversation count
+stored in the save, so NPC memory remains deterministic and fully offline.
 The final authored quest presents three non-AI story choices. The selected
 covenant is saved atomically, changes faction standing and the chronicle, and
 produces a distinct ending while leaving unfinished side threads playable.

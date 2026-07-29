@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Expanded regional NPC writing from 33 total lines to 240 authored lines,
+  split into ownership-safe content catalogs. Persistent per-NPC conversation
+  memory now rotates later beats across visits and survives save/reload.
 - Replaced the automatic single campaign ending with a persisted three-way
   authored decision, distinct ending presentations, deterministic faction
   consequences, keyboard/gamepad choice navigation, and legacy-save backfill.

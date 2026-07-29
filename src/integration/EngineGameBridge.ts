@@ -534,6 +534,9 @@ export class EngineGameBridge implements GameBridge {
 
   async interactNpc(npcId: string): Promise<InteractionView> {
     const state = this.requireState();
+    const conversationFlag = this.npcConversationFlag(npcId);
+    const previousConversationCount = Number(state.world.flags[conversationFlag] ?? 0);
+    const conversationCount = (Number.isFinite(previousConversationCount) ? previousConversationCount : 0) + 1;
     let progress = state.quests;
     for (const definition of quests) {
       const entry = progress.find(({ questId }) => questId === definition.id);
@@ -551,7 +554,14 @@ export class EngineGameBridge implements GameBridge {
         npcId,
         1,
         awaitsConcordChoice ? new Set([CONCORD_QUEST]) : undefined
-      )
+      ),
+      world: {
+        ...state.world,
+        flags: {
+          ...state.world.flags,
+          [conversationFlag]: conversationCount
+        }
+      }
     };
     this.applyInventoryObjectives();
     this.advanceCampaign();
@@ -648,7 +658,14 @@ export class EngineGameBridge implements GameBridge {
     const definition = npcs.find(({ id }) => id === npcId);
     const relationship = state.world.relationships.find(({ npcId: candidate }) => candidate === npcId);
     const factionStanding = definition ? state.world.factionStanding[definition.factionId] ?? 0 : 0;
-    const lines = [...getDialogue(npcId)];
+    const scripted = getDialogue(npcId);
+    const conversationCount = Number(state.world.flags[this.npcConversationFlag(npcId)] ?? 1);
+    const rotatingIndex = scripted.length > 1
+      ? 1 + ((Math.max(1, Math.floor(conversationCount)) - 1) % (scripted.length - 1))
+      : 0;
+    const lines = scripted.length > 1
+      ? [scripted[0] ?? "", scripted[rotatingIndex] ?? scripted[0] ?? ""]
+      : [...scripted];
     if ((relationship?.trust ?? 0) >= 8) {
       lines.push("You kept faith when the road made that difficult. I have not forgotten.");
     } else if ((relationship?.trust ?? 0) <= -8) {
@@ -667,6 +684,10 @@ export class EngineGameBridge implements GameBridge {
       lines.push(`The ${factionName} has not forgiven your interference. Tread carefully.`);
     }
     return lines;
+  }
+
+  private npcConversationFlag(npcId: string): string {
+    return `memory.${npcId}.conversations`;
   }
 
   startEncounter(encounterId: string): void {

@@ -29,6 +29,7 @@ describe("campaign duration certification audit", () => {
     expect(result.authoredQuestCount).toBe(35);
     expect(result.mainQuestCount).toBe(15);
     expect(result.optionalQuestCount).toBe(20);
+    expect(result.dialogueLineCount).toBe(240);
     expect(result.regionEvidence).toHaveLength(3);
     for (const region of result.regionEvidence) {
       expect(region.locationKinds).toEqual(["dungeon", "town", "wilderness"]);

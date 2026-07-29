@@ -8,6 +8,9 @@ import type {
   QuestDefinition,
   RegionDefinition
 } from "../shared/types";
+import { dialogueByNpcId } from "./dialogue";
+
+export { dialogueByNpcId } from "./dialogue";
 
 export const FACTIONS = {
   rootwardens: "faction.rootwardens",
@@ -654,48 +657,6 @@ export const bossPhases: readonly BossPhaseMetadata[] = [
   { encounterId: "encounter.varn-rootless", enemyId: "enemy.varn-rootless", phaseName: "Unmade Concord", beginsAtHealthPercent: 25, telegraph: "The marked lines converge beneath the party.", tacticalChange: "Varn changes elemental defenses for the final exchange.", mechanic: "elemental_shift" }
 ];
 
-export const dialogueByNpcId: Readonly<Record<string, readonly string[]>> = {
-  "npc.mara-vell": [
-    "The east root went quiet three nights ago. No wind, no pulse—only rain.",
-    "Talk to Orren by the archive stall. If his charts agree with my ears, we have work."
-  ],
-  "npc.tovin-ash": [
-    "I know the Mossroad. More importantly, I know when it is lying.",
-    "You will want a second blade out there. Say the word and I walk with you."
-  ],
-  "npc.orren-pike": [
-    "Every rootway leaves a rhythm in resin-glass. This one ends as if cut by a careful hand.",
-    "Bring me three marked rivets from the Mossroad. Evidence survives where testimony bends."
-  ],
-  "npc.joryn-hale": ["Rooms are cheap. Rumors cost one honest answer."],
-  "npc.senna-brook": ["The rain is early, the pears are late, and nobody will say what passed the east wall."],
-  "npc.veska-reed": ["Bring me vesleaf if you see it. Heroics are easier with clean bandages."],
-  "npc.fen-til": ["A lantern is a promise: someone can find their way back before the fog learns their name."],
-  "npc.ilas-morn": ["I salvage what people discard. That does not make every memory I find mine to sell."],
-  "npc.pella-wren": ["My missing ending is not in my notebook. It is somewhere in the road, waiting for a listener brave enough to hear it."],
-  "npc.old-cairn": ["Be still. The hollow is not silent. It is holding its breath."],
-  "npc.ira-sorn": ["Emberwake deals in proof, not frontier panic. Show me what you carried through the ash."],
-  "npc.brannic-quill": ["The foundry does not need another decree. It needs a promise the workers can survive."],
-  "npc.keva-dross": ["I left my token in the Kiln because I was afraid it would tell me I had no business leaving alive."],
-  "npc.hett-copper": ["Glass remembers every furnace that made it. People pretend they do not."],
-  "npc.nema-slate": ["A calm ember is not weak. It is a fire that has decided not to spread its grief."],
-  "npc.solvi-renn": ["The ledger is genuine. The names inside it are not merely crooked; they are organized."],
-  "npc.cask-ember": ["Feed three caravans one good meal and they will remember they were neighbors before they were rivals."],
-  "npc.adra-flint": ["A strike line is not a wall. It is where we stand so nobody can quietly decide we do not count."],
-  "npc.mell-ochre": ["The Choir asks for silence because noise can be cruel. Varn asks for silence because people can answer back."],
-  "npc.yarrow-kest": ["I remember the heat. I do not remember my name. Perhaps one of those is enough to start with."],
-  "npc.sable-voss": ["The oldest chart has thirteen guide stars. The sky insists there are twelve."],
-  "npc.eira-lune": ["The bridge is alive enough to suffer. Help me mend it, and I will show you the high road."],
-  "npc.corin-mist": ["Restoration is a choice, never a neutral repair. We decide which absence becomes visible again."],
-  "npc.thyme-vale": ["Frost resin spoils the moment it believes it is safe. Keep it cold, or let it become ordinary sap."],
-  "npc.rook-silva": ["High roads are not safer because they are high. They are safer because someone bothered to map the places that break."],
-  "npc.mother-hush": ["We did not come to erase the present. We came because the past has learned to devour it."],
-  "npc.lenn-auric": ["The Compact will call every compromise practical. Ask who pays for practicality before you sign anything."],
-  "npc.otis-snow": ["The letter stayed dry because I did not. Please tell Corin that was a fair trade."],
-  "npc.thea-nacre": ["The vault was built to preserve a city. It forgot that preserved things can still ask to be changed."],
-  "npc.varn-rootless": ["Memory is a wound the world refuses to close. I chose the knife."]
-};
-
 export function getDialogue(npcId: string): readonly string[] {
   const scripted = dialogueByNpcId[npcId];
   if (scripted) return scripted;
@@ -704,6 +665,8 @@ export function getDialogue(npcId: string): readonly string[] {
     ? [`${npc.name} watches the road for a moment.`, `"Every place remembers differently," ${npc.name} says.`]
     : ["Only the rain answers."];
 }
+
+export const MIN_AUTHORED_DIALOGUE_LINES_PER_NPC = 8;
 
 /** Validates content-local references that are intentionally outside the shared pack contract. */
 export function validateCampaignMetadata(): string[] {
@@ -759,7 +722,19 @@ export function validateCampaignMetadata(): string[] {
     if (!bossPhases.some(({ encounterId }) => encounterId === boss.id)) errors.push(`${boss.id} has no phase metadata`);
   }
   for (const npc of npcs) {
-    if (!dialogueByNpcId[npc.id]?.length) errors.push(`${npc.id} has no authored dialogue`);
+    const lines = dialogueByNpcId[npc.id] ?? [];
+    if (lines.length < MIN_AUTHORED_DIALOGUE_LINES_PER_NPC) {
+      errors.push(`${npc.id} has ${lines.length} authored dialogue lines; expected at least ${MIN_AUTHORED_DIALOGUE_LINES_PER_NPC}`);
+    }
+    if (new Set(lines).size !== lines.length) errors.push(`${npc.id} has duplicate authored dialogue`);
+    for (const line of lines) {
+      if (line.trim().length < 20 || line.length > 240) {
+        errors.push(`${npc.id} has dialogue outside the 20-240 character readability bound`);
+      }
+    }
+  }
+  for (const npcId of Object.keys(dialogueByNpcId)) {
+    if (!npcIds.has(npcId)) errors.push(`Dialogue catalog references unknown NPC ${npcId}`);
   }
   return errors;
 }

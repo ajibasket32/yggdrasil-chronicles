@@ -323,6 +323,27 @@ describe("EngineGameBridge campaign persistence", () => {
     });
   });
 
+  it("rotates authored dialogue from persistent NPC conversation memory", async () => {
+    const { bridge, saves } = createBridge();
+    await startChronicle(bridge);
+
+    const first = await bridge.interactNpc("npc.joryn-hale");
+    const second = await bridge.interactNpc("npc.joryn-hale");
+    const third = await bridge.interactNpc("npc.joryn-hale");
+
+    expect(first.lines).toHaveLength(2);
+    expect(first.lines[0]).toBe(second.lines[0]);
+    expect(new Set([first.lines[1], second.lines[1], third.lines[1]]).size).toBe(3);
+    expect((await saves.load("autosave"))?.world.flags["memory.npc.joryn-hale.conversations"]).toBe(3);
+
+    const restored = new EngineGameBridge(saves);
+    await restored.initialize();
+    await restored.continueGame();
+    const fourth = await restored.interactNpc("npc.joryn-hale");
+    expect(fourth.lines[1]).not.toBe(third.lines[1]);
+    expect((await saves.load("autosave"))?.world.flags["memory.npc.joryn-hale.conversations"]).toBe(4);
+  });
+
   it("backfills authored consequences into older rewarded saves without paying twice", async () => {
     const { bridge, saves } = createBridge();
     await startChronicle(bridge);

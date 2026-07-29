@@ -33,6 +33,11 @@ that reference is authentic. No placeholder timing evidence is committed. As
 of this audit, the campaign has structural pacing coverage but no qualifying
 timed run, so the 20+ hour target must not be advertised as verified.
 
+Regional dialogue is split into Verdant Reach, Cinder March, and Pale Canopy
+catalogs. Each region currently provides 80 authored lines across ten named
+NPCs. The engine exposes two lines per conversation and rotates later beats
+from persistent NPC memory rather than dumping the whole catalog at once.
+
 ## Campaign
 
 Act I establishes Hearthcross, the Rootwardens, and the first silent root. Act II lets the party choose how the Reach shares evidence with the Brass Compact and Lantern Archive. Act III opens the Cinder March and reveals deliberate root cutting. Act IV follows contradictory memories into the Pale Canopy. Act V resolves whether the Concord is restored, replaced, or allowed to fracture.

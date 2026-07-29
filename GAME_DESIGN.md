@@ -44,6 +44,12 @@ applied exactly once with the quest reward, survive export/import, appear in the
 journal, and affect later NPC dialogue. Older rewarded saves receive missing
 consequences on load without receiving XP, currency, or items twice.
 
+Every named NPC owns a region-specific authored dialogue catalog. The first
+line anchors the character's voice; later lines rotate as the persistent
+conversation counter advances. Relationship and faction reactions are appended
+after the authored beat, allowing memory to deepen without AI or runtime
+downloads.
+
 The final main-story objective pauses before completion and requires one of
 three explicit player choices: renew the shared Concord, free the regional
 rootways, or establish a transparent Lantern covenant. The engine records the

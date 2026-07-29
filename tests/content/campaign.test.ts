@@ -4,11 +4,13 @@ import {
   auditCampaignReadiness,
   bossPhases,
   coreCampaign,
+  dialogueByNpcId,
   encounterAvailability,
   encounterFinds,
   getReachableQuestIds,
   locationEncounters,
   locationFinds,
+  MIN_AUTHORED_DIALOGUE_LINES_PER_NPC,
   jobs,
   recruitProfiles,
   startingBuildLoadouts,
@@ -35,6 +37,16 @@ describe("core campaign content", () => {
     }
     expect(recruitProfiles).toHaveLength(3);
     expect(bossPhases.filter(({ encounterId }) => encounterId === "encounter.varn-rootless")).toHaveLength(3);
+    const allDialogueLines = Object.values(dialogueByNpcId).flat();
+    expect(allDialogueLines).toHaveLength(
+      coreCampaign.npcs.length * MIN_AUTHORED_DIALOGUE_LINES_PER_NPC
+    );
+    expect(new Set(allDialogueLines).size).toBe(allDialogueLines.length);
+    for (const npc of coreCampaign.npcs) {
+      const lines = dialogueByNpcId[npc.id] ?? [];
+      expect(lines, npc.id).toHaveLength(MIN_AUTHORED_DIALOGUE_LINES_PER_NPC);
+      expect(new Set(lines).size, npc.id).toBe(lines.length);
+    }
   });
 
   it("has globally unique stable ids within every entity kind", () => {
