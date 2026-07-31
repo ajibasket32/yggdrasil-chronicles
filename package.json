@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "concurrently -k \"npm:dev:game\" \"npm:dev:server\"",
     "dev:game": "vite",
-    "dev:server": "tsx --env-file-if-exists=.env watch server/index.ts",
+    "dev:server": "tsx watch --env-file-if-exists=.env server/index.ts",
     "build": "tsc -b && vite build && tsc -p server/tsconfig.json",
     "start": "node --env-file-if-exists=.env server-dist/index.js",
     "test": "vitest run",

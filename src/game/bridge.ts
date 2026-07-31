@@ -66,13 +66,19 @@ export interface BattleActorView {
   status?: string;
 }
 
+export interface BattleSkillOption {
+  id: string;
+  name: string;
+  mpCost: number;
+}
+
 export interface BattleView {
   encounterId: string;
   title: string;
   phase: "choosing" | "resolving" | "victory" | "defeat" | "escaped";
   actors: BattleActorView[];
   activeActorId?: string;
-  activeSkillName?: string;
+  activeSkills: BattleSkillOption[];
   bossPhase?: string;
   log: string[];
   round: number;
@@ -143,7 +149,7 @@ export interface GameBridge {
   interactNpc(npcId: string): InteractionView | Promise<InteractionView>;
   resolveInteractionChoice(choiceId: string): InteractionView | Promise<InteractionView>;
   startEncounter(encounterId: string): void | Promise<void>;
-  chooseBattleAction(action: BattleAction): void | Promise<void>;
+  chooseBattleAction(action: BattleAction, skillId?: string): void | Promise<void>;
   leaveBattle(): void | Promise<void>;
   rest(): void | Promise<void>;
   save(slot: GameSaveSlot): void | Promise<void>;

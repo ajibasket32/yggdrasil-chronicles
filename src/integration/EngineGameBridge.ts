@@ -122,12 +122,76 @@ const COMBAT_SKILLS: readonly CombatSkill[] = [
   { id: "skill.feint", name: "Feint", element: "physical", power: 16, accuracy: 0.99, mpCost: 3, target: "enemy", status: { id: "bleed", chance: 0.3, turns: 2, potency: 3 } },
   { id: "skill.slow-mark", name: "Slow Mark", element: "shadow", power: 15, accuracy: 0.96, mpCost: 4, target: "enemy", status: { id: "freeze", chance: 0.2, turns: 1, potency: 0 } },
   { id: "skill.thorn-bind", name: "Thorn Bind", element: "nature", power: 20, accuracy: 0.93, mpCost: 5, target: "enemy", status: { id: "poison", chance: 0.4, turns: 2, potency: 4 } },
-  { id: "skill.rootward", name: "Rootward", element: "earth", power: 17, accuracy: 0.97, mpCost: 4, target: "enemy" }
+  { id: "skill.rootward", name: "Rootward", element: "earth", power: 17, accuracy: 0.97, mpCost: 4, target: "enemy" },
+  // Advanced job branch forms: each is a permanently new skill granted the
+  // first time its branch is selected, distinct in element, target, or
+  // status from every starting and sibling-branch skill.
+  { id: "skill.bastion-slam", name: "Bastion Slam", element: "physical", power: 26, accuracy: 0.85, mpCost: 6, target: "enemy", status: { id: "stun", chance: 0.4, turns: 1, potency: 0 } },
+  { id: "skill.rallying-strike", name: "Rallying Strike", element: "physical", power: 18, accuracy: 0.95, mpCost: 4, target: "enemy", status: { id: "bleed", chance: 0.3, turns: 2, potency: 4 } },
+  { id: "skill.piercing-arrow", name: "Piercing Arrow", element: "physical", power: 28, accuracy: 0.92, mpCost: 6, target: "enemy" },
+  { id: "skill.hunting-mark", name: "Hunting Mark", element: "physical", power: 19, accuracy: 0.97, mpCost: 4, target: "enemy", status: { id: "bleed", chance: 0.5, turns: 3, potency: 4 } },
+  { id: "skill.greater-mend", name: "Greater Mend", element: "radiant", power: 30, accuracy: 1, mpCost: 7, target: "self", healing: true },
+  { id: "skill.dawnfire-lance", name: "Dawnfire Lance", element: "radiant", power: 23, accuracy: 0.92, mpCost: 5, target: "enemy", status: { id: "burn", chance: 0.4, turns: 2, potency: 5 } },
+  { id: "skill.storm-lance", name: "Storm Lance", element: "lightning", power: 26, accuracy: 0.88, mpCost: 7, target: "enemy", status: { id: "stun", chance: 0.35, turns: 1, potency: 0 } },
+  { id: "skill.deep-resonance", name: "Deep Resonance", element: "water", power: 22, accuracy: 0.95, mpCost: 6, target: "enemy", status: { id: "freeze", chance: 0.3, turns: 1, potency: 0 } },
+  { id: "skill.veil-strike", name: "Veil Strike", element: "shadow", power: 21, accuracy: 0.95, mpCost: 5, target: "enemy", status: { id: "sleep", chance: 0.35, turns: 2, potency: 0 } },
+  { id: "skill.wild-gambit", name: "Wild Gambit", element: "physical", power: 32, accuracy: 0.8, mpCost: 6, target: "enemy" },
+  { id: "skill.bramble-snare", name: "Bramble Snare", element: "nature", power: 22, accuracy: 0.9, mpCost: 6, target: "enemy", status: { id: "poison", chance: 0.5, turns: 3, potency: 5 } },
+  { id: "skill.verdant-bulwark", name: "Verdant Bulwark", element: "nature", power: 22, accuracy: 1, mpCost: 5, target: "self", healing: true }
 ];
 
 const SKILLS: Readonly<Record<string, CombatSkill>> = Object.fromEntries(
   COMBAT_SKILLS.map((skill) => [skill.id, skill])
 );
+
+/**
+ * Flat stat deltas applied on top of the base job's stats while a character
+ * follows an advanced branch. Reversible: selectJob subtracts the previous
+ * job's delta before adding the next one, so switching branches never
+ * compounds bonuses. Base starting jobs have no entry (their stats are
+ * already baked in by statsForBuild at character creation).
+ */
+const ADVANCED_JOB_STATS: Readonly<Record<string, Partial<Stats>>> = {
+  bulwark: { maxHp: 10, vitality: 2 },
+  banneret: { strength: 3, charisma: 2 },
+  pathfinder: { dexterity: 3, agility: 2 },
+  beastwarden: { strength: 2, dexterity: 3 },
+  lifebinder: { maxMp: 8, wisdom: 3 },
+  dawnkeeper: { wisdom: 2, intellect: 2 },
+  stormcaller: { intellect: 4, maxMp: 4 },
+  resonant: { intellect: 2, wisdom: 2, maxMp: 4 },
+  veilhand: { dexterity: 2, agility: 3 },
+  gambler: { strength: 2, dexterity: 2 },
+  thornspeaker: { wisdom: 2, vitality: 2 },
+  "green-sentinel": { maxHp: 8, wisdom: 2 }
+};
+
+function jobStatDelta(jobId: string): Partial<Stats> {
+  return ADVANCED_JOB_STATS[jobId] ?? {};
+}
+
+/**
+ * Removes the character's current job stat delta and applies nextJobId's,
+ * preserving the current HP/MP deficit. Must be called with the character's
+ * still-current jobId (before it is switched) so the old delta is subtracted
+ * correctly; the returned character has jobId already set to nextJobId.
+ */
+function reviseStatsForJobChange(character: PlayerCharacter, nextJobId: string): PlayerCharacter {
+  const previousDelta = jobStatDelta(character.jobId);
+  const nextDelta = jobStatDelta(nextJobId);
+  const statKeys = Object.keys(character.stats) as (keyof Stats)[];
+  const nextStats = Object.fromEntries(statKeys.map((key) => {
+    const value = character.stats[key] - (previousDelta[key] ?? 0) + (nextDelta[key] ?? 0);
+    return [key, Math.max(key === "maxHp" ? 1 : 0, value)];
+  })) as unknown as Stats;
+  return {
+    ...character,
+    jobId: nextJobId,
+    stats: nextStats,
+    hp: Math.min(nextStats.maxHp, character.hp + Math.max(0, nextStats.maxHp - character.stats.maxHp)),
+    mp: Math.min(nextStats.maxMp, character.mp + Math.max(0, nextStats.maxMp - character.stats.maxMp))
+  };
+}
 
 const EQUIPMENT = createEquipmentCatalog([
   {
@@ -196,6 +260,11 @@ function reorderSignatureSkill(skills: readonly string[], signatureSkillId: stri
   return skills.includes(signatureSkillId)
     ? [signatureSkillId, ...skills.filter((skillId) => skillId !== signatureSkillId)]
     : [...skills];
+}
+
+/** Grants a branch's bonus form the first time it is learned; never duplicates it. */
+function withBonusSkill(skills: readonly string[], bonusSkillId: string): string[] {
+  return skills.includes(bonusSkillId) ? [...skills] : [...skills, bonusSkillId];
 }
 
 interface ActiveBattle {
@@ -718,7 +787,7 @@ export class EngineGameBridge implements GameBridge {
     this.emit();
   }
 
-  async chooseBattleAction(action: BattleAction): Promise<void> {
+  async chooseBattleAction(action: BattleAction, skillId?: string): Promise<void> {
     const active = this.#battle;
     if (!active || active.phase !== "choosing") return;
     const actor = active.state.party[active.partyTurnIndex];
@@ -745,7 +814,10 @@ export class EngineGameBridge implements GameBridge {
         active.log.push("No Root Tonic remains in the pack.");
       }
     } else {
-      const activeSkillId = actor.skills.find((skillId) => SKILLS[skillId]);
+      const requestedSkillId = action === "skill" && skillId && actor.skills.includes(skillId) && SKILLS[skillId]
+        ? skillId
+        : undefined;
+      const activeSkillId = requestedSkillId ?? actor.skills.find((candidate) => SKILLS[candidate]);
       const activeSkill = activeSkillId ? SKILLS[activeSkillId] : undefined;
       const resolution = resolveCombatAction(
         active.state,
@@ -952,7 +1024,7 @@ export class EngineGameBridge implements GameBridge {
     let nextMember: PlayerCharacter;
     let flags = state.world.flags;
     if (jobId === baseJob.id) {
-      nextMember = { ...member, jobId: baseJob.id };
+      nextMember = reviseStatsForJobChange(member, baseJob.id);
     } else {
       const advancedJob = advancedJobs.find((job) => job.id === jobId && job.baseJobId === baseJob.id);
       if (!advancedJob) return commandFailure("That job is not part of this character's branch.");
@@ -960,11 +1032,11 @@ export class EngineGameBridge implements GameBridge {
         return commandFailure(`${advancedJob.name} unlocks at level ${advancedJob.minimumLevel}.`);
       }
       flags = { ...flags, [jobUnlockFlag(member.id, advancedJob.id)]: true };
-      nextMember = {
-        ...member,
-        jobId: advancedJob.id,
-        skills: reorderSignatureSkill(member.skills, advancedJob.signatureSkillId)
-      };
+      const withForms = withBonusSkill(
+        reorderSignatureSkill(member.skills, advancedJob.signatureSkillId),
+        advancedJob.bonusSkillId
+      );
+      nextMember = reviseStatsForJobChange({ ...member, skills: withForms }, advancedJob.id);
     }
     this.#state = {
       ...state,
@@ -1493,10 +1565,13 @@ export class EngineGameBridge implements GameBridge {
       activeActorId: active.phase === "choosing"
         ? active.state.party[active.partyTurnIndex]?.id
         : undefined,
-      activeSkillName: (() => {
+      activeSkills: (() => {
         const actor = active.state.party[active.partyTurnIndex];
-        const skillId = actor?.skills.find((candidate) => SKILLS[candidate]);
-        return skillId ? SKILLS[skillId]?.name : undefined;
+        if (!actor) return [];
+        return actor.skills
+          .map((skillId) => SKILLS[skillId])
+          .filter((skill): skill is CombatSkill => skill !== undefined)
+          .map((skill) => ({ id: skill.id, name: skill.name, mpCost: skill.mpCost }));
       })(),
       bossPhase: active.activatedBossPhases.at(-1),
       log: active.log.slice(-8),

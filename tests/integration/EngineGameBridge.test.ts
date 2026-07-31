@@ -87,9 +87,25 @@ describe("EngineGameBridge party combat", () => {
     expect(saved?.inventory.some(({ itemId }) => itemId === "item.resin-vest")).toBe(false);
 
     bridge.startEncounter("encounter.mossroad-foragers");
-    expect(bridge.getSnapshot().battle?.activeSkillName).toBe("Guard Line");
+    expect(bridge.getSnapshot().battle?.activeSkills.map(({ name }) => name)).toEqual(["Guard Line", "Shield Bash"]);
     const actor = bridge.getSnapshot().battle?.actors.find(({ id }) => id === "party.protagonist");
     expect(actor?.maxHp).toBe((protagonist?.stats.maxHp ?? 0) + 14);
+  });
+
+  it("lets the player choose any known form, not just the first learned skill", async () => {
+    const { bridge } = createBridge();
+    await bridge.newGame({ name: "Nyra", ancestryId: "stonekin", jobId: "vanguard" });
+    bridge.startEncounter("encounter.mossroad-foragers");
+    const options = bridge.getSnapshot().battle?.activeSkills;
+    expect(options?.map(({ id }) => id)).toEqual(["skill.guard-line", "skill.shield-bash"]);
+    const shieldBash = options?.find(({ id }) => id === "skill.shield-bash");
+    expect(shieldBash?.mpCost).toBe(5);
+
+    const logBefore = bridge.getSnapshot().battle?.log.length ?? 0;
+    await bridge.chooseBattleAction("skill", "skill.shield-bash");
+    // Confirms the requested (non-default, non-first-learned) skill actually
+    // resolved a combat action rather than being silently ignored.
+    expect(bridge.getSnapshot().battle?.log.length).toBeGreaterThan(logBefore);
   });
 
   it("lets a Mender use their active form to restore vitality", async () => {
@@ -546,15 +562,22 @@ describe("EngineGameBridge runtime party management", () => {
     await bridge.continueGame();
 
     expect(bridge.getSnapshot().party[0]?.jobOptions?.map(({ state }) => state)).toEqual(["active", "available", "available"]);
+    const baseStrength = (await saves.load("autosave"))?.party[0]?.stats.strength ?? 0;
     expect((await bridge.selectJob("party.protagonist", "banneret")).success).toBe(true);
     const advanced = await saves.load("autosave");
     expect(advanced?.party[0]?.jobId).toBe("banneret");
     expect(advanced?.party[0]?.skills[0]).toBe("skill.shield-bash");
+    // Banneret grants a permanently new form in addition to reordering its signature skill.
+    expect(advanced?.party[0]?.skills).toContain("skill.rallying-strike");
+    // Banneret's stat delta (strength +3, charisma +2) is distinct from Bulwark's (maxHp +10, vitality +2).
+    expect(advanced?.party[0]?.stats.strength).toBe(baseStrength + 3);
     expect(advanced?.world.flags["progression.job.party.protagonist.banneret"]).toBe(true);
     expect(bridge.getSnapshot().party[0]?.jobOptions?.find(({ id }) => id === "banneret")?.state).toBe("active");
 
     expect((await bridge.selectJob("party.protagonist", "vanguard")).success).toBe(true);
     expect(bridge.getSnapshot().party[0]?.jobOptions?.find(({ id }) => id === "banneret")?.state).toBe("unlocked");
+    // Reverting to the base job removes the branch's stat delta cleanly.
+    expect((await saves.load("autosave"))?.party[0]?.stats.strength).toBe(baseStrength);
   });
 });
 

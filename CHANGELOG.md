@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Gave every one of the 12 advanced job branches a permanently learned,
+  mechanically distinct form and a unique stat emphasis, replacing the prior
+  cosmetic skill-reorder-only branch change. Battle now exposes a form-select
+  menu so any known skill can be chosen in combat, not just the first learned
+  one.
+- Fixed `npm run dev:server` crashing on start due to a `tsx` CLI argument
+  order bug (`--env-file-if-exists` must follow the `watch` subcommand).
 - Expanded regional NPC writing from 33 total lines to 240 authored lines,
   split into ownership-safe content catalogs. Persistent per-NPC conversation
   memory now rotates later beats across visits and survives save/reload.

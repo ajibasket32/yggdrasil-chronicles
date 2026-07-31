@@ -534,21 +534,29 @@ export interface AdvancedJobDefinition {
   readonly baseJobId: (typeof jobs)[number]["id"];
   readonly minimumLevel: number;
   readonly signatureSkillId: string;
+  /** A previously unlearned form granted the first time this branch is chosen. */
+  readonly bonusSkillId: string;
 }
 
+/**
+ * Each branch grants a distinct, permanently learned form (bonusSkillId,
+ * defined in the runtime combat skill catalog) in addition to reordering its
+ * signature skill. Branch pairs also diverge in stat emphasis; see
+ * ADVANCED_JOB_STATS in src/integration/EngineGameBridge.ts.
+ */
 export const advancedJobs: readonly AdvancedJobDefinition[] = [
-  { id: "bulwark", name: "Bulwark", baseJobId: "vanguard", minimumLevel: 4, signatureSkillId: "skill.guard-line" },
-  { id: "banneret", name: "Banneret", baseJobId: "vanguard", minimumLevel: 4, signatureSkillId: "skill.shield-bash" },
-  { id: "pathfinder", name: "Pathfinder", baseJobId: "ranger", minimumLevel: 4, signatureSkillId: "skill.quickstep" },
-  { id: "beastwarden", name: "Beastwarden", baseJobId: "ranger", minimumLevel: 4, signatureSkillId: "skill.aimed-shot" },
-  { id: "lifebinder", name: "Lifebinder", baseJobId: "mender", minimumLevel: 4, signatureSkillId: "skill.mend" },
-  { id: "dawnkeeper", name: "Dawnkeeper", baseJobId: "mender", minimumLevel: 4, signatureSkillId: "skill.ward-thread" },
-  { id: "stormcaller", name: "Stormcaller", baseJobId: "shaper", minimumLevel: 4, signatureSkillId: "skill.ember-spark" },
-  { id: "resonant", name: "Resonant", baseJobId: "shaper", minimumLevel: 4, signatureSkillId: "skill.tide-pulse" },
-  { id: "veilhand", name: "Veilhand", baseJobId: "trickster", minimumLevel: 4, signatureSkillId: "skill.slow-mark" },
-  { id: "gambler", name: "Gambler", baseJobId: "trickster", minimumLevel: 4, signatureSkillId: "skill.feint" },
-  { id: "thornspeaker", name: "Thornspeaker", baseJobId: "warden", minimumLevel: 4, signatureSkillId: "skill.thorn-bind" },
-  { id: "green-sentinel", name: "Green Sentinel", baseJobId: "warden", minimumLevel: 4, signatureSkillId: "skill.rootward" }
+  { id: "bulwark", name: "Bulwark", baseJobId: "vanguard", minimumLevel: 4, signatureSkillId: "skill.guard-line", bonusSkillId: "skill.bastion-slam" },
+  { id: "banneret", name: "Banneret", baseJobId: "vanguard", minimumLevel: 4, signatureSkillId: "skill.shield-bash", bonusSkillId: "skill.rallying-strike" },
+  { id: "pathfinder", name: "Pathfinder", baseJobId: "ranger", minimumLevel: 4, signatureSkillId: "skill.quickstep", bonusSkillId: "skill.piercing-arrow" },
+  { id: "beastwarden", name: "Beastwarden", baseJobId: "ranger", minimumLevel: 4, signatureSkillId: "skill.aimed-shot", bonusSkillId: "skill.hunting-mark" },
+  { id: "lifebinder", name: "Lifebinder", baseJobId: "mender", minimumLevel: 4, signatureSkillId: "skill.mend", bonusSkillId: "skill.greater-mend" },
+  { id: "dawnkeeper", name: "Dawnkeeper", baseJobId: "mender", minimumLevel: 4, signatureSkillId: "skill.ward-thread", bonusSkillId: "skill.dawnfire-lance" },
+  { id: "stormcaller", name: "Stormcaller", baseJobId: "shaper", minimumLevel: 4, signatureSkillId: "skill.ember-spark", bonusSkillId: "skill.storm-lance" },
+  { id: "resonant", name: "Resonant", baseJobId: "shaper", minimumLevel: 4, signatureSkillId: "skill.tide-pulse", bonusSkillId: "skill.deep-resonance" },
+  { id: "veilhand", name: "Veilhand", baseJobId: "trickster", minimumLevel: 4, signatureSkillId: "skill.slow-mark", bonusSkillId: "skill.veil-strike" },
+  { id: "gambler", name: "Gambler", baseJobId: "trickster", minimumLevel: 4, signatureSkillId: "skill.feint", bonusSkillId: "skill.wild-gambit" },
+  { id: "thornspeaker", name: "Thornspeaker", baseJobId: "warden", minimumLevel: 4, signatureSkillId: "skill.thorn-bind", bonusSkillId: "skill.bramble-snare" },
+  { id: "green-sentinel", name: "Green Sentinel", baseJobId: "warden", minimumLevel: 4, signatureSkillId: "skill.rootward", bonusSkillId: "skill.verdant-bulwark" }
 ];
 
 type AncestryId = (typeof ancestries)[number]["id"];
@@ -692,12 +700,18 @@ export function validateCampaignMetadata(): string[] {
     if (!buildKeys.has(`${ancestry.id}.${job.id}`)) errors.push(`Missing starting build ${ancestry.id}.${job.id}`);
   }
   const advancedJobIds = new Set<string>();
+  const bonusSkillIds = new Set<string>();
   for (const job of advancedJobs) {
     if (advancedJobIds.has(job.id)) errors.push(`Duplicate advanced job ${job.id}`);
     advancedJobIds.add(job.id);
     if (!jobIds.has(job.baseJobId)) errors.push(`${job.id} references unknown base job ${job.baseJobId}`);
     if (job.minimumLevel < 2) errors.push(`${job.id} has an invalid minimum level`);
     if (!startingSkillIds.has(job.signatureSkillId)) errors.push(`${job.id} references unknown signature skill ${job.signatureSkillId}`);
+    if (!job.bonusSkillId.trim()) errors.push(`${job.id} is missing a bonus skill`);
+    if (startingSkillIds.has(job.bonusSkillId)) errors.push(`${job.id} bonus skill ${job.bonusSkillId} must be new, not an already-known starting skill`);
+    if (job.bonusSkillId === job.signatureSkillId) errors.push(`${job.id} bonus skill must differ from its signature skill`);
+    if (bonusSkillIds.has(job.bonusSkillId)) errors.push(`Duplicate bonus skill ${job.bonusSkillId} across advanced jobs`);
+    bonusSkillIds.add(job.bonusSkillId);
   }
   for (const recruit of recruitProfiles) {
     if (!npcIds.has(recruit.npcId)) errors.push(`${recruit.id} references unknown NPC ${recruit.npcId}`);

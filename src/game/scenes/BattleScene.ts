@@ -17,6 +17,8 @@ export class BattleScene extends Phaser.Scene {
   private bridge!: GameBridge;
   private snapshot!: Readonly<GameSnapshot>;
   private actionIndex = 0;
+  private skillMenuOpen = false;
+  private skillIndex = 0;
   private unsubscribe?: () => void;
   private resolving = false;
 
@@ -37,6 +39,8 @@ export class BattleScene extends Phaser.Scene {
     this.unsubscribe = this.bridge.subscribe((snapshot) => {
       this.snapshot = snapshot;
       this.resolving = false;
+      this.skillMenuOpen = false;
+      this.skillIndex = 0;
       this.render();
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unsubscribe?.());
@@ -59,10 +63,7 @@ export class BattleScene extends Phaser.Scene {
     if (action === "up" || action === "left") this.move(-1);
     else if (action === "down" || action === "right") this.move(1);
     else if (action === "confirm" || action === "interact") void this.confirm();
-    else if (action === "cancel") {
-      this.actionIndex = ACTIONS.length - 1;
-      this.render();
-    }
+    else if (action === "cancel") this.cancel();
   }
 
   private onGamepadButton(_pad: Phaser.Input.Gamepad.Gamepad, button: Phaser.Input.Gamepad.Button): void {
@@ -70,10 +71,17 @@ export class BattleScene extends Phaser.Scene {
     if (action === "up" || action === "left") this.move(-1);
     else if (action === "down" || action === "right") this.move(1);
     else if (action === "confirm") void this.confirm();
-    else if (action === "cancel") {
-      this.actionIndex = ACTIONS.length - 1;
+    else if (action === "cancel") this.cancel();
+  }
+
+  private cancel(): void {
+    if (this.skillMenuOpen) {
+      this.skillMenuOpen = false;
       this.render();
+      return;
     }
+    this.actionIndex = ACTIONS.length - 1;
+    this.render();
   }
 
   private render(): void {
@@ -82,7 +90,8 @@ export class BattleScene extends Phaser.Scene {
     this.children.removeAll();
     this.paintArena(battle);
     this.paintActors(battle);
-    this.paintCommandPanel(battle);
+    if (this.skillMenuOpen) this.paintSkillMenu(battle);
+    else this.paintCommandPanel(battle);
   }
 
   private paintArena(battle: BattleView): void {
@@ -162,8 +171,12 @@ export class BattleScene extends Phaser.Scene {
         padding: { x: 8, y: 7 }
       });
     });
-    const hint = this.actionIndex === 1 && battle.activeSkillName
-      ? `${battle.activeSkillName}: ${ACTIONS[this.actionIndex]?.hint ?? ""}`
+    const isSkillRow = this.actionIndex === 1;
+    const skillSummary = isSkillRow && battle.activeSkills.length > 0
+      ? battle.activeSkills.map((skill) => skill.name).join(" / ")
+      : undefined;
+    const hint = skillSummary
+      ? `${skillSummary}: ${ACTIONS[this.actionIndex]?.hint ?? ""}`
       : ACTIONS[this.actionIndex]?.hint ?? "";
     this.add.text(36, 446, hint, { ...TEXT.body, color: COLORS.muted });
     const recentLog = battle.log.slice(-3).join("\n");
@@ -184,9 +197,35 @@ export class BattleScene extends Phaser.Scene {
     this.add.text(36, 507, this.resolving ? "Resolving…" : "Choose an action, then confirm.", TEXT.small);
   }
 
+  private paintSkillMenu(battle: BattleView): void {
+    this.add.text(28, 360, "CHOOSE A FORM", { ...TEXT.small, color: COLORS.gold });
+    battle.activeSkills.forEach((skill, index) => {
+      const selected = index === this.skillIndex;
+      this.add.text(36, 393 + index * 24, `${selected ? "›" : " "} ${skill.name.padEnd(20)} ${skill.mpCost} MP`, {
+        ...TEXT.heading,
+        fontSize: "14px",
+        color: selected ? COLORS.gold : COLORS.cream
+      });
+    });
+    const bindings = gameSettingsStore.get().keyBindings;
+    this.add.text(
+      36,
+      488,
+      `${keyboardCodeLabel(bindings.up)}/${keyboardCodeLabel(bindings.down)} selects a form · `
+      + `${keyboardCodeLabel(bindings.confirm)} / A confirms · ${keyboardCodeLabel(bindings.cancel)} / B back`,
+      TEXT.small
+    );
+  }
+
   private move(delta: number): void {
     const battle = this.snapshot.battle;
     if (!battle || battle.phase !== "choosing" || this.resolving) return;
+    if (this.skillMenuOpen) {
+      if (battle.activeSkills.length === 0) return;
+      this.skillIndex = Phaser.Math.Wrap(this.skillIndex + delta, 0, battle.activeSkills.length);
+      this.render();
+      return;
+    }
     this.actionIndex = Phaser.Math.Wrap(this.actionIndex + delta, 0, ACTIONS.length);
     this.render();
   }
@@ -200,8 +239,23 @@ export class BattleScene extends Phaser.Scene {
       this.scene.start("world");
       return;
     }
+    if (this.skillMenuOpen) {
+      const skill = battle.activeSkills[this.skillIndex];
+      playSound(this, "sfx.heal");
+      this.resolving = true;
+      this.skillMenuOpen = false;
+      this.render();
+      await this.bridge.chooseBattleAction("skill", skill?.id);
+      return;
+    }
     const action = ACTIONS[this.actionIndex];
     if (!action) return;
+    if (action.id === "skill" && battle.activeSkills.length > 1) {
+      this.skillMenuOpen = true;
+      this.skillIndex = 0;
+      this.render();
+      return;
+    }
     playSound(this, action.id === "skill" || action.id === "item" ? "sfx.heal" : action.id === "attack" ? "sfx.attack" : "sfx.confirm");
     this.resolving = true;
     this.render();
