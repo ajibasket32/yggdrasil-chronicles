@@ -64,6 +64,10 @@ export interface BattleActorView {
   maxHp: number;
   isParty: boolean;
   status?: string;
+  /** Preloaded Phaser texture key; falls back to sprite.player/sprite.enemy when absent. */
+  spriteKey?: string;
+  /** Multiplicative tint applied on top of the sprite for further per-actor distinction. */
+  tint?: number;
 }
 
 export interface BattleSkillOption {

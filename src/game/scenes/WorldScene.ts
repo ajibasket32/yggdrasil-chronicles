@@ -25,6 +25,8 @@ const MAP_COLUMNS = 23;
 const MAP_ROWS = 17;
 const HUD_X = MAP_COLUMNS * TILE;
 const EQUIPMENT_SLOTS = ["weapon", "armor", "accessory"] as const;
+/** Must match the length of the `commands` array built in overlayContent's "system" branch. */
+const SYSTEM_MENU_COMMAND_COUNT = 11;
 
 type Point = { x: number; y: number };
 type InteractiveOverlayMode = "browse" | "target" | "jobs" | "equipment";
@@ -924,7 +926,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private moveSystem(delta: number): void {
-    this.systemIndex = Phaser.Math.Wrap(this.systemIndex + delta, 0, 11);
+    this.systemIndex = Phaser.Math.Wrap(this.systemIndex + delta, 0, SYSTEM_MENU_COMMAND_COUNT);
     this.drawSystemOverlay();
   }
 

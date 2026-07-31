@@ -116,7 +116,9 @@ export class BattleScene extends Phaser.Scene {
     party.forEach((actor, index) => {
       const x = 160 + index * 96;
       const y = 245 - (index % 2) * 45;
-      const sprite = this.add.image(x, y, "sprite.player").setScale(1.8).setFlipX(true);
+      const key = actor.spriteKey && this.textures.exists(actor.spriteKey) ? actor.spriteKey : "sprite.player";
+      const sprite = this.add.image(x, y, key).setScale(1.8).setFlipX(true);
+      if (actor.tint !== undefined) sprite.setTint(actor.tint);
       if (actor.hp <= 0) sprite.setTint(0x4d545d);
       this.drawActiveActorMarker(x, y, actor.id === battle.activeActorId, actor.name);
       this.drawHealth(x - 48, y + 38, 96, actor.hp, actor.maxHp, actor.name, true);
@@ -124,7 +126,9 @@ export class BattleScene extends Phaser.Scene {
     enemies.forEach((actor, index) => {
       const x = 690 + (index % 2) * 105;
       const y = 200 + Math.floor(index / 2) * 90;
-      const sprite = this.add.image(x, y, "sprite.enemy").setScale(actor.maxHp > 80 ? 2 : 1.45);
+      const key = actor.spriteKey && this.textures.exists(actor.spriteKey) ? actor.spriteKey : "sprite.enemy";
+      const sprite = this.add.image(x, y, key).setScale(actor.maxHp > 80 ? 2 : 1.45);
+      if (actor.tint !== undefined) sprite.setTint(actor.tint);
       if (actor.hp <= 0) sprite.setAlpha(0.25);
       this.drawActiveActorMarker(x, y, actor.id === battle.activeActorId, this.titleCase(actor.name));
       this.drawHealth(x - 48, y + 42, 96, actor.hp, actor.maxHp, this.titleCase(actor.name), false);

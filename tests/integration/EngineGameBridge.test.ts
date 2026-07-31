@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { encounters, jobs } from "../../src/content";
 import { EngineGameBridge } from "../../src/integration/EngineGameBridge";
 import { MemorySaveStorage } from "../../src/save/memory-storage";
 import { SaveRepository } from "../../src/save/repository";
@@ -90,6 +91,9 @@ describe("EngineGameBridge party combat", () => {
     expect(bridge.getSnapshot().battle?.activeSkills.map(({ name }) => name)).toEqual(["Guard Line", "Shield Bash"]);
     const actor = bridge.getSnapshot().battle?.actors.find(({ id }) => id === "party.protagonist");
     expect(actor?.maxHp).toBe((protagonist?.stats.maxHp ?? 0) + 14);
+    // Battle portraits must be job-specific, not a shared generic sprite.
+    expect(actor?.spriteKey).toBe("sprite.job.vanguard");
+    expect(actor?.tint).toBeDefined();
   });
 
   it("lets the player choose any known form, not just the first learned skill", async () => {
@@ -106,6 +110,27 @@ describe("EngineGameBridge party combat", () => {
     // Confirms the requested (non-default, non-first-learned) skill actually
     // resolved a combat action rather than being silently ignored.
     expect(bridge.getSnapshot().battle?.log.length).toBeGreaterThan(logBefore);
+  });
+
+  it("gives every authored enemy and starting job a distinct battle portrait, not a shared generic sprite", async () => {
+    for (const encounter of encounters) {
+      const { bridge } = createBridge();
+      await startChronicle(bridge);
+      bridge.startEncounter(encounter.id);
+      const enemyActors = bridge.getSnapshot().battle?.actors.filter(({ isParty }) => !isParty) ?? [];
+      expect(enemyActors.length).toBeGreaterThan(0);
+      for (const enemy of enemyActors) {
+        expect(enemy.spriteKey, `${encounter.id}: ${enemy.name}`).toMatch(/^sprite\.enemy\.(small|humanoid|boss)$/);
+        expect(enemy.tint, `${encounter.id}: ${enemy.name}`).toBeDefined();
+      }
+    }
+    for (const job of jobs) {
+      const { bridge } = createBridge();
+      await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: job.id });
+      bridge.startEncounter("encounter.mossroad-foragers");
+      const actor = bridge.getSnapshot().battle?.actors.find(({ id }) => id === "party.protagonist");
+      expect(actor?.spriteKey, job.id).toBe(`sprite.job.${job.id}`);
+    }
   });
 
   it("lets a Mender use their active form to restore vitality", async () => {

@@ -16,14 +16,17 @@ Open `http://127.0.0.1:5173`. The game remains playable without an AI key.
 ## Controls
 
 - Move: Arrow keys or WASD
-- Interact/confirm: Enter, Space, or E
+- Interact/confirm: Enter or E
 - Cancel/menu: Escape
 - Journal: J
 - Inventory/use/equip: I
 - Party: P
+- Quick encounter: B (engages a nearby field encounter without walking into it)
 - Quick save: F5
 - System menu/manual saves: Escape, then choose a slot
 - Gamepad: D-pad/left stick to move, A to confirm, B to cancel
+
+All of the above keys are rebindable from the title screen's Settings menu.
 
 Inventory and party screens use the same directional controls. Consumables
 select a party target; gear can be equipped or removed; advanced job branches

@@ -16,6 +16,19 @@ export class BootScene extends Phaser.Scene {
       frameWidth: 32,
       frameHeight: 32
     });
+    // Battle party portraits: one sheet per starting job family so each
+    // slot in the party is visually distinct, not a repeated sprite.player.
+    this.load.spritesheet("sprite.job.vanguard", `${base}/Warrior-Blue.png`, { frameWidth: 32, frameHeight: 32 });
+    this.load.spritesheet("sprite.job.ranger", `${base}/Archer-Green.png`, { frameWidth: 32, frameHeight: 32 });
+    this.load.spritesheet("sprite.job.mender", `${base}/Mage-Cyan.png`, { frameWidth: 32, frameHeight: 32 });
+    this.load.spritesheet("sprite.job.shaper", `${base}/Mage-Red.png`, { frameWidth: 32, frameHeight: 32 });
+    this.load.spritesheet("sprite.job.trickster", `${base}/Archer-Purple.png`, { frameWidth: 32, frameHeight: 32 });
+    this.load.spritesheet("sprite.job.warden", `${base}/Warrior-Red.png`, { frameWidth: 32, frameHeight: 32 });
+    // Battle enemy portraits: a small/humanoid/soldier/boss split so
+    // creatures, wraiths, sentinels, and named bosses read as different foes.
+    this.load.spritesheet("sprite.enemy.small", `${base}/Slime.png`, { frameWidth: 32, frameHeight: 32 });
+    this.load.spritesheet("sprite.enemy.humanoid", `${base}/Soldier-Yellow.png`, { frameWidth: 32, frameHeight: 32 });
+    this.load.spritesheet("sprite.enemy.boss", `${base}/Character-Base.png`, { frameWidth: 32, frameHeight: 32 });
     const audio = "/assets/vendor/kenney-rpg-audio/Audio";
     this.load.audio("sfx.confirm", `${audio}/bookFlip1.ogg`);
     this.load.audio("sfx.step", `${audio}/footstep04.ogg`);

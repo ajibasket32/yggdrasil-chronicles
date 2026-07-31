@@ -37,9 +37,16 @@ describe("release asset audit", () => {
       "/assets/vendor/kenney-rpg-audio/Audio/footstep04.ogg",
       "/assets/vendor/kenney-rpg-audio/Audio/handleSmallLeather.ogg",
       "/assets/vendor/kenney-rpg-audio/Audio/knifeSlice.ogg",
+      "/assets/vendor/puny-characters/Puny-Characters/Archer-Green.png",
+      "/assets/vendor/puny-characters/Puny-Characters/Archer-Purple.png",
+      "/assets/vendor/puny-characters/Puny-Characters/Character-Base.png",
+      "/assets/vendor/puny-characters/Puny-Characters/Mage-Cyan.png",
+      "/assets/vendor/puny-characters/Puny-Characters/Mage-Red.png",
       "/assets/vendor/puny-characters/Puny-Characters/Slime.png",
       "/assets/vendor/puny-characters/Puny-Characters/Soldier-Red.png",
-      "/assets/vendor/puny-characters/Puny-Characters/Warrior-Blue.png"
+      "/assets/vendor/puny-characters/Puny-Characters/Soldier-Yellow.png",
+      "/assets/vendor/puny-characters/Puny-Characters/Warrior-Blue.png",
+      "/assets/vendor/puny-characters/Puny-Characters/Warrior-Red.png"
     ]);
   });
 

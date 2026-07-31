@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Gave party members and enemies distinct battle portraits instead of every
+  ally sharing one player sprite and every enemy sharing one red silhouette.
+  Party portraits now vary by job family (six sprite sheets) with an
+  ancestry tint; enemies use a small/humanoid/boss silhouette split plus a
+  per-enemy-ID tint, covering all 14 authored enemies across all 9
+  encounters. Uses existing committed CC0 Puny Characters sheets, no new
+  assets. Fixed README's Space-key claim and documented the working Quick
+  Encounter (B) action; named the system-menu wrap bound instead of leaving
+  it a bare magic number.
 - Gave each region a visually distinct tile palette and landmark set (basalt
   and ember tones for Cinder March towns/wilderness/dungeon, pale frost tones
   for Pale Canopy) instead of every region rendering identically by location

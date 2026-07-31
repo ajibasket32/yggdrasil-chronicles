@@ -256,6 +256,80 @@ function baseJobIdFor(jobId: string): string {
   return advancedJobs.find((job) => job.id === jobId)?.baseJobId ?? jobId;
 }
 
+/** Battle portrait per starting job family, preloaded in BootScene. Advanced branches share their base job's sprite. */
+const JOB_SPRITE_KEYS: Readonly<Record<string, string>> = {
+  vanguard: "sprite.job.vanguard",
+  ranger: "sprite.job.ranger",
+  mender: "sprite.job.mender",
+  shaper: "sprite.job.shaper",
+  trickster: "sprite.job.trickster",
+  warden: "sprite.job.warden"
+};
+
+function spriteKeyForJob(jobId: string): string {
+  return JOB_SPRITE_KEYS[baseJobIdFor(jobId)] ?? "sprite.player";
+}
+
+/** Distinct per-ancestry tint so party members sharing a job sprite still read as different characters. */
+const ANCESTRY_TINTS: Readonly<Record<string, number>> = {
+  hearthborn: 0xffffff,
+  sylvan: 0x9ad6a0,
+  stonekin: 0xc2a878,
+  wayfarer: 0xe8c992
+};
+
+/**
+ * Enemy portraits use a small/humanoid/boss silhouette split (creature packs,
+ * armed humanoids, named bosses) plus a per-enemy-ID tint so every authored
+ * enemy reads as visually distinct rather than one repeated red silhouette.
+ */
+const ENEMY_SPRITE_KEYS: Readonly<Record<string, string>> = {
+  "enemy.briar-wolf": "sprite.enemy.small",
+  "enemy.root-gnawer": "sprite.enemy.small",
+  "enemy.mireling": "sprite.enemy.small",
+  "enemy.ash-mote": "sprite.enemy.small",
+  "enemy.cinder-hound": "sprite.enemy.small",
+  "enemy.rime-stag": "sprite.enemy.small",
+  "enemy.frost-moth": "sprite.enemy.small",
+  "enemy.star-echo": "sprite.enemy.small",
+  "enemy.cinder-wraith": "sprite.enemy.humanoid",
+  "enemy.brass-sentinel": "sprite.enemy.humanoid",
+  "enemy.pale-custodian": "sprite.enemy.humanoid",
+  "enemy.mire-antler": "sprite.enemy.boss",
+  "enemy.kiln-heart": "sprite.enemy.boss",
+  "enemy.varn-rootless": "sprite.enemy.boss"
+};
+
+const ENEMY_TINTS: Readonly<Record<string, number>> = {
+  "enemy.briar-wolf": 0xb0a08c,
+  "enemy.root-gnawer": 0x8a9a6e,
+  "enemy.mireling": 0x6f8f7a,
+  "enemy.ash-mote": 0xd98c5a,
+  "enemy.cinder-hound": 0xb8563f,
+  "enemy.rime-stag": 0xb9c8d6,
+  "enemy.frost-moth": 0xd8e6ec,
+  "enemy.star-echo": 0xb0a2d8,
+  "enemy.cinder-wraith": 0x8a5c8c,
+  "enemy.brass-sentinel": 0xc9a24a,
+  "enemy.pale-custodian": 0x9fb0c2,
+  "enemy.mire-antler": 0x6f8f5a,
+  "enemy.kiln-heart": 0xd9762f,
+  "enemy.varn-rootless": 0x8c3a46
+};
+
+function spriteForEnemyId(enemyId: string): { spriteKey: string; tint: number } {
+  return {
+    spriteKey: ENEMY_SPRITE_KEYS[enemyId] ?? "sprite.enemy.small",
+    tint: ENEMY_TINTS[enemyId] ?? 0xffffff
+  };
+}
+
+/** Strips a combat instance suffix like ".0"/".1" back to the authored enemy content ID. */
+function enemyContentId(instanceId: string): string {
+  const lastDot = instanceId.lastIndexOf(".");
+  return lastDot === -1 ? instanceId : instanceId.slice(0, lastDot);
+}
+
 function reorderSignatureSkill(skills: readonly string[], signatureSkillId: string): string[] {
   return skills.includes(signatureSkillId)
     ? [signatureSkillId, ...skills.filter((skillId) => skillId !== signatureSkillId)]
@@ -1550,18 +1624,37 @@ export class EngineGameBridge implements GameBridge {
 
   private toBattleView(active: ActiveBattle): BattleView {
     const encounter = encounters.find(({ id }) => id === active.encounterId);
+    const roster = this.#state?.party ?? [];
     return {
       encounterId: active.encounterId,
       title: encounter?.name ?? "Encounter",
       phase: active.phase,
-      actors: [...active.state.party, ...active.state.enemies].map((actor) => ({
-        id: actor.id,
-        name: actor.name,
-        hp: actor.hp,
-        maxHp: actor.stats.maxHp,
-        isParty: actor.isPlayerControlled,
-        status: actor.statuses[0]?.id
-      })),
+      actors: [...active.state.party, ...active.state.enemies].map((actor) => {
+        if (actor.isPlayerControlled) {
+          const member = roster.find(({ id }) => id === actor.id);
+          return {
+            id: actor.id,
+            name: actor.name,
+            hp: actor.hp,
+            maxHp: actor.stats.maxHp,
+            isParty: true,
+            status: actor.statuses[0]?.id,
+            spriteKey: member ? spriteKeyForJob(member.jobId) : "sprite.player",
+            tint: member ? ANCESTRY_TINTS[member.raceId] ?? 0xffffff : 0xffffff
+          };
+        }
+        const { spriteKey, tint } = spriteForEnemyId(enemyContentId(actor.id));
+        return {
+          id: actor.id,
+          name: actor.name,
+          hp: actor.hp,
+          maxHp: actor.stats.maxHp,
+          isParty: false,
+          status: actor.statuses[0]?.id,
+          spriteKey,
+          tint
+        };
+      }),
       activeActorId: active.phase === "choosing"
         ? active.state.party[active.partyTurnIndex]?.id
         : undefined,
