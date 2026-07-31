@@ -471,12 +471,13 @@ export const locationFinds: Readonly<Record<string, readonly ContentFind[]>> = {
 export const encounterFinds: Readonly<Record<string, readonly ContentFind[]>> = {
   "encounter.mossroad-foragers": [["item.brass-rivet", 2], ["item.vesleaf", 2]],
   "encounter.flooded-grove": [["item.lantern-wick", 3]],
-  "encounter.mire-antler": [["item.dream-resin", 1]],
+  "encounter.mire-antler": [["item.dream-resin", 1], ["item.hearthsteel-blade", 1], ["item.kilnforge-plate", 1]],
   "encounter.ashfall-motes": [["item.ash-memory", 2], ["item.calm-ember", 2], ["item.ash-spice", 2]],
   "encounter.kiln-watch": [["item.ash-memory", 2], ["item.yarrow-seal", 1]],
-  "encounter.kiln-heart": [["item.severance-ledger", 1], ["item.cold-ember", 1]],
+  "encounter.kiln-heart": [["item.severance-ledger", 1], ["item.cold-ember", 1], ["item.emberglass-charm", 1], ["item.rootbound-edge", 1]],
   "encounter.whitebough-hunt": [["item.frost-resin", 2], ["item.memory-shard", 2]],
-  "encounter.vault-echoes": [["item.star-key", 3], ["item.memory-shard", 3]]
+  "encounter.vault-echoes": [["item.star-key", 3], ["item.memory-shard", 3]],
+  "encounter.varn-rootless": [["item.canopy-ward", 1], ["item.starlit-signet", 1]]
 };
 
 export const items: ItemDefinition[] = [
@@ -497,7 +498,17 @@ export const items: ItemDefinition[] = [
   { id: "item.yarrow-seal", name: "Yarrow's Seal", kind: "key", description: "Proof that a forgotten kiln-worker once lived.", value: 0 },
   { id: "item.cold-ember", name: "Cold Ember", kind: "consumable", description: "A blue coal that tastes faintly of mint.", value: 75 },
   { id: "item.wayfarer-blade", name: "Wayfarer Blade", kind: "weapon", description: "A balanced road sword made for uncertain fights.", value: 120 },
-  { id: "item.resin-vest", name: "Resin Vest", kind: "armor", description: "Layered cloth hardened with flexible resin.", value: 110 }
+  { id: "item.resin-vest", name: "Resin Vest", kind: "armor", description: "Layered cloth hardened with flexible resin.", value: 110 },
+  // Regional gear progression: named bosses drop the next equipment tier, so
+  // the starting weapon/armor/accessory are not the only gear across a full
+  // campaign. Mire Antler (Verdant Reach) drops tier 2; Kiln Heart (Cinder
+  // March) drops tier 2/3; Varn (Pale Canopy, final boss) drops tier 3.
+  { id: "item.hearthsteel-blade", name: "Hearthsteel Blade", kind: "weapon", description: "A Cinder March forge-blade tempered against root-frost.", value: 240 },
+  { id: "item.kilnforge-plate", name: "Kilnforge Plate", kind: "armor", description: "Basalt-fired plate that shrugs off blunt harm.", value: 220 },
+  { id: "item.emberglass-charm", name: "Emberglass Charm", kind: "accessory", description: "A kiln-glass bead that keeps a coal-warm focus.", value: 260 },
+  { id: "item.rootbound-edge", name: "Rootbound Edge", kind: "weapon", description: "A pale-canopy blade grown rather than forged.", value: 420 },
+  { id: "item.canopy-ward", name: "Canopy Ward", kind: "armor", description: "White-bough lamellar that turns aside starlit harm.", value: 400 },
+  { id: "item.starlit-signet", name: "Starlit Signet", kind: "accessory", description: "A ring cut from a star absent from every chart.", value: 460 }
 ];
 
 export const coreCampaign: ContentPack = {

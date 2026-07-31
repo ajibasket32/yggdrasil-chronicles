@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added regional equipment progression: six new weapon/armor/accessory items
+  (two tiers above the starting kit) dropped by the Mire Antler, Kiln Heart,
+  and Varn Rootless bosses, with level-gated eligibility matching each
+  region's recommended level floor. Previously the entire campaign only ever
+  had 3 equippable items total, all handed out at character creation.
 - Gave party members and enemies distinct battle portraits instead of every
   ally sharing one player sprite and every enemy sharing one red silhouette.
   Party portraits now vary by job family (six sprite sheets) with an

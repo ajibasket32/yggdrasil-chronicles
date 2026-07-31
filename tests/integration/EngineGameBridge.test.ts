@@ -575,6 +575,48 @@ describe("EngineGameBridge runtime party management", () => {
     expect(equipped?.party[0]?.hp).toBe(protagonist.stats.maxHp - 19);
   });
 
+  it("drops regional gear from named bosses and enforces minimum level before it can be equipped", async () => {
+    const { bridge, saves } = createBridge();
+    await startChronicle(bridge);
+    const initial = await saves.load("autosave");
+    if (!initial) throw new Error("Expected an initial autosave");
+    // Level stays 1 so the minimum-level rejection below is meaningful; stats
+    // are buffed only enough to win within the deterministic turn budget.
+    await saves.save("autosave", {
+      ...initial,
+      party: initial.party.map((member) => ({
+        ...member,
+        stats: { ...member.stats, strength: 25, maxHp: 1_000 },
+        hp: 1_000
+      }))
+    });
+    await bridge.continueGame();
+    bridge.startEncounter("encounter.mire-antler");
+    await winCurrentBattle(bridge);
+    await bridge.leaveBattle();
+
+    const afterVictory = await saves.load("autosave");
+    const protagonist = afterVictory?.party[0];
+    if (!protagonist) throw new Error("Expected a protagonist");
+    expect(afterVictory?.inventory.some(({ itemId }) => itemId === "item.hearthsteel-blade")).toBe(true);
+    expect(afterVictory?.inventory.some(({ itemId }) => itemId === "item.kilnforge-plate")).toBe(true);
+
+    // Tier-2 gear requires level 7; this protagonist is still level 1.
+    expect(protagonist.level).toBeLessThan(7);
+    const tooLow = await bridge.setEquipment(protagonist.id, "weapon", "item.hearthsteel-blade");
+    expect(tooLow.success).toBe(false);
+    expect(bridge.getSnapshot().party[0]?.equipment?.weapon?.itemId).not.toBe("item.hearthsteel-blade");
+
+    await saves.save("autosave", {
+      ...afterVictory,
+      party: afterVictory.party.map((member) => ({ ...member, level: 7 }))
+    });
+    await bridge.continueGame();
+    const atLevel = await bridge.setEquipment(protagonist.id, "weapon", "item.hearthsteel-blade");
+    expect(atLevel.success).toBe(true);
+    expect(bridge.getSnapshot().party[0]?.equipment?.weapon?.itemId).toBe("item.hearthsteel-blade");
+  });
+
   it("unlocks advanced jobs at level four, persists the flag, and promotes the signature skill", async () => {
     const { bridge, saves } = createBridge();
     await bridge.newGame({ name: "Bran", ancestryId: "hearthborn", jobId: "vanguard" });

@@ -217,6 +217,63 @@ const EQUIPMENT = createEquipmentCatalog([
     description: "A cloudy bead that hums during sleep.",
     value: 180,
     statModifiers: { maxMp: 8, wisdom: 2 }
+  },
+  // Regional gear progression, dropped by named bosses (see encounterFinds).
+  // Minimum levels match each dropping region's recommendedLevel floor so
+  // a lucky early drop cannot be worn before its region is reached.
+  {
+    id: "item.hearthsteel-blade",
+    name: "Hearthsteel Blade",
+    kind: "weapon",
+    description: "A Cinder March forge-blade tempered against root-frost.",
+    value: 240,
+    minimumLevel: 7,
+    statModifiers: { strength: 6, dexterity: 3 }
+  },
+  {
+    id: "item.kilnforge-plate",
+    name: "Kilnforge Plate",
+    kind: "armor",
+    description: "Basalt-fired plate that shrugs off blunt harm.",
+    value: 220,
+    minimumLevel: 7,
+    statModifiers: { maxHp: 28, vitality: 5, agility: -1 }
+  },
+  {
+    id: "item.emberglass-charm",
+    name: "Emberglass Charm",
+    kind: "accessory",
+    description: "A kiln-glass bead that keeps a coal-warm focus.",
+    value: 260,
+    minimumLevel: 7,
+    statModifiers: { maxMp: 14, intellect: 3 }
+  },
+  {
+    id: "item.rootbound-edge",
+    name: "Rootbound Edge",
+    kind: "weapon",
+    description: "A pale-canopy blade grown rather than forged.",
+    value: 420,
+    minimumLevel: 14,
+    statModifiers: { strength: 10, dexterity: 5, agility: 2 }
+  },
+  {
+    id: "item.canopy-ward",
+    name: "Canopy Ward",
+    kind: "armor",
+    description: "White-bough lamellar that turns aside starlit harm.",
+    value: 400,
+    minimumLevel: 14,
+    statModifiers: { maxHp: 44, vitality: 7, wisdom: 2 }
+  },
+  {
+    id: "item.starlit-signet",
+    name: "Starlit Signet",
+    kind: "accessory",
+    description: "A ring cut from a star absent from every chart.",
+    value: 460,
+    minimumLevel: 14,
+    statModifiers: { maxMp: 22, intellect: 4, wisdom: 4 }
   }
 ]);
 
