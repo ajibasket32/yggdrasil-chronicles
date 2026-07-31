@@ -159,6 +159,7 @@ export class WorldScene extends Phaser.Scene {
     if (!location) return;
 
     const kind = location.kind;
+    const regionId = location.regionId;
     const backgroundKey = kind === "town" ? "tile.grass" : kind === "wilderness" ? "tile.stone" : "tile.dungeon";
     for (let row = 0; row < MAP_ROWS; row += 1) {
       for (let column = 0; column < MAP_COLUMNS; column += 1) {
@@ -167,10 +168,10 @@ export class WorldScene extends Phaser.Scene {
           texture = "tile.water";
         }
         const tile = this.add.image(column * TILE, row * TILE, texture).setOrigin(0).setDisplaySize(TILE, TILE);
-        tile.setTint(this.tileTint(column, row, kind));
+        tile.setTint(this.tileTint(column, row, kind, regionId));
       }
     }
-    this.paintLandmarks(kind);
+    this.paintLandmarks(kind, regionId);
     this.paintExits(location.id);
     this.spawnNpcs(location.id);
     if (kind !== "town") this.spawnEncounter(location.id, kind);
@@ -185,32 +186,91 @@ export class WorldScene extends Phaser.Scene {
     this.refreshPrompt();
   }
 
-  private tileTint(column: number, row: number, kind: string): number {
+  /**
+   * WORLD_BIBLE.md gives each region a distinct character (rain-bright
+   * Verdant Reach, basalt/ash Cinder March, pale frost Pale Canopy). These
+   * per-region palettes and landmark shapes keep that distinction visible in
+   * the tile map instead of every region rendering identically by tile kind
+   * alone.
+   */
+  private tileTint(column: number, row: number, kind: string, regionId: string): number {
     const variation = (column * 13 + row * 7) % 4;
-    if (kind === "dungeon") return [0x78808c, 0x6e7782, 0x828a96, 0x747d88][variation] ?? 0xffffff;
-    if (kind === "wilderness") return [0xa8b095, 0x98a187, 0xb0b69c, 0x929b83][variation] ?? 0xffffff;
+    if (kind === "dungeon") {
+      if (regionId === "region.cinder-march") return [0x8a6a5c, 0x7d5c50, 0x94756a, 0x876356][variation] ?? 0xffffff;
+      if (regionId === "region.pale-canopy") return [0x8f96a8, 0x838aa0, 0x9aa0b2, 0x8791a4][variation] ?? 0xffffff;
+      return [0x78808c, 0x6e7782, 0x828a96, 0x747d88][variation] ?? 0xffffff;
+    }
+    if (kind === "wilderness") {
+      if (regionId === "region.cinder-march") return [0x9c7a5e, 0x8c6a51, 0xa6866a, 0x957256][variation] ?? 0xffffff;
+      if (regionId === "region.pale-canopy") return [0xc7d0d6, 0xb9c4cc, 0xd0d8dc, 0xaebac2][variation] ?? 0xffffff;
+      return [0xa8b095, 0x98a187, 0xb0b69c, 0x929b83][variation] ?? 0xffffff;
+    }
+    if (regionId === "region.cinder-march") return [0xb08a68, 0xa47c5c, 0xba9674, 0x9c7758][variation] ?? 0xffffff;
+    if (regionId === "region.pale-canopy") return [0xcfd8dc, 0xc2ccd2, 0xd8e0e2, 0xb6c0c8][variation] ?? 0xffffff;
     return [0xb3c49d, 0xaac093, 0xc0cb9f, 0xa0b88c][variation] ?? 0xffffff;
   }
 
-  private paintLandmarks(kind: "town" | "wilderness" | "dungeon"): void {
+  private paintLandmarks(kind: "town" | "wilderness" | "dungeon", regionId: string): void {
     const graphics = this.add.graphics().setDepth(2);
     if (kind === "town") {
-      graphics.fillStyle(0x58463d).fillRect(3 * TILE, 3 * TILE, 6 * TILE, 4 * TILE);
-      graphics.fillStyle(0x8e5f4b).fillTriangle(2.5 * TILE, 3 * TILE, 9.5 * TILE, 3 * TILE, 6 * TILE, TILE);
-      graphics.fillStyle(0xcda86f).fillRect(5.5 * TILE, 5 * TILE, TILE, 2 * TILE);
-      graphics.fillStyle(0x735b47).fillRect(13 * TILE, 5 * TILE, 6 * TILE, TILE);
-      for (let tree = 0; tree < 6; tree += 1) {
-        graphics.fillStyle(0x315c45).fillCircle((3 + tree * 3) * TILE, 13 * TILE, 23);
-        graphics.fillStyle(0x594234).fillRect((3 + tree * 3) * TILE - 4, 13 * TILE, 8, 30);
+      if (regionId === "region.cinder-march") {
+        // Emberwake: basalt foundry hall with a kiln chimney, no orchard trees.
+        graphics.fillStyle(0x3a3230).fillRect(3 * TILE, 3 * TILE, 6 * TILE, 4 * TILE);
+        graphics.fillStyle(0x5c443a).fillTriangle(2.5 * TILE, 3 * TILE, 9.5 * TILE, 3 * TILE, 6 * TILE, TILE);
+        graphics.fillStyle(0xd9762f).fillRect(5.5 * TILE, 5 * TILE, TILE, 2 * TILE);
+        graphics.fillStyle(0x2c2622).fillRect(13 * TILE, 5 * TILE, 6 * TILE, TILE);
+        graphics.fillStyle(0x413a36).fillRect(8.5 * TILE, 2 * TILE, TILE, 2 * TILE);
+        for (let rock = 0; rock < 6; rock += 1) {
+          graphics.fillStyle(0x4a413c).fillCircle((3 + rock * 3) * TILE, 13 * TILE, 20);
+        }
+      } else if (regionId === "region.pale-canopy") {
+        // Larkspire: pale observatory hall beneath bare white-bough trees.
+        graphics.fillStyle(0xdde3e6).fillRect(3 * TILE, 3 * TILE, 6 * TILE, 4 * TILE);
+        graphics.fillStyle(0xaebac2).fillTriangle(2.5 * TILE, 3 * TILE, 9.5 * TILE, 3 * TILE, 6 * TILE, TILE);
+        graphics.fillStyle(0xf2ecd6).fillRect(5.5 * TILE, 5 * TILE, TILE, 2 * TILE);
+        graphics.fillStyle(0x8c98a2).fillRect(13 * TILE, 5 * TILE, 6 * TILE, TILE);
+        graphics.fillCircle(9 * TILE, 3 * TILE, 9);
+        for (let tree = 0; tree < 6; tree += 1) {
+          graphics.fillStyle(0xd6dee0).fillCircle((3 + tree * 3) * TILE, 13 * TILE, 20);
+          graphics.fillStyle(0xb0bcc4).fillRect((3 + tree * 3) * TILE - 3, 13 * TILE, 6, 30);
+        }
+      } else {
+        graphics.fillStyle(0x58463d).fillRect(3 * TILE, 3 * TILE, 6 * TILE, 4 * TILE);
+        graphics.fillStyle(0x8e5f4b).fillTriangle(2.5 * TILE, 3 * TILE, 9.5 * TILE, 3 * TILE, 6 * TILE, TILE);
+        graphics.fillStyle(0xcda86f).fillRect(5.5 * TILE, 5 * TILE, TILE, 2 * TILE);
+        graphics.fillStyle(0x735b47).fillRect(13 * TILE, 5 * TILE, 6 * TILE, TILE);
+        for (let tree = 0; tree < 6; tree += 1) {
+          graphics.fillStyle(0x315c45).fillCircle((3 + tree * 3) * TILE, 13 * TILE, 23);
+          graphics.fillStyle(0x594234).fillRect((3 + tree * 3) * TILE - 4, 13 * TILE, 8, 30);
+        }
       }
     } else if (kind === "wilderness") {
-      graphics.lineStyle(16, 0x71604d, 0.9).beginPath().moveTo(0, 10 * TILE).lineTo(HUD_X, 7 * TILE).strokePath();
-      graphics.lineStyle(5, 0x526d55, 0.8).beginPath().moveTo(5 * TILE, 0).lineTo(10 * TILE, 5 * TILE).lineTo(8 * TILE, 17 * TILE).strokePath();
+      if (regionId === "region.cinder-march") {
+        // Ashfall Trail: a cinder track through cracked basalt, no green ridgeline.
+        graphics.lineStyle(16, 0x453a34, 0.9).beginPath().moveTo(0, 10 * TILE).lineTo(HUD_X, 7 * TILE).strokePath();
+        graphics.lineStyle(5, 0x2d2622, 0.85).beginPath().moveTo(5 * TILE, 0).lineTo(10 * TILE, 5 * TILE).lineTo(8 * TILE, 17 * TILE).strokePath();
+        graphics.fillStyle(0xd9762f, 0.35).fillCircle(15 * TILE, 4 * TILE, 6).fillCircle(18 * TILE, 12 * TILE, 5);
+      } else if (regionId === "region.pale-canopy") {
+        // Whitebough Traverse: a frost bridge track over pale branch-lines.
+        graphics.lineStyle(16, 0xb6c0c8, 0.9).beginPath().moveTo(0, 10 * TILE).lineTo(HUD_X, 7 * TILE).strokePath();
+        graphics.lineStyle(5, 0xe4eaec, 0.85).beginPath().moveTo(5 * TILE, 0).lineTo(10 * TILE, 5 * TILE).lineTo(8 * TILE, 17 * TILE).strokePath();
+      } else {
+        graphics.lineStyle(16, 0x71604d, 0.9).beginPath().moveTo(0, 10 * TILE).lineTo(HUD_X, 7 * TILE).strokePath();
+        graphics.lineStyle(5, 0x526d55, 0.8).beginPath().moveTo(5 * TILE, 0).lineTo(10 * TILE, 5 * TILE).lineTo(8 * TILE, 17 * TILE).strokePath();
+      }
     } else {
       graphics.fillStyle(0x151923).fillRect(0, 0, HUD_X, TILE);
       graphics.fillStyle(0x151923).fillRect(0, 16 * TILE, HUD_X, TILE);
-      graphics.fillStyle(0x947252).fillCircle(4 * TILE, 4 * TILE, 7).fillCircle(19 * TILE, 12 * TILE, 7);
-      graphics.lineStyle(4, 0xc58f55, 0.5).strokeCircle(4 * TILE, 4 * TILE, 17).strokeCircle(19 * TILE, 12 * TILE, 17);
+      if (regionId === "region.cinder-march") {
+        graphics.fillStyle(0xd9762f).fillCircle(4 * TILE, 4 * TILE, 7).fillCircle(19 * TILE, 12 * TILE, 7);
+        graphics.lineStyle(4, 0xff9d52, 0.5).strokeCircle(4 * TILE, 4 * TILE, 17).strokeCircle(19 * TILE, 12 * TILE, 17);
+      } else if (regionId === "region.pale-canopy") {
+        graphics.fillStyle(0xd6e2e8).fillCircle(4 * TILE, 4 * TILE, 7).fillCircle(19 * TILE, 12 * TILE, 7);
+        graphics.lineStyle(4, 0xeef4f6, 0.5).strokeCircle(4 * TILE, 4 * TILE, 17).strokeCircle(19 * TILE, 12 * TILE, 17);
+      } else {
+        graphics.fillStyle(0x947252).fillCircle(4 * TILE, 4 * TILE, 7).fillCircle(19 * TILE, 12 * TILE, 7);
+        graphics.lineStyle(4, 0xc58f55, 0.5).strokeCircle(4 * TILE, 4 * TILE, 17).strokeCircle(19 * TILE, 12 * TILE, 17);
+      }
     }
   }
 

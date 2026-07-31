@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Gave each region a visually distinct tile palette and landmark set (basalt
+  and ember tones for Cinder March towns/wilderness/dungeon, pale frost tones
+  for Pale Canopy) instead of every region rendering identically by location
+  kind alone, matching WORLD_BIBLE.md's distinct regional character.
 - Gave every one of the 12 advanced job branches a permanently learned,
   mechanically distinct form and a unique stat emphasis, replacing the prior
   cosmetic skill-reorder-only branch change. Battle now exposes a form-select
