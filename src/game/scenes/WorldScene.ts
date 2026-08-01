@@ -801,7 +801,11 @@ export class WorldScene extends Phaser.Scene {
       }).join("\n\n")}`;
     }
     const equipment = member.equipment ?? {};
-    return `${this.snapshot.party.map((candidate, index) => `${index === this.partyIndex ? "›" : " "} ${candidate.name}  Lv ${candidate.level}  ${candidate.job}`).join("\n")}\n\n${member.name.toUpperCase()}\nHP ${member.hp}/${member.maxHp}    MP ${member.mp}/${member.maxMp}\n\nEQUIPPED\nWeapon: ${equipment.weapon?.name ?? "Empty"}\nArmor: ${equipment.armor?.name ?? "Empty"}\nAccessory: ${equipment.accessory?.name ?? "Empty"}\n\nRight to review jobs · Left to manage equipment`;
+    const stats = member.stats;
+    const statLine = stats
+      ? `STR ${stats.strength}  DEX ${stats.dexterity}  AGI ${stats.agility}  VIT ${stats.vitality}  INT ${stats.intellect}  WIS ${stats.wisdom}  CHA ${stats.charisma}`
+      : "";
+    return `${this.snapshot.party.map((candidate, index) => `${index === this.partyIndex ? "›" : " "} ${candidate.name}  Lv ${candidate.level}  ${candidate.job}`).join("\n")}\n\n${member.name.toUpperCase()}\nHP ${member.hp}/${member.maxHp}    MP ${member.mp}/${member.maxMp}\n${statLine}\n\nEQUIPPED\nWeapon: ${equipment.weapon?.name ?? "Empty"}\nArmor: ${equipment.armor?.name ?? "Empty"}\nAccessory: ${equipment.accessory?.name ?? "Empty"}\n\nRight to review jobs · Left to manage equipment`;
   }
 
   private itemKind(item: InventoryView | undefined): NonNullable<InventoryView["kind"]> {

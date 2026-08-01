@@ -635,6 +635,30 @@ describe("EngineGameBridge runtime party management", () => {
       expect.objectContaining({ id: "bulwark", state: "locked" }),
       expect.objectContaining({ id: "banneret", state: "locked" })
     ]);
+    // Full stat block must be exposed, not just HP/MP, so the party overlay
+    // can show why one build differs mechanically from another.
+    expect(protagonist?.stats).toEqual({
+      strength: expect.any(Number),
+      dexterity: expect.any(Number),
+      agility: expect.any(Number),
+      vitality: expect.any(Number),
+      intellect: expect.any(Number),
+      wisdom: expect.any(Number),
+      charisma: expect.any(Number)
+    });
+  });
+
+  it("reflects equipment stat modifiers in the published stat block", async () => {
+    const { bridge } = createBridge();
+    await bridge.newGame({ name: "Bran", ancestryId: "stonekin", jobId: "vanguard" });
+    const protagonist = bridge.getSnapshot().party[0];
+    if (!protagonist) throw new Error("Expected a protagonist");
+    // The starting Vanguard build already wears a Resin Vest (+3 vitality),
+    // so removing it should measurably drop the published vitality stat.
+    const vitalityEquipped = protagonist.stats.vitality;
+    await bridge.setEquipment(protagonist.id, "armor");
+    const vitalityUnequipped = bridge.getSnapshot().party[0]?.stats.vitality;
+    expect(vitalityUnequipped).toBe(vitalityEquipped - 3);
   });
 
   it("uses restorative inventory only when a member can benefit and persists each use", async () => {

@@ -1723,6 +1723,15 @@ export class EngineGameBridge implements GameBridge {
       mp: displayMp,
       maxMp: displayStats.maxMp,
       portraitTint: tints[index % tints.length] ?? 0xffffff,
+      stats: {
+        strength: displayStats.strength,
+        dexterity: displayStats.dexterity,
+        agility: displayStats.agility,
+        vitality: displayStats.vitality,
+        intellect: displayStats.intellect,
+        wisdom: displayStats.wisdom,
+        charisma: displayStats.charisma
+      },
       equipment,
       jobOptions
     };

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added a full stat line (STR/DEX/AGI/VIT/INT/WIS/CHA, post-equipment) to the
+  party overlay. Every combat formula already depended on these seven stats,
+  but the player had no way to see them — only HP/MP/level/job were ever
+  shown, so ancestry/job/equipment choices had invisible mechanical effects.
 - Made agility affect evasion in combat. Previously agility was tracked,
   grown per level, and modified by every ancestry/job/equipment entry, but
   had zero effect on hit chance, crit chance, or turn order — a fully

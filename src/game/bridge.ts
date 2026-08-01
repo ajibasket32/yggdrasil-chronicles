@@ -11,6 +11,16 @@ export interface CharacterCreationDraft {
   jobId: string;
 }
 
+export interface PartyMemberStatsView {
+  strength: number;
+  dexterity: number;
+  agility: number;
+  vitality: number;
+  intellect: number;
+  wisdom: number;
+  charisma: number;
+}
+
 export interface PartyMemberView {
   id: string;
   name: string;
@@ -22,6 +32,8 @@ export interface PartyMemberView {
   mp: number;
   maxMp: number;
   portraitTint: number;
+  /** Post-equipment combat stats, excluding maxHp/maxMp (already shown above). */
+  stats: PartyMemberStatsView;
   equipment?: Partial<Record<"weapon" | "armor" | "accessory", { itemId: string; name: string }>>;
   jobOptions?: JobOptionView[];
 }

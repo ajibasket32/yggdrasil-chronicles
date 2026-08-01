@@ -13,6 +13,8 @@ import type {
 
 const clone = <T>(value: T): T => structuredClone(value);
 
+const DEMO_STATS = { strength: 10, dexterity: 9, agility: 9, vitality: 10, intellect: 8, wisdom: 8, charisma: 7 };
+
 const starterMember = (draft: CharacterCreationDraft): PartyMemberView => ({
   id: "party.protagonist",
   name: draft.name || "Rowan",
@@ -23,7 +25,8 @@ const starterMember = (draft: CharacterCreationDraft): PartyMemberView => ({
   maxHp: 68,
   mp: 24,
   maxMp: 24,
-  portraitTint: 0x72d6a1
+  portraitTint: 0x72d6a1,
+  stats: DEMO_STATS
 });
 
 export class DemoGameBridge implements GameBridge {
@@ -111,7 +114,8 @@ export class DemoGameBridge implements GameBridge {
         maxHp: 54,
         mp: 30,
         maxMp: 30,
-        portraitTint: 0xe8a95a
+        portraitTint: 0xe8a95a,
+        stats: DEMO_STATS
       };
       this.state = {
         ...this.state,
