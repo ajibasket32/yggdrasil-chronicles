@@ -6,7 +6,7 @@ import {
   resolveCombatAction,
   type CombatSkill
 } from "../../src/engine/combat";
-import { makeCombatant } from "./fixtures";
+import { baseStats, makeCombatant } from "./fixtures";
 
 const burningBlade: CombatSkill = {
   id: "burning-blade",
@@ -53,6 +53,58 @@ describe("deterministic combat", () => {
       resolution.events.find((event) => event.type === "damage")?.amount ?? 0;
     expect(damage(weakHit)).toBeGreaterThan(damage(resistantHit));
     expect(damage(guardedHit)).toBeLessThan(damage(weakHit));
+  });
+
+  it("gives a high-agility target a measurably lower chance to be hit than a low-agility one", () => {
+    // Statistical check across many independent seeds: a target's agility
+    // must reduce the attacker's effective hit chance (evasion), not just
+    // exist as a decorative stat. Uses the default basic attack (accuracy
+    // 0.95, unaffected by skill choice) so only target agility differs.
+    const hero = makeCombatant("hero-one");
+    const nimble = makeCombatant("nimble", { stats: { ...hero.stats, agility: 40 } });
+    const sluggish = makeCombatant("sluggish", { stats: { ...hero.stats, agility: 0 } });
+    const action = (targetId: string) => ({ type: "attack" as const, actorId: hero.id, targetId });
+
+    let nimbleMisses = 0;
+    let sluggishMisses = 0;
+    const trials = 200;
+    for (let trial = 0; trial < trials; trial += 1) {
+      const seed = `evasion-trial-${trial}`;
+      const nimbleResult = resolveCombatAction(createCombatState([hero], [nimble], seed), action(nimble.id));
+      const sluggishResult = resolveCombatAction(createCombatState([hero], [sluggish], seed), action(sluggish.id));
+      if (nimbleResult.events.some((event) => event.type === "miss")) nimbleMisses += 1;
+      if (sluggishResult.events.some((event) => event.type === "miss")) sluggishMisses += 1;
+    }
+    expect(nimbleMisses).toBeGreaterThan(sluggishMisses);
+  });
+
+  it("never lets a self-targeted healing form miss its own actor regardless of agility", () => {
+    const mend: CombatSkill = {
+      id: "self-mend",
+      name: "Self Mend",
+      element: "radiant",
+      power: 18,
+      accuracy: 1,
+      mpCost: 4,
+      target: "self",
+      healing: true
+    };
+    // Deliberately low dexterity, high agility: if evasion applied to
+    // self-targeted skills this would be the case most likely to miss.
+    const healer = makeCombatant("healer", {
+      hp: 10,
+      skills: [mend.id],
+      stats: { ...baseStats, dexterity: 0, agility: 99 }
+    });
+    const enemy = makeCombatant("mireling");
+    for (let trial = 0; trial < 20; trial += 1) {
+      const resolution = resolveCombatAction(
+        createCombatState([healer], [enemy], `self-heal-${trial}`),
+        { type: "skill", actorId: healer.id, targetId: healer.id, skillId: mend.id },
+        { [mend.id]: mend }
+      );
+      expect(resolution.events.some((event) => event.type === "miss")).toBe(false);
+    }
   });
 
   it("resolves healing forms without damaging their allied target", () => {

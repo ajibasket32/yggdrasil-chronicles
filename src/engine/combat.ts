@@ -266,7 +266,10 @@ export function resolveCombatAction(
     ...actorMatch.combatant,
     mp: actorMatch.combatant.mp - skill.mpCost
   });
-  const hitRoll = randomChance(state.rng, skill.accuracy + actorMatch.combatant.stats.dexterity * 0.002);
+  // Self-targeted forms (all healing) never miss against their own actor;
+  // evasion only applies when striking a genuinely separate combatant.
+  const evasion = skill.target === "self" ? 0 : targetMatch.combatant.stats.agility * 0.002;
+  const hitRoll = randomChance(state.rng, skill.accuracy + actorMatch.combatant.stats.dexterity * 0.002 - evasion);
   state = { ...state, rng: hitRoll.rng };
   if (!hitRoll.value) {
     return { state, events: [{ type: "miss", actorId: action.actorId, targetId: action.targetId }] };

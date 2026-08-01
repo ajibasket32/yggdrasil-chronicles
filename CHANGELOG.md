@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Made agility affect evasion in combat. Previously agility was tracked,
+  grown per level, and modified by every ancestry/job/equipment entry, but
+  had zero effect on hit chance, crit chance, or turn order — a fully
+  decorative stat. Attacks now roll against the target's agility as an
+  evasion term (self-targeted healing forms are exempt, so they never miss
+  their own actor).
 - Added an in-battle item-select menu (Vesleaf, Root Tonic, Aether Drop,
   Frost Resin, Cold Ember, Ash Spice) instead of the ITEM action always
   defaulting to Root Tonic regardless of what else was carried. Fixed Ash
