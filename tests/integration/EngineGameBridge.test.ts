@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encounters, jobs } from "../../src/content";
+import { encounters, jobs, recruitProfiles, startingBuildLoadouts } from "../../src/content";
 import { EngineGameBridge } from "../../src/integration/EngineGameBridge";
 import { MemorySaveStorage } from "../../src/save/memory-storage";
 import { SaveRepository } from "../../src/save/repository";
@@ -497,6 +497,38 @@ describe("EngineGameBridge campaign persistence", () => {
 });
 
 describe("EngineGameBridge runtime party management", () => {
+  it("gives every recruited companion an exclusive skill no self-made character of the same job can learn", async () => {
+    for (const profile of recruitProfiles) {
+      const { bridge, saves } = createBridge();
+      await startChronicle(bridge);
+      const initial = await saves.load("autosave");
+      if (!initial) throw new Error("Expected an initial autosave");
+      await saves.save("autosave", {
+        ...initial,
+        quests: initial.quests.map((quest) =>
+          quest.questId === profile.recruitmentQuestId
+            ? { ...quest, state: "completed" as const, currentStep: 3 }
+            : quest
+        )
+      });
+      await bridge.continueGame();
+      await bridge.interactNpc(profile.npcId);
+
+      const recruited = (await saves.load("autosave"))?.party.find(
+        ({ id }) => id === profile.id.replace("recruit.", "party.")
+      );
+      expect(recruited, profile.id).toBeDefined();
+
+      const selfMadeSkills = new Set(
+        startingBuildLoadouts
+          .filter((loadout) => loadout.jobId === profile.jobId)
+          .flatMap((loadout) => loadout.startingSkills)
+      );
+      const exclusiveSkills = (recruited?.skills ?? []).filter((skillId) => !selfMadeSkills.has(skillId));
+      expect(exclusiveSkills.length, `${profile.id} should learn at least one skill unavailable to a self-made ${profile.jobId}`).toBeGreaterThan(0);
+    }
+  });
+
   it("publishes item kinds, equipment ownership, and the three-job branch view", async () => {
     const { bridge } = createBridge();
     await bridge.newGame({ name: "Bran", ancestryId: "stonekin", jobId: "vanguard" });

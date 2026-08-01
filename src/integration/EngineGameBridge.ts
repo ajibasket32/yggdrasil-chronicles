@@ -137,7 +137,15 @@ const COMBAT_SKILLS: readonly CombatSkill[] = [
   { id: "skill.veil-strike", name: "Veil Strike", element: "shadow", power: 21, accuracy: 0.95, mpCost: 5, target: "enemy", status: { id: "sleep", chance: 0.35, turns: 2, potency: 0 } },
   { id: "skill.wild-gambit", name: "Wild Gambit", element: "physical", power: 32, accuracy: 0.8, mpCost: 6, target: "enemy" },
   { id: "skill.bramble-snare", name: "Bramble Snare", element: "nature", power: 22, accuracy: 0.9, mpCost: 6, target: "enemy", status: { id: "poison", chance: 0.5, turns: 3, potency: 5 } },
-  { id: "skill.verdant-bulwark", name: "Verdant Bulwark", element: "nature", power: 22, accuracy: 1, mpCost: 5, target: "self", healing: true }
+  { id: "skill.verdant-bulwark", name: "Verdant Bulwark", element: "nature", power: 22, accuracy: 1, mpCost: 5, target: "self", healing: true },
+  // Recruited companion signature forms: each grants a toolkit their base
+  // Ranger/Vanguard/Mender kit otherwise entirely lacks (Tovin's Ranger kit
+  // has no freeze; Keva's Vanguard kit has no sustain; Eira's Mender kit has
+  // no damage-with-lasting-status), so recruiting them is a mechanically
+  // distinct addition, not a stat-identical reskin of a self-made character.
+  { id: "skill.marked-quarry", name: "Marked Quarry", element: "wind", power: 21, accuracy: 0.95, mpCost: 5, target: "enemy", status: { id: "freeze", chance: 0.3, turns: 1, potency: 0 } },
+  { id: "skill.delvers-grit", name: "Delver's Grit", element: "earth", power: 24, accuracy: 1, mpCost: 5, target: "self", healing: true },
+  { id: "skill.bridgekeepers-warding", name: "Bridgekeeper's Warding", element: "nature", power: 19, accuracy: 0.94, mpCost: 5, target: "enemy", status: { id: "poison", chance: 0.4, turns: 2, potency: 4 } }
 ];
 
 const SKILLS: Readonly<Record<string, CombatSkill>> = Object.fromEntries(

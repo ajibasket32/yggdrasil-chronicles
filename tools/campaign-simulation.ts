@@ -62,7 +62,10 @@ const SKILLS: Readonly<Record<string, CombatSkill>> = {
   "skill.mend": { id: "skill.mend", name: "Mending Light", element: "radiant", power: 18, accuracy: 1, mpCost: 4, target: "self", healing: true },
   "skill.ward-thread": { id: "skill.ward-thread", name: "Ward Thread", element: "aether", power: 15, accuracy: 1, mpCost: 3, target: "enemy", status: { id: "sleep", chance: 0.2, turns: 1, potency: 0 } },
   "skill.ember-spark": { id: "skill.ember-spark", name: "Ember Spark", element: "fire", power: 24, accuracy: 0.9, mpCost: 6, target: "enemy", status: { id: "burn", chance: 0.35, turns: 2, potency: 4 } },
-  "skill.tide-pulse": { id: "skill.tide-pulse", name: "Tide Pulse", element: "water", power: 20, accuracy: 0.94, mpCost: 5, target: "enemy" }
+  "skill.tide-pulse": { id: "skill.tide-pulse", name: "Tide Pulse", element: "water", power: 20, accuracy: 0.94, mpCost: 5, target: "enemy" },
+  "skill.marked-quarry": { id: "skill.marked-quarry", name: "Marked Quarry", element: "wind", power: 21, accuracy: 0.95, mpCost: 5, target: "enemy", status: { id: "freeze", chance: 0.3, turns: 1, potency: 0 } },
+  "skill.delvers-grit": { id: "skill.delvers-grit", name: "Delver's Grit", element: "earth", power: 24, accuracy: 1, mpCost: 5, target: "self", healing: true },
+  "skill.bridgekeepers-warding": { id: "skill.bridgekeepers-warding", name: "Bridgekeeper's Warding", element: "nature", power: 19, accuracy: 0.94, mpCost: 5, target: "enemy", status: { id: "poison", chance: 0.4, turns: 2, potency: 4 } }
 };
 
 const BASE_STATS: Stats = {
@@ -105,7 +108,7 @@ const BOSS_SCENARIOS: readonly BossScenario[] = [
     description: "Level 4 Sylvan Shaper with recruited Wayfarer Ranger",
     party: [
       { id: "party.protagonist", name: "Rowan", level: 4, stats: { maxMp: 22, intellect: 6, wisdom: 1 }, skills: ["skill.ember-spark", "skill.tide-pulse"], elements: { nature: -0.2, fire: 0.15 } },
-      { id: "party.tovin-ash", name: "Tovin", level: 4, stats: { dexterity: 5, agility: 5, vitality: -1, strength: 3 }, skills: ["skill.aimed-shot", "skill.quickstep"], elements: { wind: -0.1 } }
+      { id: "party.tovin-ash", name: "Tovin", level: 4, stats: { dexterity: 5, agility: 5, vitality: -1, strength: 3 }, skills: ["skill.aimed-shot", "skill.quickstep", "skill.marked-quarry"], elements: { wind: -0.1 } }
     ]
   },
   {
@@ -113,8 +116,8 @@ const BOSS_SCENARIOS: readonly BossScenario[] = [
     description: "Level 7 Shaper, Ranger, and Vanguard expedition",
     party: [
       { id: "party.protagonist", name: "Rowan", level: 7, stats: { maxMp: 22, intellect: 6, wisdom: 1 }, skills: ["skill.ember-spark", "skill.tide-pulse"], elements: { nature: -0.2, fire: 0.15 } },
-      { id: "party.tovin-ash", name: "Tovin", level: 7, stats: { dexterity: 5, agility: 5, vitality: -1, strength: 3 }, skills: ["skill.aimed-shot", "skill.quickstep"], elements: { wind: -0.1 } },
-      { id: "party.keva-dross", name: "Keva", level: 7, stats: { maxHp: 24, vitality: 6, agility: -2, strength: 2 }, skills: ["skill.guard-line", "skill.shield-bash"], elements: { earth: -0.2, lightning: 0.1 } }
+      { id: "party.tovin-ash", name: "Tovin", level: 7, stats: { dexterity: 5, agility: 5, vitality: -1, strength: 3 }, skills: ["skill.aimed-shot", "skill.quickstep", "skill.marked-quarry"], elements: { wind: -0.1 } },
+      { id: "party.keva-dross", name: "Keva", level: 7, stats: { maxHp: 24, vitality: 6, agility: -2, strength: 2 }, skills: ["skill.guard-line", "skill.shield-bash", "skill.delvers-grit"], elements: { earth: -0.2, lightning: 0.1 } }
     ]
   },
   {
@@ -122,9 +125,9 @@ const BOSS_SCENARIOS: readonly BossScenario[] = [
     description: "Level 8 full party after optional companion recruitment",
     party: [
       { id: "party.protagonist", name: "Rowan", level: 8, stats: { maxMp: 22, intellect: 6, wisdom: 1 }, skills: ["skill.ember-spark", "skill.tide-pulse"], elements: { nature: -0.2, fire: 0.15 } },
-      { id: "party.tovin-ash", name: "Tovin", level: 8, stats: { dexterity: 5, agility: 5, vitality: -1, strength: 3 }, skills: ["skill.aimed-shot", "skill.quickstep"], elements: { wind: -0.1 } },
-      { id: "party.keva-dross", name: "Keva", level: 8, stats: { maxHp: 24, vitality: 6, agility: -2, strength: 2 }, skills: ["skill.guard-line", "skill.shield-bash"], elements: { earth: -0.2, lightning: 0.1 } },
-      { id: "party.eira-lune", name: "Eira", level: 8, stats: { maxMp: 18, intellect: 3, wisdom: 5 }, skills: ["skill.mend", "skill.ward-thread"], elements: { nature: -0.2, fire: 0.15 } }
+      { id: "party.tovin-ash", name: "Tovin", level: 8, stats: { dexterity: 5, agility: 5, vitality: -1, strength: 3 }, skills: ["skill.aimed-shot", "skill.quickstep", "skill.marked-quarry"], elements: { wind: -0.1 } },
+      { id: "party.keva-dross", name: "Keva", level: 8, stats: { maxHp: 24, vitality: 6, agility: -2, strength: 2 }, skills: ["skill.guard-line", "skill.shield-bash", "skill.delvers-grit"], elements: { earth: -0.2, lightning: 0.1 } },
+      { id: "party.eira-lune", name: "Eira", level: 8, stats: { maxMp: 18, intellect: 3, wisdom: 5 }, skills: ["skill.mend", "skill.ward-thread", "skill.bridgekeepers-warding"], elements: { nature: -0.2, fire: 0.15 } }
     ]
   }
 ];
@@ -210,7 +213,7 @@ function shouldMend(actor: Combatant): boolean {
     && actor.hp / actor.stats.maxHp <= 0.55;
 }
 
-/** The in-game battle surface selects the first learned form; mimic that rule. */
+/** A simple deterministic AI approximation: mend when low, else the first affordable offensive form, else attack. */
 function choosePartyAction(state: CombatState, actor: Combatant): CombatAction {
   const target = firstLivingEnemy(state);
   if (!target) throw new Error("No living enemy for party action");

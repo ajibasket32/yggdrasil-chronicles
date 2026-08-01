@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Gave each of the three recruitable companions (Tovin, Keva, Eira) one
+  exclusive combat skill reflecting their story role (a scout's ambush
+  sense, a kiln-delver's endurance, a bridgekeeper's living-wood ward), so
+  recruiting them is a mechanically distinct addition to the party instead
+  of hiring a stat-identical, self-makeable Ranger/Vanguard/Mender.
 - Added regional equipment progression: six new weapon/armor/accessory items
   (two tiers above the starting kit) dropped by the Mire Antler, Kiln Heart,
   and Varn Rootless bosses, with level-gated eligibility matching each

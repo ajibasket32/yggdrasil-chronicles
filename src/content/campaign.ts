@@ -632,7 +632,9 @@ export const recruitProfiles: readonly RecruitProfile[] = [
     recruitmentQuestId: "quest.tovins-company",
     recruitmentMoment: "Tovin joins after the vanished company is named and the Mossroad route is reclaimed.",
     startingItems: ["item.wayfarer-blade", "item.root-tonic"],
-    startingSkills: ["skill.aimed-shot", "skill.quickstep"]
+    // Marked Quarry is exclusive to Tovin: a scout's trained eye for a
+    // vanished company's ambush routes, unavailable to a self-made Ranger.
+    startingSkills: ["skill.aimed-shot", "skill.quickstep", "skill.marked-quarry"]
   },
   {
     id: "recruit.keva-dross",
@@ -642,7 +644,9 @@ export const recruitProfiles: readonly RecruitProfile[] = [
     recruitmentQuestId: "quest.kevas-last-descent",
     recruitmentMoment: "Keva joins when the delver's oath is returned to the Silent Kiln instead of sold as a relic.",
     startingItems: ["item.resin-vest", "item.delver-token"],
-    startingSkills: ["skill.guard-line", "skill.shield-bash"]
+    // Delver's Grit is exclusive to Keva: the endurance of someone who
+    // survives collapsed kiln tunnels alone, unavailable to a self-made Vanguard.
+    startingSkills: ["skill.guard-line", "skill.shield-bash", "skill.delvers-grit"]
   },
   {
     id: "recruit.eira-lune",
@@ -652,7 +656,9 @@ export const recruitProfiles: readonly RecruitProfile[] = [
     recruitmentQuestId: "quest.eiras-burden",
     recruitmentMoment: "Eira joins after entrusting the repaired bridge to the people who now understand its living burden.",
     startingItems: ["item.aether-drop", "item.frost-resin"],
-    startingSkills: ["skill.mend", "skill.ward-thread"]
+    // Bridgekeeper's Warding is exclusive to Eira: the living-wood defense
+    // she used to hold her bridge, unavailable to a self-made Mender.
+    startingSkills: ["skill.mend", "skill.ward-thread", "skill.bridgekeepers-warding"]
   }
 ];
 
