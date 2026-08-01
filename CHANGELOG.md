@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Gave the three named campaign bosses (Mire Antler, Kiln Heart, Varn
+  Rootless) an authored, zero-MP-cost combat form matching their own boss
+  phase theme, used once bloodied (at or below 60% HP) instead of only ever
+  basic-attacking like every trash mob in the game. Previously every enemy
+  — trash and named bosses alike — used one universal AI (always attack the
+  lowest-HP party member) and was structurally created with `skills: []`, so
+  a boss's own turn was never a real decision; only the automatic HP-
+  threshold phase system (stat/status pops) distinguished it from a wolf.
+  The decision remains fully deterministic (an HP-threshold check, no RNG
+  roll), so the offline boss-viability simulation still needs no tuning of
+  seeds or rosters.
 - Implemented a shop/economy system. Battle and quest rewards had accumulated
   currency since the very first commit, but nothing could ever spend it — no
   shop, vendor, or buy/sell mechanic existed anywhere. Added one vendor per

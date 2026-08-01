@@ -162,7 +162,15 @@ const COMBAT_SKILLS: readonly CombatSkill[] = [
   // distinct addition, not a stat-identical reskin of a self-made character.
   { id: "skill.marked-quarry", name: "Marked Quarry", element: "wind", power: 21, accuracy: 0.95, mpCost: 5, target: "enemy", status: { id: "freeze", chance: 0.3, turns: 1, potency: 0 } },
   { id: "skill.delvers-grit", name: "Delver's Grit", element: "earth", power: 24, accuracy: 1, mpCost: 5, target: "self", healing: true },
-  { id: "skill.bridgekeepers-warding", name: "Bridgekeeper's Warding", element: "nature", power: 19, accuracy: 0.94, mpCost: 5, target: "enemy", status: { id: "poison", chance: 0.4, turns: 2, potency: 4 } }
+  { id: "skill.bridgekeepers-warding", name: "Bridgekeeper's Warding", element: "nature", power: 19, accuracy: 0.94, mpCost: 5, target: "enemy", status: { id: "poison", chance: 0.4, turns: 2, potency: 4 } },
+  // Boss-exclusive forms: zero MP cost (bosses never spend MP), each
+  // matching that boss's own authored phase theme. chooseEnemyAction only
+  // reaches for these once bloodied (<=60% HP), so a boss's own turn
+  // becomes a genuine decision instead of only ever a basic attack, without
+  // requiring any RNG roll or MP-pool bookkeeping.
+  { id: "skill.antler-charge", name: "Antler Charge", element: "water", power: 18, accuracy: 0.9, mpCost: 0, target: "enemy", status: { id: "bleed", chance: 0.3, turns: 2, potency: 4 } },
+  { id: "skill.crucible-flare", name: "Crucible Flare", element: "fire", power: 20, accuracy: 0.88, mpCost: 0, target: "enemy", status: { id: "burn", chance: 0.35, turns: 2, potency: 5 } },
+  { id: "skill.severance-cut", name: "Severance Cut", element: "shadow", power: 22, accuracy: 0.9, mpCost: 0, target: "enemy", status: { id: "bleed", chance: 0.3, turns: 2, potency: 5 } }
 ];
 
 const SKILLS: Readonly<Record<string, CombatSkill>> = Object.fromEntries(
@@ -525,6 +533,13 @@ function recruitCharacter(profile: RecruitProfile): PlayerCharacter {
   });
 }
 
+/** Boss-exclusive forms matching each boss's own authored phase theme (see bossPhases in campaign.ts). */
+const ENEMY_SKILLS: Readonly<Record<string, readonly string[]>> = {
+  "enemy.mire-antler": ["skill.antler-charge"],
+  "enemy.kiln-heart": ["skill.crucible-flare"],
+  "enemy.varn-rootless": ["skill.severance-cut"]
+};
+
 function enemyCombatant(id: string, index: number, boss: boolean, level: number): Combatant {
   const maxHp = boss ? 150 + level * 12 : 38 + level * 9;
   return {
@@ -544,7 +559,7 @@ function enemyCombatant(id: string, index: number, boss: boolean, level: number)
     },
     hp: maxHp,
     mp: 0,
-    skills: [],
+    skills: [...(ENEMY_SKILLS[id] ?? [])],
     elements: boss ? { nature: 0.2, fire: -0.2 } : { nature: -0.1 },
     statuses: [],
     isPlayerControlled: false
@@ -1052,7 +1067,7 @@ export class EngineGameBridge implements GameBridge {
 
     if (active.state.outcome === "ongoing") {
       for (const enemy of active.state.enemies.filter(({ hp }) => hp > 0)) {
-        const enemyAction = chooseEnemyAction(active.state, enemy.id);
+        const enemyAction = chooseEnemyAction(active.state, enemy.id, SKILLS);
         const resolution = resolveCombatAction(active.state, enemyAction, SKILLS);
         active.state = resolution.state;
         active.log.push(...resolution.events.map((event) => this.describeEvent(event, active.state)));

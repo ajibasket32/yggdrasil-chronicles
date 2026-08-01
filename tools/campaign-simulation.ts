@@ -65,7 +65,10 @@ const SKILLS: Readonly<Record<string, CombatSkill>> = {
   "skill.tide-pulse": { id: "skill.tide-pulse", name: "Tide Pulse", element: "water", power: 20, accuracy: 0.94, mpCost: 5, target: "enemy" },
   "skill.marked-quarry": { id: "skill.marked-quarry", name: "Marked Quarry", element: "wind", power: 21, accuracy: 0.95, mpCost: 5, target: "enemy", status: { id: "freeze", chance: 0.3, turns: 1, potency: 0 } },
   "skill.delvers-grit": { id: "skill.delvers-grit", name: "Delver's Grit", element: "earth", power: 24, accuracy: 1, mpCost: 5, target: "self", healing: true },
-  "skill.bridgekeepers-warding": { id: "skill.bridgekeepers-warding", name: "Bridgekeeper's Warding", element: "nature", power: 19, accuracy: 0.94, mpCost: 5, target: "enemy", status: { id: "poison", chance: 0.4, turns: 2, potency: 4 } }
+  "skill.bridgekeepers-warding": { id: "skill.bridgekeepers-warding", name: "Bridgekeeper's Warding", element: "nature", power: 19, accuracy: 0.94, mpCost: 5, target: "enemy", status: { id: "poison", chance: 0.4, turns: 2, potency: 4 } },
+  "skill.antler-charge": { id: "skill.antler-charge", name: "Antler Charge", element: "water", power: 18, accuracy: 0.9, mpCost: 0, target: "enemy", status: { id: "bleed", chance: 0.3, turns: 2, potency: 4 } },
+  "skill.crucible-flare": { id: "skill.crucible-flare", name: "Crucible Flare", element: "fire", power: 20, accuracy: 0.88, mpCost: 0, target: "enemy", status: { id: "burn", chance: 0.35, turns: 2, potency: 5 } },
+  "skill.severance-cut": { id: "skill.severance-cut", name: "Severance Cut", element: "shadow", power: 22, accuracy: 0.9, mpCost: 0, target: "enemy", status: { id: "bleed", chance: 0.3, turns: 2, potency: 5 } }
 };
 
 const BASE_STATS: Stats = {
@@ -177,6 +180,13 @@ function createPartyCombatant(blueprint: PartyBlueprint): Combatant {
   };
 }
 
+/** Must mirror ENEMY_SKILLS in src/integration/EngineGameBridge.ts exactly. */
+const ENEMY_SKILLS: Readonly<Record<string, readonly string[]>> = {
+  "enemy.mire-antler": ["skill.antler-charge"],
+  "enemy.kiln-heart": ["skill.crucible-flare"],
+  "enemy.varn-rootless": ["skill.severance-cut"]
+};
+
 function createBossCombatant(enemyId: string, level: number): Combatant {
   const maxHp = 150 + level * 12;
   return {
@@ -196,7 +206,7 @@ function createBossCombatant(enemyId: string, level: number): Combatant {
     },
     hp: maxHp,
     mp: 0,
-    skills: [],
+    skills: [...(ENEMY_SKILLS[enemyId] ?? [])],
     elements: { nature: 0.2, fire: -0.2 },
     statuses: [],
     isPlayerControlled: false
@@ -297,7 +307,7 @@ function simulateBossAttempt(scenario: BossScenario, seed: string): { outcome: "
     }
     for (const enemyId of state.enemies.filter(({ hp }) => hp > 0).map(({ id }) => id)) {
       if (state.outcome !== "ongoing") break;
-      state = resolveCombatAction(state, chooseEnemyAction(state, enemyId), SKILLS).state;
+      state = resolveCombatAction(state, chooseEnemyAction(state, enemyId, SKILLS), SKILLS).state;
     }
     if (state.outcome === "ongoing") state = advanceCombatRound(state).state;
     if (state.outcome !== "ongoing") return { outcome: state.outcome, rounds: round, phases: activated };

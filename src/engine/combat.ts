@@ -193,7 +193,20 @@ export function getInitiativeOrder(state: CombatState): EntityId[] {
     .map((combatant) => combatant.id);
 }
 
-export function chooseEnemyAction(state: CombatState, actorId: EntityId): CombatAction {
+/**
+ * An enemy with a known skill uses it once bloodied (at or below 60% HP)
+ * instead of only ever basic-attacking, so a boss's own turn becomes a
+ * real decision rather than mechanically identical to a trash mob's — while
+ * staying fully deterministic (no RNG roll) so the offline campaign
+ * simulation and this function's own callers never need a new RNG state.
+ * `skills` is optional so existing callers that pass none keep the prior,
+ * always-basic-attack behavior exactly.
+ */
+export function chooseEnemyAction(
+  state: CombatState,
+  actorId: EntityId,
+  skills: Readonly<Record<EntityId, CombatSkill>> = {}
+): CombatAction {
   const actor = findCombatant(state, actorId);
   if (!actor || actor.side !== "enemy" || !isAlive(actor.combatant)) {
     throw new Error(`Enemy actor '${actorId}' is unavailable`);
@@ -202,6 +215,11 @@ export function chooseEnemyAction(state: CombatState, actorId: EntityId): Combat
   const target = targets[0];
   if (!target) {
     throw new Error("No living party target");
+  }
+  const bloodied = actor.combatant.hp / actor.combatant.stats.maxHp <= 0.6;
+  const knownSkillId = actor.combatant.skills.find((candidate) => skills[candidate]);
+  if (bloodied && knownSkillId) {
+    return { type: "skill", actorId, targetId: target.id, skillId: knownSkillId };
   }
   return { type: "attack", actorId, targetId: target.id };
 }

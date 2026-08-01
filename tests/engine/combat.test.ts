@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   advanceCombatRound,
   calculateBattleReward,
+  chooseEnemyAction,
   createCombatState,
   resolveCombatAction,
   type CombatSkill
@@ -173,5 +174,62 @@ describe("deterministic combat", () => {
       { [burningBlade.id]: burningBlade }
     )).toThrow(/does not know skill/);
     expect(state.party[0]?.mp).toBe(hero.mp);
+  });
+
+  it("has an enemy with a known skill use it once bloodied, instead of only ever basic-attacking", () => {
+    const hero = makeCombatant("hero-one");
+    const healthyBoss = makeCombatant("boss", {
+      skills: [burningBlade.id],
+      stats: { ...baseStats, maxHp: 200 },
+      hp: 200
+    });
+    const bloodiedBoss = makeCombatant("boss", {
+      skills: [burningBlade.id],
+      stats: { ...baseStats, maxHp: 200 },
+      hp: 100
+    });
+    const catalog = { [burningBlade.id]: burningBlade };
+
+    const healthyAction = chooseEnemyAction(
+      createCombatState([hero], [healthyBoss], "boss-ai"),
+      healthyBoss.id,
+      catalog
+    );
+    const bloodiedAction = chooseEnemyAction(
+      createCombatState([hero], [bloodiedBoss], "boss-ai"),
+      bloodiedBoss.id,
+      catalog
+    );
+    expect(healthyAction.type).toBe("attack");
+    expect(bloodiedAction).toEqual({
+      type: "skill",
+      actorId: bloodiedBoss.id,
+      targetId: hero.id,
+      skillId: burningBlade.id
+    });
+  });
+
+  it("keeps chooseEnemyAction's basic-attack behavior when no skill catalog is supplied, for backward compatibility", () => {
+    const hero = makeCombatant("hero-one");
+    const bloodiedBoss = makeCombatant("boss", {
+      skills: [burningBlade.id],
+      stats: { ...baseStats, maxHp: 200 },
+      hp: 50
+    });
+    const action = chooseEnemyAction(createCombatState([hero], [bloodiedBoss], "no-catalog"), bloodiedBoss.id);
+    expect(action.type).toBe("attack");
+  });
+
+  it("is fully deterministic: the same seed always produces the same enemy decision", () => {
+    const hero = makeCombatant("hero-one");
+    const bloodiedBoss = makeCombatant("boss", {
+      skills: [burningBlade.id],
+      stats: { ...baseStats, maxHp: 200 },
+      hp: 90
+    });
+    const catalog = { [burningBlade.id]: burningBlade };
+    const first = chooseEnemyAction(createCombatState([hero], [bloodiedBoss], "repeat-seed"), bloodiedBoss.id, catalog);
+    const second = chooseEnemyAction(createCombatState([hero], [bloodiedBoss], "repeat-seed"), bloodiedBoss.id, catalog);
+    expect(first).toEqual(second);
   });
 });

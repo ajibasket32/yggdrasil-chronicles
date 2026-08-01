@@ -199,6 +199,40 @@ describe("EngineGameBridge party combat", () => {
     expect(bridge.getSnapshot().battle?.actors.find(({ isParty }) => isParty)?.status).toBe("freeze");
   });
 
+  it("has a bloodied boss use its authored form instead of only ever basic-attacking", async () => {
+    const { bridge, saves } = createBridge();
+    await startChronicle(bridge);
+    const initial = await saves.load("autosave");
+    if (!initial) throw new Error("Expected an initial autosave");
+    await saves.save("autosave", {
+      ...initial,
+      party: initial.party.map((member) => ({
+        ...member,
+        stats: { ...member.stats, vitality: 40, maxHp: 1_000 },
+        hp: 1_000
+      }))
+    });
+    await bridge.continueGame();
+    bridge.startEncounter("encounter.mire-antler");
+
+    for (let turn = 0; turn < 20; turn += 1) {
+      const battle = bridge.getSnapshot().battle;
+      if (!battle || battle.phase !== "choosing") break;
+      const boss = battle.actors.find(({ isParty }) => !isParty);
+      if (boss && boss.hp / boss.maxHp <= 0.6) break;
+      await bridge.chooseBattleAction("attack");
+    }
+    const bloodiedBoss = bridge.getSnapshot().battle?.actors.find(({ isParty }) => !isParty);
+    expect(bloodiedBoss?.hp).toBeLessThanOrEqual((bloodiedBoss?.maxHp ?? 0) * 0.6);
+
+    await bridge.chooseBattleAction("guard");
+    // Antler Charge (skill.antler-charge) is a water-element attack with a
+    // bleed status chance; a basic attack is always physical and never
+    // applies bleed, so either signal confirms the boss used its form.
+    const usedForm = bridge.getSnapshot().battle?.log.some((line) => line.includes("water damage") || line.includes("bleed"));
+    expect(usedForm).toBe(true);
+  });
+
   it("cures a blocking status with Ash Spice, the only in-battle counter to a boss freeze/burn phase", async () => {
     const { bridge, saves } = createBridge();
     await startChronicle(bridge);
