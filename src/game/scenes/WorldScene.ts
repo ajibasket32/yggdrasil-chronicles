@@ -51,6 +51,8 @@ export class WorldScene extends Phaser.Scene {
   private interactiveMode: InteractiveOverlayMode = "browse";
   private selectedInventoryItemId?: string;
   private systemBusy = false;
+  private shopIndex = 0;
+  private shopMode: "buy" | "sell" = "buy";
   private npcSprites: Array<{ id: string; point: Point; sprite: Phaser.GameObjects.Image }> = [];
   private encounterSprite?: Phaser.GameObjects.Image;
   private activeInteraction?: { view: InteractionView; index: number; choiceIndex: number };
@@ -143,6 +145,10 @@ export class WorldScene extends Phaser.Scene {
     }
     if (this.overlayKind === "party") {
       this.movePartyOverlay(direction);
+      return;
+    }
+    if (this.overlayKind === "shop") {
+      this.moveShop(direction);
       return;
     }
     void this.tryMove(direction);
@@ -497,6 +503,10 @@ export class WorldScene extends Phaser.Scene {
       await this.confirmPartyOverlay();
       return;
     }
+    if (this.overlayKind === "shop") {
+      await this.confirmShop();
+      return;
+    }
     if (this.overlay) return;
     const npc = this.nearestNpc();
     if (npc) {
@@ -580,9 +590,17 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     const recruited = active.view.recruitedMember;
+    const opensVendorId = active.view.opensVendorId;
     this.activeInteraction = undefined;
     this.overlay?.destroy();
     this.overlay = undefined;
+    if (opensVendorId) {
+      this.shopIndex = 0;
+      this.shopMode = "buy";
+      this.overlayKind = "shop";
+      this.drawInteractiveOverlay();
+      return;
+    }
     this.locked = false;
     if (recruited) this.showToast(`${recruited.name} joined the party.`);
     this.refreshObjectiveActors();
@@ -734,10 +752,15 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private drawInteractiveOverlay(): void {
-    if (this.overlayKind !== "inventory" && this.overlayKind !== "party") return;
+    if (this.overlayKind !== "inventory" && this.overlayKind !== "party" && this.overlayKind !== "shop") return;
     this.overlay?.destroy();
     const panel = this.add.rectangle(60, 42, 640, 456, COLORS.panel, 0.98).setOrigin(0).setStrokeStyle(2, 0x6f8f82);
-    const title = this.add.text(88, 70, this.overlayKind === "inventory" ? "INVENTORY" : "PARTY", { ...TEXT.heading, color: COLORS.gold });
+    const title = this.add.text(
+      88,
+      70,
+      this.overlayKind === "inventory" ? "INVENTORY" : this.overlayKind === "party" ? "PARTY" : (this.snapshot.shop?.shopName.toUpperCase() ?? "SHOP"),
+      { ...TEXT.heading, color: COLORS.gold }
+    );
     const rule = this.add.rectangle(88, 105, 584, 1, COLORS.panelLight).setOrigin(0);
     const body = this.add.text(88, 126, this.interactiveOverlayContent(), {
       ...TEXT.body,
@@ -749,7 +772,9 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private interactiveOverlayContent(): string {
-    return this.overlayKind === "inventory" ? this.inventoryOverlayContent() : this.partyOverlayContent();
+    if (this.overlayKind === "inventory") return this.inventoryOverlayContent();
+    if (this.overlayKind === "shop") return this.shopOverlayContent();
+    return this.partyOverlayContent();
   }
 
   private interactiveOverlayHint(): string {
@@ -757,6 +782,9 @@ export class WorldScene extends Phaser.Scene {
       return this.interactiveMode === "target"
         ? "Arrows / D-pad  Choose target     Enter / A  Confirm     Esc / B  Back"
         : "Arrows / D-pad  Select     Enter / A  Use or equip     Esc / B  Close";
+    }
+    if (this.overlayKind === "shop") {
+      return "Up / Down  Select     Left / Right  Buy or Sell     Enter / A  Confirm     Esc / B  Close";
     }
     if (this.interactiveMode === "jobs") {
       return "Arrows / D-pad  Select job     Left  Member     Right  Equipment     Esc / B  Back";
@@ -806,6 +834,19 @@ export class WorldScene extends Phaser.Scene {
       ? `STR ${stats.strength}  DEX ${stats.dexterity}  AGI ${stats.agility}  VIT ${stats.vitality}  INT ${stats.intellect}  WIS ${stats.wisdom}  CHA ${stats.charisma}`
       : "";
     return `${this.snapshot.party.map((candidate, index) => `${index === this.partyIndex ? "›" : " "} ${candidate.name}  Lv ${candidate.level}  ${candidate.job}`).join("\n")}\n\n${member.name.toUpperCase()}\nHP ${member.hp}/${member.maxHp}    MP ${member.mp}/${member.maxMp}\n${statLine}\n\nEQUIPPED\nWeapon: ${equipment.weapon?.name ?? "Empty"}\nArmor: ${equipment.armor?.name ?? "Empty"}\nAccessory: ${equipment.accessory?.name ?? "Empty"}\n\nRight to review jobs · Left to manage equipment`;
+  }
+
+  private shopOverlayContent(): string {
+    const shop = this.snapshot.shop;
+    if (!shop) return "This shop has closed.";
+    const header = `MARKS: ${this.snapshot.currency}    [${this.shopMode === "buy" ? "◆ BUY" : "  BUY"} / ${this.shopMode === "sell" ? "◆ SELL" : "  SELL"}]`;
+    if (this.shopMode === "sell") {
+      const owned = shop.catalog.filter((entry) => entry.ownedQuantity > 0);
+      if (!owned.length) return `${header}\n\nThe party carries nothing this shop will buy back.`;
+      return `${header}\n\n${owned.map((entry, index) => `${index === this.shopIndex ? "›" : " "} ${entry.name}  —  sell ${entry.sellPrice ?? 0} marks  (owned ${entry.ownedQuantity})\n   ${entry.description}`).join("\n\n")}`;
+    }
+    if (!shop.catalog.length) return `${header}\n\nThis shop has nothing to sell right now.`;
+    return `${header}\n\n${shop.catalog.map((entry, index) => `${index === this.shopIndex ? "›" : " "} ${entry.name}  —  ${entry.buyPrice} marks  [${entry.kind.toUpperCase()}]\n   ${entry.description}`).join("\n\n")}`;
   }
 
   private itemKind(item: InventoryView | undefined): NonNullable<InventoryView["kind"]> {
@@ -921,6 +962,41 @@ export class WorldScene extends Phaser.Scene {
     this.showToast(result.message);
   }
 
+  private shopCatalog(): { itemId: string; name: string }[] {
+    const shop = this.snapshot.shop;
+    if (!shop) return [];
+    return this.shopMode === "sell"
+      ? shop.catalog.filter((entry) => entry.ownedQuantity > 0)
+      : shop.catalog;
+  }
+
+  private moveShop(direction: ExitDirection): void {
+    if (direction === "left" || direction === "right") {
+      this.shopMode = this.shopMode === "buy" ? "sell" : "buy";
+      this.shopIndex = 0;
+      this.drawInteractiveOverlay();
+      return;
+    }
+    const count = this.shopCatalog().length;
+    if (!count) return;
+    const delta = direction === "up" ? -1 : 1;
+    this.shopIndex = Phaser.Math.Wrap(this.shopIndex + delta, 0, count);
+    this.drawInteractiveOverlay();
+  }
+
+  private async confirmShop(): Promise<void> {
+    const entry = this.shopCatalog()[this.shopIndex];
+    if (!entry) return;
+    const result = this.shopMode === "buy"
+      ? await this.bridge.buyItem(entry.itemId)
+      : await this.bridge.sellItem(entry.itemId);
+    this.showToast(result.message);
+    if (result.success) {
+      this.shopIndex = Math.min(this.shopIndex, Math.max(0, this.shopCatalog().length - 1));
+    }
+    this.drawInteractiveOverlay();
+  }
+
   private escape(): void {
     if (this.activeInteraction) {
       this.activeInteraction = undefined;
@@ -939,6 +1015,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private closeOverlay(): void {
+    if (this.overlayKind === "shop") void this.bridge.leaveShop();
     this.overlay?.destroy();
     this.overlay = undefined;
     this.overlayKind = undefined;

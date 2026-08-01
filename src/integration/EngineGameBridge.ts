@@ -37,6 +37,7 @@ import {
   quests,
   recruitProfiles,
   startingBuildLoadouts,
+  vendorProfiles,
   type RecruitProfile
 } from "../content";
 import type {
@@ -50,6 +51,8 @@ import type {
   InteractionView,
   PartyMemberView,
   QuestView,
+  ShopEntryView,
+  ShopView,
   SnapshotListener
 } from "../game";
 import { SaveRepository, type SaveSlot } from "../save";
@@ -553,6 +556,8 @@ export class EngineGameBridge implements GameBridge {
   readonly #saves: SaveRepository;
   #state?: GameState;
   #battle?: ActiveBattle;
+  /** The vendor whose ledger is currently open, if any. Closed on travel/battle/title-return. */
+  #openVendorId?: string;
   #autosave: GameSnapshot["autosave"] = "idle";
   #hasSave = false;
   readonly #saveSlots = new Set<GameSaveSlot>();
@@ -586,6 +591,7 @@ export class EngineGameBridge implements GameBridge {
         locationId: STARTING_LOCATION,
         locationName: "Hearthcross",
         worldMinutes: 480,
+        currency: 0,
         party: [],
         inventory: [],
         quests: [],
@@ -607,6 +613,7 @@ export class EngineGameBridge implements GameBridge {
       locationId: this.#state.world.currentLocationId,
       locationName: location?.name ?? "Unknown road",
       worldMinutes: this.#state.world.worldMinutes + 480,
+      currency: Number(this.#state.world.flags.currency ?? 0),
       party: party.map((member, index) => this.toPartyView(member, index)),
       inventory: this.#state.inventory.flatMap((stack) => {
         const definition = items.find(({ id }) => id === stack.itemId);
@@ -627,6 +634,7 @@ export class EngineGameBridge implements GameBridge {
         return definition ? [this.toQuestView(definition, progress.currentStep, progress.state)] : [];
       }),
       battle: this.#battle ? this.toBattleView(this.#battle) : undefined,
+      shop: this.#openVendorId ? this.toShopView(this.#openVendorId) : undefined,
       campaign: {
         completedMainQuests,
         totalMainQuests: mainQuestIds.size,
@@ -821,6 +829,8 @@ export class EngineGameBridge implements GameBridge {
         recruitedMember = this.toPartyView(recruited, party.length - 1);
       }
     }
+    const vendor = vendorProfiles.find((candidate) => candidate.npcId === npcId);
+    if (vendor) this.#openVendorId = vendor.id;
     await this.persist("autosave");
     const npc = npcId.replace("npc.", "").split("-").map((word) =>
       `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`
@@ -836,7 +846,8 @@ export class EngineGameBridge implements GameBridge {
       choices: awaitsConcordChoice
         ? CONCORD_CHOICES.map(({ id, label, description }) => ({ id, label, description }))
         : undefined,
-      recruitedMember
+      recruitedMember,
+      opensVendorId: vendor?.id
     };
   }
 
@@ -1202,6 +1213,63 @@ export class EngineGameBridge implements GameBridge {
     }
     await this.persist("autosave");
     return { success: true, message: `${member.name} equips ${equipmentItem.name}.` };
+  }
+
+  async buyItem(itemId: string): Promise<GameCommandResult> {
+    if (this.#battle) return commandFailure("The shop is closed while the party is in battle.");
+    const state = this.requireState();
+    if (!this.#openVendorId) return commandFailure("No shop is open.");
+    const vendor = vendorProfiles.find(({ id }) => id === this.#openVendorId);
+    if (!vendor || !vendor.catalogItemIds.includes(itemId)) {
+      return commandFailure("That vendor does not sell that item.");
+    }
+    const definition = items.find(({ id }) => id === itemId);
+    if (!definition) return commandFailure("That item does not exist.");
+    if (inventoryQuantity(state.inventory, itemId) >= 99) {
+      return commandFailure("There is no inventory space for another one of those.");
+    }
+    const currency = Number(state.world.flags.currency ?? 0);
+    if (currency < definition.value) {
+      return commandFailure(`${vendor.shopName} wants ${definition.value} marks; the party carries only ${currency}.`);
+    }
+    this.#state = {
+      ...state,
+      inventory: this.addWithinStackLimit(state.inventory, itemId, 1),
+      world: { ...state.world, flags: { ...state.world.flags, currency: currency - definition.value } }
+    };
+    await this.persist("autosave");
+    return { success: true, message: `Bought ${definition.name} for ${definition.value} marks.` };
+  }
+
+  async sellItem(itemId: string): Promise<GameCommandResult> {
+    if (this.#battle) return commandFailure("The shop is closed while the party is in battle.");
+    const state = this.requireState();
+    if (!this.#openVendorId) return commandFailure("No shop is open.");
+    const vendor = vendorProfiles.find(({ id }) => id === this.#openVendorId);
+    if (!vendor || !vendor.catalogItemIds.includes(itemId)) {
+      return commandFailure("That vendor is not interested in that item.");
+    }
+    const definition = items.find(({ id }) => id === itemId);
+    if (!definition) return commandFailure("That item does not exist.");
+    if (inventoryQuantity(state.inventory, itemId) < 1) {
+      // Equipped copies live on the character, not the shared pack, so this
+      // also correctly rejects selling a character's only equipped item.
+      return commandFailure("The party does not carry a spare of that item.");
+    }
+    const sellPrice = Math.max(1, Math.round(definition.value * vendor.sellRate));
+    const currency = Number(state.world.flags.currency ?? 0);
+    this.#state = {
+      ...state,
+      inventory: removeItem(state.inventory, itemId),
+      world: { ...state.world, flags: { ...state.world.flags, currency: currency + sellPrice } }
+    };
+    await this.persist("autosave");
+    return { success: true, message: `Sold ${definition.name} for ${sellPrice} marks.` };
+  }
+
+  async leaveShop(): Promise<void> {
+    this.#openVendorId = undefined;
+    this.emit();
   }
 
   async selectJob(memberId: string, jobId: string): Promise<GameCommandResult> {
@@ -1749,6 +1817,27 @@ export class EngineGameBridge implements GameBridge {
       objectiveKind: objective?.kind,
       objectiveTargetId: objective?.targetId
     };
+  }
+
+  private toShopView(vendorId: string): ShopView | undefined {
+    const vendor = vendorProfiles.find(({ id }) => id === vendorId);
+    if (!vendor || !this.#state) return undefined;
+    const inventory = this.#state.inventory;
+    const catalog: ShopEntryView[] = vendor.catalogItemIds.flatMap((itemId) => {
+      const definition = items.find(({ id }) => id === itemId);
+      if (!definition || definition.kind === "key") return [];
+      const ownedQuantity = inventoryQuantity(inventory, itemId);
+      return [{
+        itemId,
+        name: definition.name,
+        description: definition.description,
+        kind: definition.kind,
+        buyPrice: definition.value,
+        sellPrice: ownedQuantity > 0 ? Math.max(1, Math.round(definition.value * vendor.sellRate)) : undefined,
+        ownedQuantity
+      }];
+    });
+    return { vendorId: vendor.id, shopName: vendor.shopName, catalog };
   }
 
   private toBattleView(active: ActiveBattle): BattleView {

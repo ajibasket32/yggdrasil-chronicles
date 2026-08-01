@@ -794,6 +794,112 @@ describe("EngineGameBridge runtime party management", () => {
   });
 });
 
+describe("EngineGameBridge shop", () => {
+  async function grantCurrency(bridge: EngineGameBridge, saves: SaveRepository, amount: number): Promise<void> {
+    const state = await saves.load("autosave");
+    if (!state) throw new Error("Expected an initial autosave");
+    await saves.save("autosave", { ...state, world: { ...state.world, flags: { ...state.world.flags, currency: amount } } });
+    await bridge.continueGame();
+  }
+
+  it("opens the shop when talking to a vendor NPC and exposes its catalog", async () => {
+    const { bridge } = createBridge();
+    await startChronicle(bridge);
+    const view = await bridge.interactNpc("npc.joryn-hale");
+    expect(view.opensVendorId).toBe("vendor.joryn-hale");
+    const shop = bridge.getSnapshot().shop;
+    expect(shop?.vendorId).toBe("vendor.joryn-hale");
+    expect(shop?.catalog.some(({ itemId }) => itemId === "item.wayfarer-blade")).toBe(true);
+  });
+
+  it("does not open a shop when talking to a non-vendor NPC", async () => {
+    const { bridge } = createBridge();
+    await startChronicle(bridge);
+    const view = await bridge.interactNpc("npc.mara-vell");
+    expect(view.opensVendorId).toBeUndefined();
+    expect(bridge.getSnapshot().shop).toBeUndefined();
+  });
+
+  it("buys an item, deducting currency and adding the item, persisted across reload", async () => {
+    const { bridge, saves } = createBridge();
+    await startChronicle(bridge);
+    await grantCurrency(bridge, saves, 200);
+    await bridge.interactNpc("npc.joryn-hale");
+
+    const before = bridge.getSnapshot().inventory.find(({ itemId }) => itemId === "item.wayfarer-blade")?.quantity ?? 0;
+    const result = await bridge.buyItem("item.wayfarer-blade");
+    expect(result.success).toBe(true);
+    expect(bridge.getSnapshot().currency).toBe(80);
+    expect(bridge.getSnapshot().inventory.find(({ itemId }) => itemId === "item.wayfarer-blade")?.quantity).toBe(before + 1);
+
+    const persisted = await saves.load("autosave");
+    expect(Number(persisted?.world.flags.currency)).toBe(80);
+    expect(persisted?.inventory.some(({ itemId }) => itemId === "item.wayfarer-blade")).toBe(true);
+  });
+
+  it("rejects buying an item the party cannot afford, changing nothing", async () => {
+    const { bridge, saves } = createBridge();
+    await startChronicle(bridge);
+    await grantCurrency(bridge, saves, 10);
+    await bridge.interactNpc("npc.joryn-hale");
+
+    const inventoryBefore = bridge.getSnapshot().inventory;
+    const result = await bridge.buyItem("item.wayfarer-blade");
+    expect(result.success).toBe(false);
+    expect(bridge.getSnapshot().currency).toBe(10);
+    expect(bridge.getSnapshot().inventory).toEqual(inventoryBefore);
+  });
+
+  it("sells an item, crediting currency at the vendor's sell rate and removing it from the pack", async () => {
+    const { bridge, saves } = createBridge();
+    await startChronicle(bridge);
+    // The starting Vanguard build carries a spare item.root-tonic, which
+    // vendor.joryn-hale's catalog also lists, so it's sellable without a buy first.
+    const owned = bridge.getSnapshot().inventory.find(({ itemId }) => itemId === "item.root-tonic")?.quantity ?? 0;
+    expect(owned).toBeGreaterThan(0);
+    await bridge.interactNpc("npc.joryn-hale");
+
+    const result = await bridge.sellItem("item.root-tonic");
+    expect(result.success).toBe(true);
+    expect(bridge.getSnapshot().currency).toBe(18);
+    expect(bridge.getSnapshot().inventory.find(({ itemId }) => itemId === "item.root-tonic")?.quantity).toBe(owned - 1);
+
+    const persisted = await saves.load("autosave");
+    expect(Number(persisted?.world.flags.currency)).toBe(18);
+  });
+
+  it("rejects selling an item the party does not carry", async () => {
+    const { bridge } = createBridge();
+    await startChronicle(bridge);
+    await bridge.interactNpc("npc.joryn-hale");
+    const result = await bridge.sellItem("item.aether-drop");
+    expect(result.success).toBe(false);
+    expect(bridge.getSnapshot().currency).toBe(0);
+  });
+
+  it("rejects buying and selling items outside the open vendor's catalog", async () => {
+    const { bridge, saves } = createBridge();
+    await startChronicle(bridge);
+    await grantCurrency(bridge, saves, 500);
+    await bridge.interactNpc("npc.joryn-hale");
+    // item.hearthsteel-blade belongs to vendor.hett-copper's catalog, not Joryn's.
+    expect((await bridge.buyItem("item.hearthsteel-blade")).success).toBe(false);
+    expect((await bridge.sellItem("item.hearthsteel-blade")).success).toBe(false);
+  });
+
+  it("closes the shop on leaveShop and rejects further transactions", async () => {
+    const { bridge, saves } = createBridge();
+    await startChronicle(bridge);
+    await grantCurrency(bridge, saves, 200);
+    await bridge.interactNpc("npc.joryn-hale");
+    expect(bridge.getSnapshot().shop).toBeDefined();
+
+    await bridge.leaveShop();
+    expect(bridge.getSnapshot().shop).toBeUndefined();
+    expect((await bridge.buyItem("item.wayfarer-blade")).success).toBe(false);
+  });
+});
+
 describe("EngineGameBridge save interchange", () => {
   it("exports, imports into the requested slot, restores active state, and preserves the target backup", async () => {
     const { bridge, saves } = createBridge();

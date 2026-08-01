@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Implemented a shop/economy system. Battle and quest rewards had accumulated
+  currency since the very first commit, but nothing could ever spend it — no
+  shop, vendor, or buy/sell mechanic existed anywhere. Added one vendor per
+  town, reusing an existing named NPC whose authored role already fit trading
+  (Joryn Hale the innkeeper, Hett Copper the resin-glass artisan, Thyme Vale
+  the frost apothecary) rather than adding a new NPC to the validated 30-NPC
+  campaign budget. Talking to a vendor now opens a buy/sell overlay (same
+  visual/interaction pattern as the inventory overlay) showing price, the
+  party's current currency, and each vendor's curated, thematically fitting
+  catalog. Selling returns 40% of an item's authored value. The two highest
+  boss-dropped equipment tiers are deliberately excluded from every vendor's
+  catalog, so combat progression still requires defeating the campaign's
+  named bosses rather than just accumulating enough currency.
 - Added a full stat line (STR/DEX/AGI/VIT/INT/WIS/CHA, post-equipment) to the
   party overlay. Every combat formula already depended on these seven stats,
   but the player had no way to see them — only HP/MP/level/job were ever

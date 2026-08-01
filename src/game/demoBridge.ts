@@ -37,6 +37,7 @@ export class DemoGameBridge implements GameBridge {
     locationId: "location.hearthcross",
     locationName: "Hearthcross",
     worldMinutes: 480,
+    currency: 0,
     party: [],
     inventory: [
       { itemId: "item.vesleaf", name: "Vesleaf", description: "A bitter medicinal leaf.", quantity: 3 },
@@ -268,6 +269,18 @@ export class DemoGameBridge implements GameBridge {
 
   selectJob(_memberId: string, _jobId: string): GameCommandResult {
     return { success: false, message: "Job actions are unavailable in the demo bridge." };
+  }
+
+  buyItem(_itemId: string): GameCommandResult {
+    return { success: false, message: "Shops are unavailable in the demo bridge." };
+  }
+
+  sellItem(_itemId: string): GameCommandResult {
+    return { success: false, message: "Shops are unavailable in the demo bridge." };
+  }
+
+  leaveShop(): void {
+    this.emit();
   }
 
   exportSave(_slot: GameSaveSlot): string {

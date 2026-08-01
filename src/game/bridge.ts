@@ -1,7 +1,7 @@
 import type { QuestState } from "../shared/types";
 
 export type Direction = "up" | "down" | "left" | "right";
-export type OverlayKind = "journal" | "inventory" | "party" | "system";
+export type OverlayKind = "journal" | "inventory" | "party" | "system" | "shop";
 export type BattleAction = "attack" | "skill" | "item" | "guard" | "escape";
 export type GameSaveSlot = "autosave" | "manual-1" | "manual-2" | "manual-3";
 
@@ -115,6 +115,8 @@ export interface InteractionView {
   choices?: InteractionChoiceView[];
   recruitedMember?: PartyMemberView;
   startedQuestId?: string;
+  /** Set when this NPC is a vendor; the scene should open the shop overlay after the dialogue closes. */
+  opensVendorId?: string;
 }
 
 export interface InteractionChoiceView {
@@ -123,16 +125,35 @@ export interface InteractionChoiceView {
   description: string;
 }
 
+export interface ShopEntryView {
+  itemId: string;
+  name: string;
+  description: string;
+  kind: "consumable" | "weapon" | "armor" | "accessory";
+  buyPrice: number;
+  /** Present only for items the party currently carries at least one of. */
+  sellPrice?: number;
+  ownedQuantity: number;
+}
+
+export interface ShopView {
+  vendorId: string;
+  shopName: string;
+  catalog: ShopEntryView[];
+}
+
 export interface GameSnapshot {
   hasSave: boolean;
   playerName: string;
   locationId: string;
   locationName: string;
   worldMinutes: number;
+  currency: number;
   party: PartyMemberView[];
   inventory: InventoryView[];
   quests: QuestView[];
   battle?: BattleView;
+  shop?: ShopView;
   campaign?: {
     completedMainQuests: number;
     totalMainQuests: number;
@@ -186,6 +207,9 @@ export interface GameBridge {
     itemId?: string
   ): GameCommandResult | Promise<GameCommandResult>;
   selectJob(memberId: string, jobId: string): GameCommandResult | Promise<GameCommandResult>;
+  buyItem(itemId: string): GameCommandResult | Promise<GameCommandResult>;
+  sellItem(itemId: string): GameCommandResult | Promise<GameCommandResult>;
+  leaveShop(): void | Promise<void>;
   exportSave(slot: GameSaveSlot): string | Promise<string>;
   importSave(slot: GameSaveSlot, json: string): GameCommandResult | Promise<GameCommandResult>;
 }

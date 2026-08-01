@@ -662,6 +662,48 @@ export const recruitProfiles: readonly RecruitProfile[] = [
   }
 ];
 
+export interface VendorProfile {
+  readonly id: string;
+  readonly npcId: string;
+  readonly shopName: string;
+  /** Catalog offered for purchase; boss-dropped gear tiers are deliberately excluded so combat progression stays meaningful. */
+  readonly catalogItemIds: readonly string[];
+  /** Fraction of an item's authored value paid out when the party sells it back. */
+  readonly sellRate: number;
+}
+
+/**
+ * One vendor per town, reusing an existing named NPC whose authored role
+ * already fits trading (innkeeper, artisan, apothecary) rather than adding a
+ * new NPC — the 30-NPC campaign budget is validated exactly elsewhere.
+ * Regional starter/mid gear is purchasable; the two highest boss-dropped
+ * tiers (Rootbound Edge/Canopy Ward/Starlit Signet) are not, so equipment
+ * progression still requires defeating Varn Rootless.
+ */
+export const vendorProfiles: readonly VendorProfile[] = [
+  {
+    id: "vendor.joryn-hale",
+    npcId: "npc.joryn-hale",
+    shopName: "Joryn's Rainy Hearth",
+    catalogItemIds: ["item.vesleaf", "item.root-tonic", "item.aether-drop", "item.wayfarer-blade", "item.resin-vest"],
+    sellRate: 0.4
+  },
+  {
+    id: "vendor.hett-copper",
+    npcId: "npc.hett-copper",
+    shopName: "Hett's Resin-Glass Forge",
+    catalogItemIds: ["item.root-tonic", "item.cold-ember", "item.hearthsteel-blade", "item.kilnforge-plate", "item.emberglass-charm"],
+    sellRate: 0.4
+  },
+  {
+    id: "vendor.thyme-vale",
+    npcId: "npc.thyme-vale",
+    shopName: "Thyme's Frost Apothecary",
+    catalogItemIds: ["item.frost-resin", "item.cold-ember", "item.aether-drop", "item.ash-spice"],
+    sellRate: 0.4
+  }
+];
+
 export interface BossPhaseMetadata {
   readonly encounterId: string;
   readonly enemyId: string;
@@ -736,6 +778,23 @@ export function validateCampaignMetadata(): string[] {
     if (!ancestryIds.has(recruit.ancestryId)) errors.push(`${recruit.id} references unknown ancestry ${recruit.ancestryId}`);
     if (!jobIds.has(recruit.jobId)) errors.push(`${recruit.id} references unknown job ${recruit.jobId}`);
     for (const itemId of recruit.startingItems) if (!itemIds.has(itemId)) errors.push(`${recruit.id} references unknown item ${itemId}`);
+  }
+  const vendorIds = new Set<string>();
+  for (const vendor of vendorProfiles) {
+    if (vendorIds.has(vendor.id)) errors.push(`Duplicate vendor ${vendor.id}`);
+    vendorIds.add(vendor.id);
+    if (!npcIds.has(vendor.npcId)) errors.push(`${vendor.id} references unknown NPC ${vendor.npcId}`);
+    if (vendor.catalogItemIds.length === 0) errors.push(`${vendor.id} has an empty catalog`);
+    if (vendor.sellRate <= 0 || vendor.sellRate > 1) errors.push(`${vendor.id} has an invalid sell rate`);
+    for (const itemId of vendor.catalogItemIds) {
+      if (!itemIds.has(itemId)) errors.push(`${vendor.id} references unknown item ${itemId}`);
+      if (items.find(({ id }) => id === itemId)?.kind === "key") errors.push(`${vendor.id} cannot sell key item ${itemId}`);
+    }
+  }
+  for (const npc of npcs) {
+    if (vendorProfiles.filter((vendor) => vendor.npcId === npc.id).length > 1) {
+      errors.push(`${npc.id} is assigned to more than one vendor profile`);
+    }
   }
   for (const encounter of encounters) {
     const availability = encounterAvailability[encounter.id];
