@@ -4,7 +4,7 @@ import {
   gameSettingsStore,
   REBINDABLE_ACTIONS
 } from "../../settings";
-import type { CharacterCreationDraft, GameBridge } from "../bridge";
+import type { CharacterCreationDraft, Difficulty, GameBridge } from "../bridge";
 import { gamepadButtonAction } from "../gamepadControls";
 import {
   keyboardActionForCode,
@@ -16,6 +16,13 @@ import { announceGameStatus, announceScene, COLORS, getBridge, motionDuration, p
 
 const NAME_CHOICES = ["Rowan", "Aster", "Marlowe", "Sage", "Kestrel", "Vale"] as const;
 const MANUAL_SLOTS = ["manual-1", "manual-2", "manual-3"] as const;
+const DIFFICULTY_CHOICES: readonly { readonly id: Difficulty; readonly label: string; readonly description: string }[] = [
+  { id: "easy", label: "Easy", description: "Enemies hit softer and battles pay out slightly less." },
+  { id: "normal", label: "Normal", description: "The authored balance: no combat adjustment." },
+  { id: "hard", label: "Hard", description: "Enemies hit harder and battles pay out more." }
+];
+/** Rows in the character creation flow: name, ancestry, calling, difficulty, begin. */
+const CREATION_ROW_COUNT = 5;
 
 type TitleMode = "title" | "creation" | "load" | "settings" | "bindings";
 
@@ -28,6 +35,7 @@ export class TitleScene extends Phaser.Scene {
   private nameIndex = 0;
   private ancestryIndex = 0;
   private jobIndex = 0;
+  private difficultyIndex = 1;
   private menuTexts: Phaser.GameObjects.Text[] = [];
   private detailText?: Phaser.GameObjects.Text;
   private controlsText?: Phaser.GameObjects.Text;
@@ -264,14 +272,16 @@ export class TitleScene extends Phaser.Scene {
     this.detailText?.destroy();
     this.menuTexts = [];
     this.mode = "creation";
+    const difficulty = DIFFICULTY_CHOICES[this.difficultyIndex];
     const values = [
       ["NAME", NAME_CHOICES[this.nameIndex]],
       ["ANCESTRY", ancestries[this.ancestryIndex]?.name ?? ""],
       ["CALLING", jobs[this.jobIndex]?.name ?? ""],
+      ["DIFFICULTY", difficulty?.label ?? ""],
       ["BEGIN", "Start in Hearthcross"]
     ] as const;
     this.creationTexts = values.map(([label, value], index) =>
-      this.add.text(72, 226 + index * 51, `${label.padEnd(12)}  ${value}`, {
+      this.add.text(72, 226 + index * 44, `${label.padEnd(12)}  ${value}`, {
         ...TEXT.heading,
         color: index === this.creationRow ? COLORS.gold : COLORS.cream
       })
@@ -281,7 +291,9 @@ export class TitleScene extends Phaser.Scene {
     this.detailText = this.add.text(
       516,
       268,
-      `${ancestry?.trait ?? ""}\n${ancestry?.description ?? ""}\n\n${job?.role ?? ""}\nBranches: ${job?.branches.join(" / ") ?? ""}`,
+      this.creationRow === 3
+        ? (difficulty?.description ?? "")
+        : `${ancestry?.trait ?? ""}\n${ancestry?.description ?? ""}\n\n${job?.role ?? ""}\nBranches: ${job?.branches.join(" / ") ?? ""}`,
       { ...TEXT.body, wordWrap: { width: 340 }, lineSpacing: 7, color: COLORS.muted }
     );
   }
@@ -301,7 +313,7 @@ export class TitleScene extends Phaser.Scene {
       this.bindingIndex = Phaser.Math.Wrap(this.bindingIndex + delta, 0, REBINDABLE_ACTIONS.length);
       this.drawBindings();
     } else {
-      this.creationRow = Phaser.Math.Wrap(this.creationRow + delta, 0, 4);
+      this.creationRow = Phaser.Math.Wrap(this.creationRow + delta, 0, CREATION_ROW_COUNT);
       this.drawCreation();
     }
   }
@@ -323,6 +335,7 @@ export class TitleScene extends Phaser.Scene {
     if (this.creationRow === 0) this.nameIndex = Phaser.Math.Wrap(this.nameIndex + delta, 0, NAME_CHOICES.length);
     if (this.creationRow === 1) this.ancestryIndex = Phaser.Math.Wrap(this.ancestryIndex + delta, 0, ancestries.length);
     if (this.creationRow === 2) this.jobIndex = Phaser.Math.Wrap(this.jobIndex + delta, 0, jobs.length);
+    if (this.creationRow === 3) this.difficultyIndex = Phaser.Math.Wrap(this.difficultyIndex + delta, 0, DIFFICULTY_CHOICES.length);
     this.drawCreation();
   }
 
@@ -375,7 +388,7 @@ export class TitleScene extends Phaser.Scene {
       this.time.delayedCall(motionDuration(270), () => this.scene.start("world"));
       return;
     }
-    if (this.creationRow < 3) {
+    if (this.creationRow < CREATION_ROW_COUNT - 1) {
       this.creationRow += 1;
       this.drawCreation();
       return;
@@ -383,7 +396,8 @@ export class TitleScene extends Phaser.Scene {
     const draft: CharacterCreationDraft = {
       name: NAME_CHOICES[this.nameIndex] ?? "Rowan",
       ancestryId: ancestries[this.ancestryIndex]?.id ?? "hearthborn",
-      jobId: jobs[this.jobIndex]?.id ?? "vanguard"
+      jobId: jobs[this.jobIndex]?.id ?? "vanguard",
+      difficulty: DIFFICULTY_CHOICES[this.difficultyIndex]?.id ?? "normal"
     };
     await this.bridge.newGame(draft);
     this.cameras.main.fadeOut(motionDuration(260), 10, 18, 24);

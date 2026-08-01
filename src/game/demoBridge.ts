@@ -38,6 +38,7 @@ export class DemoGameBridge implements GameBridge {
     locationName: "Hearthcross",
     worldMinutes: 480,
     currency: 0,
+    difficulty: "normal",
     party: [],
     inventory: [
       { itemId: "item.vesleaf", name: "Vesleaf", description: "A bitter medicinal leaf.", quantity: 3 },

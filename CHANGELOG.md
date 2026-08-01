@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Added difficulty options (Easy/Normal/Hard), chosen once at character
+  creation alongside name/ancestry/calling and fixed for the life of the
+  chronicle, matching standard JRPG convention. Easy softens enemy HP/
+  offense and battle rewards; Hard strengthens both; Normal is the
+  unmodified authored balance. Stored as a world flag rather than a global
+  UI preference (like the existing settings store) since it affects
+  deterministic game balance and must travel with the save, not the
+  browser. Applied entirely in the integration layer (enemy stat scaling
+  before combat starts, reward scaling after rewards are computed) so
+  src/engine/combat.ts's formulas stay fully difficulty-agnostic.
 - Gave the three named campaign bosses (Mire Antler, Kiln Heart, Varn
   Rootless) an authored, zero-MP-cost combat form matching their own boss
   phase theme, used once bloodied (at or below 60% HP) instead of only ever

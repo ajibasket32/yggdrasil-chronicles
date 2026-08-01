@@ -5,10 +5,13 @@ export type OverlayKind = "journal" | "inventory" | "party" | "system" | "shop";
 export type BattleAction = "attack" | "skill" | "item" | "guard" | "escape";
 export type GameSaveSlot = "autosave" | "manual-1" | "manual-2" | "manual-3";
 
+export type Difficulty = "easy" | "normal" | "hard";
+
 export interface CharacterCreationDraft {
   name: string;
   ancestryId: string;
   jobId: string;
+  difficulty: Difficulty;
 }
 
 export interface PartyMemberStatsView {
@@ -149,6 +152,8 @@ export interface GameSnapshot {
   locationName: string;
   worldMinutes: number;
   currency: number;
+  /** Chosen once at character creation; fixed for the life of the chronicle. */
+  difficulty: Difficulty;
   party: PartyMemberView[];
   inventory: InventoryView[];
   quests: QuestView[];

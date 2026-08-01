@@ -13,6 +13,7 @@ const snapshotWith = (locationId: string, quest: QuestView): GameSnapshot => ({
   locationName: locationId,
   worldMinutes: 480,
   currency: 0,
+  difficulty: "normal",
   party: [],
   inventory: [],
   quests: [quest],

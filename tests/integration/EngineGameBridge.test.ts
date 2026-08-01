@@ -10,7 +10,7 @@ function createBridge(): { bridge: EngineGameBridge; saves: SaveRepository } {
 }
 
 async function startChronicle(bridge: EngineGameBridge): Promise<void> {
-  await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "vanguard" });
+  await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "vanguard", difficulty: "normal" });
 }
 
 async function winCurrentBattle(bridge: EngineGameBridge): Promise<void> {
@@ -80,7 +80,7 @@ describe("EngineGameBridge party combat", () => {
 
   it("uses the selected job's authored form and applies starting equipment in battle", async () => {
     const { bridge, saves } = createBridge();
-    await bridge.newGame({ name: "Nyra", ancestryId: "stonekin", jobId: "vanguard" });
+    await bridge.newGame({ name: "Nyra", ancestryId: "stonekin", jobId: "vanguard", difficulty: "normal" });
     const saved = await saves.load("autosave");
     const protagonist = saved?.party[0];
     expect(protagonist?.skills).toContain("skill.guard-line");
@@ -98,7 +98,7 @@ describe("EngineGameBridge party combat", () => {
 
   it("lets the player choose any known form, not just the first learned skill", async () => {
     const { bridge } = createBridge();
-    await bridge.newGame({ name: "Nyra", ancestryId: "stonekin", jobId: "vanguard" });
+    await bridge.newGame({ name: "Nyra", ancestryId: "stonekin", jobId: "vanguard", difficulty: "normal" });
     bridge.startEncounter("encounter.mossroad-foragers");
     const options = bridge.getSnapshot().battle?.activeSkills;
     expect(options?.map(({ id }) => id)).toEqual(["skill.guard-line", "skill.shield-bash"]);
@@ -126,7 +126,7 @@ describe("EngineGameBridge party combat", () => {
     }
     for (const job of jobs) {
       const { bridge } = createBridge();
-      await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: job.id });
+      await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: job.id, difficulty: "normal" });
       bridge.startEncounter("encounter.mossroad-foragers");
       const actor = bridge.getSnapshot().battle?.actors.find(({ id }) => id === "party.protagonist");
       expect(actor?.spriteKey, job.id).toBe(`sprite.job.${job.id}`);
@@ -135,7 +135,7 @@ describe("EngineGameBridge party combat", () => {
 
   it("lets a Mender use their active form to restore vitality", async () => {
     const { bridge, saves } = createBridge();
-    await bridge.newGame({ name: "Sage", ancestryId: "sylvan", jobId: "mender" });
+    await bridge.newGame({ name: "Sage", ancestryId: "sylvan", jobId: "mender", difficulty: "normal" });
     const initial = await saves.load("autosave");
     if (!initial) throw new Error("Expected an initial autosave");
     await saves.save("autosave", {
@@ -156,7 +156,7 @@ describe("EngineGameBridge party combat", () => {
 
   it("does not turn an equipment max-HP bonus into free healing after victory", async () => {
     const { bridge, saves } = createBridge();
-    await bridge.newGame({ name: "Nyra", ancestryId: "stonekin", jobId: "vanguard" });
+    await bridge.newGame({ name: "Nyra", ancestryId: "stonekin", jobId: "vanguard", difficulty: "normal" });
     const initial = await saves.load("autosave");
     if (!initial) throw new Error("Expected an initial autosave");
     await saves.save("autosave", {
@@ -290,9 +290,9 @@ describe("EngineGameBridge party combat", () => {
 describe("EngineGameBridge campaign persistence", () => {
   it("lists and loads manual save slots through the game bridge", async () => {
     const { bridge } = createBridge();
-    await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "vanguard" });
+    await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "vanguard", difficulty: "normal" });
     await bridge.save("manual-1");
-    await bridge.newGame({ name: "Vale", ancestryId: "sylvan", jobId: "mender" });
+    await bridge.newGame({ name: "Vale", ancestryId: "sylvan", jobId: "mender", difficulty: "normal" });
 
     expect(bridge.getSnapshot().saveSlots).toEqual(expect.arrayContaining(["autosave", "manual-1"]));
     await bridge.load("manual-1");
@@ -655,7 +655,7 @@ describe("EngineGameBridge runtime party management", () => {
 
   it("publishes item kinds, equipment ownership, and the three-job branch view", async () => {
     const { bridge } = createBridge();
-    await bridge.newGame({ name: "Bran", ancestryId: "stonekin", jobId: "vanguard" });
+    await bridge.newGame({ name: "Bran", ancestryId: "stonekin", jobId: "vanguard", difficulty: "normal" });
     const snapshot = bridge.getSnapshot();
     const protagonist = snapshot.party[0];
 
@@ -684,7 +684,7 @@ describe("EngineGameBridge runtime party management", () => {
 
   it("reflects equipment stat modifiers in the published stat block", async () => {
     const { bridge } = createBridge();
-    await bridge.newGame({ name: "Bran", ancestryId: "stonekin", jobId: "vanguard" });
+    await bridge.newGame({ name: "Bran", ancestryId: "stonekin", jobId: "vanguard", difficulty: "normal" });
     const protagonist = bridge.getSnapshot().party[0];
     if (!protagonist) throw new Error("Expected a protagonist");
     // The starting Vanguard build already wears a Resin Vest (+3 vitality),
@@ -697,7 +697,7 @@ describe("EngineGameBridge runtime party management", () => {
 
   it("uses restorative inventory only when a member can benefit and persists each use", async () => {
     const { bridge, saves } = createBridge();
-    await bridge.newGame({ name: "Eira", ancestryId: "sylvan", jobId: "mender" });
+    await bridge.newGame({ name: "Eira", ancestryId: "sylvan", jobId: "mender", difficulty: "normal" });
     const initial = await saves.load("autosave");
     if (!initial) throw new Error("Expected an initial autosave");
     const protagonist = initial.party[0];
@@ -733,7 +733,7 @@ describe("EngineGameBridge runtime party management", () => {
 
   it("moves gear atomically between inventory and equipment without changing the HP deficit", async () => {
     const { bridge, saves } = createBridge();
-    await bridge.newGame({ name: "Bran", ancestryId: "stonekin", jobId: "vanguard" });
+    await bridge.newGame({ name: "Bran", ancestryId: "stonekin", jobId: "vanguard", difficulty: "normal" });
     const initial = await saves.load("autosave");
     if (!initial) throw new Error("Expected an initial autosave");
     const protagonist = initial.party[0];
@@ -799,7 +799,7 @@ describe("EngineGameBridge runtime party management", () => {
 
   it("unlocks advanced jobs at level four, persists the flag, and promotes the signature skill", async () => {
     const { bridge, saves } = createBridge();
-    await bridge.newGame({ name: "Bran", ancestryId: "hearthborn", jobId: "vanguard" });
+    await bridge.newGame({ name: "Bran", ancestryId: "hearthborn", jobId: "vanguard", difficulty: "normal" });
     const initial = await saves.load("autosave");
     if (!initial) throw new Error("Expected an initial autosave");
     await saves.save("autosave", {
@@ -934,15 +934,63 @@ describe("EngineGameBridge shop", () => {
   });
 });
 
+describe("EngineGameBridge difficulty", () => {
+  it("defaults to normal and exposes the chosen difficulty for the life of the chronicle", async () => {
+    const { bridge } = createBridge();
+    await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "vanguard", difficulty: "hard" });
+    expect(bridge.getSnapshot().difficulty).toBe("hard");
+  });
+
+  it("scales enemy HP up on hard and down on easy relative to normal", async () => {
+    const hpAtDifficulty = async (difficulty: "easy" | "normal" | "hard"): Promise<number> => {
+      const { bridge } = createBridge();
+      await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "vanguard", difficulty });
+      bridge.startEncounter("encounter.mossroad-foragers");
+      return bridge.getSnapshot().battle?.actors.find(({ isParty }) => !isParty)?.maxHp ?? 0;
+    };
+    const easyHp = await hpAtDifficulty("easy");
+    const normalHp = await hpAtDifficulty("normal");
+    const hardHp = await hpAtDifficulty("hard");
+    expect(easyHp).toBeLessThan(normalHp);
+    expect(hardHp).toBeGreaterThan(normalHp);
+  });
+
+  it("scales battle victory rewards up on hard and down on easy relative to normal", async () => {
+    const currencyAfterVictory = async (difficulty: "easy" | "normal" | "hard"): Promise<number> => {
+      const { bridge } = createBridge();
+      await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "vanguard", difficulty });
+      bridge.startEncounter("encounter.mossroad-foragers");
+      await winCurrentBattle(bridge);
+      await bridge.leaveBattle();
+      return bridge.getSnapshot().currency;
+    };
+    const easyCurrency = await currencyAfterVictory("easy");
+    const normalCurrency = await currencyAfterVictory("normal");
+    const hardCurrency = await currencyAfterVictory("hard");
+    expect(easyCurrency).toBeLessThanOrEqual(normalCurrency);
+    expect(hardCurrency).toBeGreaterThanOrEqual(normalCurrency);
+    expect(easyCurrency).toBeLessThan(hardCurrency);
+  });
+
+  it("persists the chosen difficulty across save/reload", async () => {
+    const { bridge, saves } = createBridge();
+    await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "vanguard", difficulty: "easy" });
+    const restored = new EngineGameBridge(saves);
+    await restored.initialize();
+    await restored.continueGame();
+    expect(restored.getSnapshot().difficulty).toBe("easy");
+  });
+});
+
 describe("EngineGameBridge save interchange", () => {
   it("exports, imports into the requested slot, restores active state, and preserves the target backup", async () => {
     const { bridge, saves } = createBridge();
-    await bridge.newGame({ name: "Imported", ancestryId: "sylvan", jobId: "mender" });
+    await bridge.newGame({ name: "Imported", ancestryId: "sylvan", jobId: "mender", difficulty: "normal" });
     await bridge.travel("location.mossroad");
     await bridge.save("manual-2");
     const exported = await bridge.exportSave("manual-2");
 
-    await bridge.newGame({ name: "Replaced", ancestryId: "stonekin", jobId: "vanguard" });
+    await bridge.newGame({ name: "Replaced", ancestryId: "stonekin", jobId: "vanguard", difficulty: "normal" });
     await bridge.save("manual-1");
     const previousTarget = await saves.load("manual-1");
     bridge.startEncounter("encounter.mossroad-foragers");
@@ -962,7 +1010,7 @@ describe("EngineGameBridge save interchange", () => {
 
   it("rejects corrupt imports without replacing either the active state or target save", async () => {
     const { bridge, saves } = createBridge();
-    await bridge.newGame({ name: "Safe", ancestryId: "hearthborn", jobId: "vanguard" });
+    await bridge.newGame({ name: "Safe", ancestryId: "hearthborn", jobId: "vanguard", difficulty: "normal" });
     await bridge.save("manual-1");
     const activeBefore = bridge.getSnapshot();
     const targetBefore = await saves.load("manual-1");

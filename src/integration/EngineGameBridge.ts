@@ -44,6 +44,7 @@ import type {
   BattleAction,
   BattleView,
   CharacterCreationDraft,
+  Difficulty,
   GameCommandResult,
   GameBridge,
   GameSaveSlot,
@@ -540,8 +541,37 @@ const ENEMY_SKILLS: Readonly<Record<string, readonly string[]>> = {
   "enemy.varn-rootless": ["skill.severance-cut"]
 };
 
-function enemyCombatant(id: string, index: number, boss: boolean, level: number): Combatant {
-  const maxHp = boss ? 150 + level * 12 : 38 + level * 9;
+/**
+ * Chosen once at character creation and fixed for the life of the
+ * chronicle (see newGame). Scales enemy HP/offense and battle rewards
+ * without touching combat.ts's formulas, keeping the deterministic engine
+ * itself difficulty-agnostic — the integration layer applies the scale
+ * before combat starts and after rewards are computed.
+ */
+const DIFFICULTY_ENEMY_MULTIPLIER: Readonly<Record<Difficulty, number>> = {
+  easy: 0.8,
+  normal: 1,
+  hard: 1.25
+};
+
+const DIFFICULTY_REWARD_MULTIPLIER: Readonly<Record<Difficulty, number>> = {
+  easy: 0.85,
+  normal: 1,
+  hard: 1.2
+};
+
+function isDifficulty(value: unknown): value is Difficulty {
+  return value === "easy" || value === "normal" || value === "hard";
+}
+
+function difficultyOf(state: GameState): Difficulty {
+  const value = state.world.flags.difficulty;
+  return isDifficulty(value) ? value : "normal";
+}
+
+function enemyCombatant(id: string, index: number, boss: boolean, level: number, difficulty: Difficulty): Combatant {
+  const scale = DIFFICULTY_ENEMY_MULTIPLIER[difficulty];
+  const maxHp = Math.max(1, Math.round((boss ? 150 + level * 12 : 38 + level * 9) * scale));
   return {
     id: `${id}.${index}`,
     name: id.replace("enemy.", "").replaceAll("-", " "),
@@ -549,11 +579,11 @@ function enemyCombatant(id: string, index: number, boss: boolean, level: number)
     stats: {
       maxHp,
       maxMp: 0,
-      strength: 7 + level * 2,
+      strength: Math.max(1, Math.round((7 + level * 2) * scale)),
       dexterity: 7 + level,
       agility: 6 + level,
       vitality: 6 + level,
-      intellect: 4 + level,
+      intellect: Math.max(1, Math.round((4 + level) * scale)),
       wisdom: 5 + level,
       charisma: 1
     },
@@ -607,6 +637,7 @@ export class EngineGameBridge implements GameBridge {
         locationName: "Hearthcross",
         worldMinutes: 480,
         currency: 0,
+        difficulty: "normal",
         party: [],
         inventory: [],
         quests: [],
@@ -629,6 +660,7 @@ export class EngineGameBridge implements GameBridge {
       locationName: location?.name ?? "Unknown road",
       worldMinutes: this.#state.world.worldMinutes + 480,
       currency: Number(this.#state.world.flags.currency ?? 0),
+      difficulty: difficultyOf(this.#state),
       party: party.map((member, index) => this.toPartyView(member, index)),
       inventory: this.#state.inventory.flatMap((stack) => {
         const definition = items.find(({ id }) => id === stack.itemId);
@@ -720,6 +752,7 @@ export class EngineGameBridge implements GameBridge {
       quests: startQuest(state.quests, FIRST_QUEST),
       world: {
         ...state.world,
+        flags: { ...state.world.flags, difficulty: draft.difficulty },
         chronicle: [{
           id: crypto.randomUUID(),
           worldMinute: 0,
@@ -968,7 +1001,8 @@ export class EngineGameBridge implements GameBridge {
     if (!encounter) throw new Error(`Unknown encounter '${encounterId}'`);
     if (encounter.boss && state.world.defeatedBossIds.includes(encounterId)) return;
     const averageLevel = Math.max(1, Math.round(state.party.reduce((sum, member) => sum + member.level, 0) / state.party.length));
-    const enemies = encounter.enemyIds.map((id, index) => enemyCombatant(id, index, encounter.boss, averageLevel));
+    const difficulty = difficultyOf(state);
+    const enemies = encounter.enemyIds.map((id, index) => enemyCombatant(id, index, encounter.boss, averageLevel, difficulty));
     const party = state.party.map((member) => {
       const stats = deriveCharacterCombatStats(member, EQUIPMENT);
       return {
@@ -1358,7 +1392,13 @@ export class EngineGameBridge implements GameBridge {
     const encounter = encounters.find(({ id }) => id === active.encounterId);
     if (!encounter) return;
     const averageLevel = Math.max(1, Math.round(active.state.enemies.reduce((sum, enemy) => sum + enemy.level, 0) / active.state.enemies.length));
-    const reward = calculateBattleReward(encounter.rewardTier, averageLevel, `${state.seed}:${active.encounterId}`);
+    const baseReward = calculateBattleReward(encounter.rewardTier, averageLevel, `${state.seed}:${active.encounterId}`);
+    const rewardScale = DIFFICULTY_REWARD_MULTIPLIER[difficultyOf(state)];
+    const reward = {
+      ...baseReward,
+      experience: Math.round(baseReward.experience * rewardScale),
+      currency: Math.round(baseReward.currency * rewardScale)
+    };
     const party = active.state.party.map((member) => {
       const original = state.party.find(({ id }) => id === member.id);
       if (!original) return member as PlayerCharacter;
