@@ -470,6 +470,9 @@ describe("EngineGameBridge campaign persistence", () => {
       complete: false
     });
 
+    const freeboundBefore = bridge.getSnapshot().reputation?.factions.find(
+      ({ id }) => id === "faction.freebound"
+    )?.standing ?? 0;
     const resolution = await bridge.resolveInteractionChoice("ending.rootways-freed");
     expect(resolution.lines[0]).toContain("No single covenant");
     expect(bridge.getSnapshot().campaign).toMatchObject({
@@ -484,15 +487,49 @@ describe("EngineGameBridge campaign persistence", () => {
     const persisted = await saves.load("autosave");
     expect(persisted?.world.flags["ending.rootways-freed"]).toBe(true);
     expect(persisted?.world.flags["ending.concord-remade"]).not.toBe(true);
-    expect(persisted?.world.factionStanding["faction.freebound"]).toBeGreaterThanOrEqual(8);
+    expect(persisted?.world.factionStanding["faction.freebound"]).toBeGreaterThanOrEqual(freeboundBefore + 8);
     expect(persisted?.world.chronicle.some(({ tags }) =>
       tags.includes("ending.rootways-freed")
     )).toBe(true);
+    expect(persisted?.world.chronicle.some(({ tags, body }) =>
+      tags.includes("epilogue") && body.includes("Rootwardens")
+    )).toBe(true);
+    expect(bridge.getSnapshot().campaign?.ending?.epilogue).toContain("Rootwardens");
 
     await bridge.resolveInteractionChoice("ending.lantern-covenant");
     const unchanged = await saves.load("autosave");
     expect(unchanged?.world.flags["ending.rootways-freed"]).toBe(true);
     expect(unchanged?.world.flags["ending.lantern-covenant"]).not.toBe(true);
+  });
+
+  it("applies each ending's +8/-5 faction trade-off on top of an otherwise-unaffected baseline", async () => {
+    // Starts the Concord decision directly from a fresh chronicle with no
+    // other quests completed. Completing "A New Concord" itself still grants
+    // its own authored consequences (talking to the Rootwarden Mara Vell
+    // adjusts faction.rootwardens by the standard main-story +3), so the
+    // expected values below are that quest's consequence composed with the
+    // ending's own +8/-5 trade-off, not the trade-off in isolation.
+    const { bridge, saves } = createBridge();
+    await startChronicle(bridge);
+    const saved = await saves.load("autosave");
+    if (!saved) throw new Error("Expected an initial autosave");
+    await saves.save("autosave", {
+      ...saved,
+      quests: saved.quests.map((quest) =>
+        quest.questId === "quest.a-new-concord"
+          ? { ...quest, state: "active" as const, currentStep: 2 }
+          : quest
+      )
+    });
+    await bridge.continueGame();
+
+    await bridge.resolveInteractionChoice("ending.rootways-freed");
+    const persisted = await saves.load("autosave");
+    // Freebound: only the ending's +8 (no Freebound NPC is talked to by
+    // "A New Concord"). Rootwardens: the quest's own +3 (from talking to
+    // Mara Vell) composed with the ending's -5 opposed-faction trade-off.
+    expect(persisted?.world.factionStanding["faction.freebound"]).toBe(8);
+    expect(persisted?.world.factionStanding["faction.rootwardens"]).toBe(3 - 5);
   });
 });
 

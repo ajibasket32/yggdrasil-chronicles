@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Deepened the three campaign endings' systemic consequences: each ending now
+  also sets back a specific opposing faction (per WORLD_BIBLE.md's faction
+  descriptions), not just advancing its own chosen faction, and records a
+  distinct "What the Choice Cost" epilogue chronicle entry shown on the
+  ending screen. Previously all three endings moved only one faction by the
+  same flat +8 with no other differing consequence.
 - Gave each of the three recruitable companions (Tovin, Keva, Eira) one
   exclusive combat skill reflecting their story role (a scout's ambush
   sense, a kiln-delver's endurance, a bridgekeeper's living-wood ward), so

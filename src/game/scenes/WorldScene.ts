@@ -596,18 +596,18 @@ export class WorldScene extends Phaser.Scene {
     this.locked = true;
     const ending = this.snapshot.campaign.ending ?? {
       title: "THE CHRONICLE CONTINUES",
-      body: "The last covenant remains unsettled, but the roads remember every step that led here."
+      body: "The last covenant remains unsettled, but the roads remember every step that led here.",
+      epilogue: ""
     };
     const veil = this.add.rectangle(0, 0, 960, 540, 0x0b1119, 0.94).setOrigin(0);
-    const title = this.add.text(480, 112, ending.title, {
+    const title = this.add.text(480, 100, ending.title, {
       ...TEXT.title,
       color: COLORS.gold
     }).setOrigin(0.5);
     const body = this.add.text(
       480,
-      206,
-      `${ending.body}\n\n`
-        + `${this.snapshot.playerName}'s chronicle remains open. The road can still be explored, and unfinished threads still wait.`,
+      182,
+      ending.body,
       {
         ...TEXT.body,
         fontSize: "17px",
@@ -617,11 +617,35 @@ export class WorldScene extends Phaser.Scene {
         color: COLORS.cream
       }
     ).setOrigin(0.5, 0);
-    const hint = this.add.text(480, 458, "Esc / B  Continue exploring", {
+    const children = [veil, title, body];
+    if (ending.epilogue) {
+      children.push(this.add.text(480, 306, `WHAT THE CHOICE COST\n${ending.epilogue}`, {
+        ...TEXT.body,
+        fontSize: "14px",
+        align: "center",
+        wordWrap: { width: 620 },
+        lineSpacing: 7,
+        color: COLORS.muted
+      }).setOrigin(0.5, 0));
+    }
+    children.push(this.add.text(
+      480,
+      440,
+      `${this.snapshot.playerName}'s chronicle remains open. The road can still be explored, and unfinished threads still wait.`,
+      {
+        ...TEXT.body,
+        fontSize: "13px",
+        align: "center",
+        wordWrap: { width: 650 },
+        lineSpacing: 7,
+        color: COLORS.cream
+      }
+    ).setOrigin(0.5, 0));
+    children.push(this.add.text(480, 500, "Esc / B  Continue exploring", {
       ...TEXT.small,
       color: COLORS.muted
-    }).setOrigin(0.5);
-    this.overlay = this.add.container(0, 0, [veil, title, body, hint]).setDepth(100);
+    }).setOrigin(0.5));
+    this.overlay = this.add.container(0, 0, children).setDepth(100);
   }
 
   private refreshObjectiveActors(): void {

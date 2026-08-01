@@ -120,6 +120,7 @@ export interface GameSnapshot {
       id: string;
       title: string;
       body: string;
+      epilogue: string;
     };
   };
   reputation?: {

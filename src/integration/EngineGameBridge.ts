@@ -68,33 +68,46 @@ const FIRST_QUEST = "quest.first-silence";
 const CONCORD_QUEST = "quest.a-new-concord";
 const CONCORD_FINAL_NPC = "npc.sable-voss";
 
+/**
+ * Each ending has a genuine trade-off, not just a single faction gain: the
+ * opposedFactionId is the faction whose interests that future structurally
+ * closes off, per WORLD_BIBLE.md's faction descriptions. epilogue is a
+ * fourth chronicle line shown only in the journal/ending screen, naming a
+ * concrete systemic consequence beyond the faction-standing numbers.
+ */
 const CONCORD_CHOICES = [
   {
     id: "ending.concord-remade",
     label: "Restore the Concord",
     description: "Bind the factions to a renewed shared covenant.",
     factionId: "faction.rootwardens",
+    opposedFactionId: "faction.freebound",
     title: "THE CONCORD REMADE",
     resolution: "The old promise is rewritten with mortal voices at its center.",
-    body: "The severed roads sing again—not as they once did, but in the voices of those who chose to mend them."
+    body: "The severed roads sing again—not as they once did, but in the voices of those who chose to mend them.",
+    epilogue: "The Freebound Companies lose their independent routes to the renewed covenant's shared law; some comply, more scatter to the unmapped edges."
   },
   {
     id: "ending.rootways-freed",
     label: "Free the Rootways",
     description: "End central rule and let every region govern its own memories.",
     factionId: "faction.freebound",
+    opposedFactionId: "faction.rootwardens",
     title: "THE ROOTWAYS FREED",
     resolution: "No single covenant owns the roads now; each settlement carries its own truth and risk.",
-    body: "The rootways open without a throne above them. Their songs disagree, overlap, and finally belong to the people who travel them."
+    body: "The rootways open without a throne above them. Their songs disagree, overlap, and finally belong to the people who travel them.",
+    epilogue: "The Rootwardens' mandate to protect every living rootway ends with the central authority that enforced it; some roots go unwatched."
   },
   {
     id: "ending.lantern-covenant",
     label: "Entrust the Archive",
     description: "Create a transparent covenant of witnesses and public records.",
     factionId: "faction.lantern-archive",
+    opposedFactionId: "faction.quiet-choir",
     title: "THE LANTERN COVENANT",
     resolution: "The Archive accepts stewardship under laws that make every hidden revision visible.",
-    body: "Lanterns burn beside every living record. Memory has keepers again, but never again an unseen hand."
+    body: "Lanterns burn beside every living record. Memory has keepers again, but never again an unseen hand.",
+    epilogue: "The Quiet Choir's belief that the tree must forget finds no shelter under public record; its remaining voices go quieter still, or go underground."
   }
 ] as const;
 
@@ -611,7 +624,8 @@ export class EngineGameBridge implements GameBridge {
         ending: endingChoice ? {
           id: endingChoice.id,
           title: endingChoice.title,
-          body: endingChoice.body
+          body: endingChoice.body,
+          epilogue: endingChoice.epilogue
         } : undefined
       },
       reputation: {
@@ -826,12 +840,19 @@ export class EngineGameBridge implements GameBridge {
       };
     }
     const worldMinute = state.world.worldMinutes;
+    // The chosen future both strengthens its own faction and structurally
+    // closes off the opposing one; endings are a trade-off, not a pure gain.
+    const factionStanding = adjustFactionStanding(
+      adjustFactionStanding(state.world.factionStanding, choice.factionId, 8),
+      choice.opposedFactionId,
+      -5
+    );
     this.#state = {
       ...state,
       quests: this.applyObjectiveToActiveQuests(state.quests, "talk", CONCORD_FINAL_NPC),
       world: {
         ...state.world,
-        factionStanding: adjustFactionStanding(state.world.factionStanding, choice.factionId, 8),
+        factionStanding,
         flags: {
           ...state.world.flags,
           [choice.id]: true
@@ -844,6 +865,13 @@ export class EngineGameBridge implements GameBridge {
             title: choice.label,
             body: choice.resolution,
             tags: ["main-story", "ending", choice.id]
+          },
+          {
+            id: crypto.randomUUID(),
+            worldMinute,
+            title: "What the Choice Cost",
+            body: choice.epilogue,
+            tags: ["main-story", "ending", "epilogue", choice.id]
           }
         ]
       }
