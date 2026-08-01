@@ -76,6 +76,13 @@ export interface BattleSkillOption {
   mpCost: number;
 }
 
+export interface BattleItemOption {
+  id: string;
+  name: string;
+  description: string;
+  quantity: number;
+}
+
 export interface BattleView {
   encounterId: string;
   title: string;
@@ -83,6 +90,8 @@ export interface BattleView {
   actors: BattleActorView[];
   activeActorId?: string;
   activeSkills: BattleSkillOption[];
+  /** Usable items currently in the shared pack (restoratives and status cures). */
+  activeItems: BattleItemOption[];
   bossPhase?: string;
   log: string[];
   round: number;
@@ -154,7 +163,7 @@ export interface GameBridge {
   interactNpc(npcId: string): InteractionView | Promise<InteractionView>;
   resolveInteractionChoice(choiceId: string): InteractionView | Promise<InteractionView>;
   startEncounter(encounterId: string): void | Promise<void>;
-  chooseBattleAction(action: BattleAction, skillId?: string): void | Promise<void>;
+  chooseBattleAction(action: BattleAction, skillOrItemId?: string): void | Promise<void>;
   leaveBattle(): void | Promise<void>;
   rest(): void | Promise<void>;
   save(slot: GameSaveSlot): void | Promise<void>;

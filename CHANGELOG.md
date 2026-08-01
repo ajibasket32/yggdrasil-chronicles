@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Added an in-battle item-select menu (Vesleaf, Root Tonic, Aether Drop,
+  Frost Resin, Cold Ember, Ash Spice) instead of the ITEM action always
+  defaulting to Root Tonic regardless of what else was carried. Fixed Ash
+  Spice silently failing to be used at all — it's now the game's only
+  status-cure item, clearing stun/sleep/freeze/poison/burn/bleed from its
+  target, the sole counter-play to boss phases that inflict party-wide
+  freeze or burn.
 - Deepened the three campaign endings' systemic consequences: each ending now
   also sets back a specific opposing faction (per WORLD_BIBLE.md's faction
   descriptions), not just advancing its own chosen faction, and records a

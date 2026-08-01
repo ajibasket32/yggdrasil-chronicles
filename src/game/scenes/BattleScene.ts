@@ -13,12 +13,14 @@ const ACTIONS: Array<{ id: BattleAction; label: string; hint: string }> = [
   { id: "escape", label: "ESCAPE", hint: "Look for a safe route out." }
 ];
 
+type SubMenu = "none" | "skill" | "item";
+
 export class BattleScene extends Phaser.Scene {
   private bridge!: GameBridge;
   private snapshot!: Readonly<GameSnapshot>;
   private actionIndex = 0;
-  private skillMenuOpen = false;
-  private skillIndex = 0;
+  private subMenu: SubMenu = "none";
+  private subMenuIndex = 0;
   private unsubscribe?: () => void;
   private resolving = false;
 
@@ -39,8 +41,8 @@ export class BattleScene extends Phaser.Scene {
     this.unsubscribe = this.bridge.subscribe((snapshot) => {
       this.snapshot = snapshot;
       this.resolving = false;
-      this.skillMenuOpen = false;
-      this.skillIndex = 0;
+      this.subMenu = "none";
+      this.subMenuIndex = 0;
       this.render();
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unsubscribe?.());
@@ -75,8 +77,8 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private cancel(): void {
-    if (this.skillMenuOpen) {
-      this.skillMenuOpen = false;
+    if (this.subMenu !== "none") {
+      this.subMenu = "none";
       this.render();
       return;
     }
@@ -90,7 +92,8 @@ export class BattleScene extends Phaser.Scene {
     this.children.removeAll();
     this.paintArena(battle);
     this.paintActors(battle);
-    if (this.skillMenuOpen) this.paintSkillMenu(battle);
+    if (this.subMenu === "skill") this.paintSkillMenu(battle);
+    else if (this.subMenu === "item") this.paintItemMenu(battle);
     else this.paintCommandPanel(battle);
   }
 
@@ -176,12 +179,18 @@ export class BattleScene extends Phaser.Scene {
       });
     });
     const isSkillRow = this.actionIndex === 1;
+    const isItemRow = this.actionIndex === 2;
     const skillSummary = isSkillRow && battle.activeSkills.length > 0
       ? battle.activeSkills.map((skill) => skill.name).join(" / ")
       : undefined;
+    const itemSummary = isItemRow && battle.activeItems.length > 0
+      ? battle.activeItems.map((item) => `${item.name} x${item.quantity}`).join(" / ")
+      : undefined;
     const hint = skillSummary
       ? `${skillSummary}: ${ACTIONS[this.actionIndex]?.hint ?? ""}`
-      : ACTIONS[this.actionIndex]?.hint ?? "";
+      : itemSummary
+        ? `${itemSummary}: ${ACTIONS[this.actionIndex]?.hint ?? ""}`
+        : ACTIONS[this.actionIndex]?.hint ?? "";
     this.add.text(36, 446, hint, { ...TEXT.body, color: COLORS.muted });
     const recentLog = battle.log.slice(-3).join("\n");
     this.add.text(670, 365, recentLog, {
@@ -204,18 +213,41 @@ export class BattleScene extends Phaser.Scene {
   private paintSkillMenu(battle: BattleView): void {
     this.add.text(28, 360, "CHOOSE A FORM", { ...TEXT.small, color: COLORS.gold });
     battle.activeSkills.forEach((skill, index) => {
-      const selected = index === this.skillIndex;
+      const selected = index === this.subMenuIndex;
       this.add.text(36, 393 + index * 24, `${selected ? "›" : " "} ${skill.name.padEnd(20)} ${skill.mpCost} MP`, {
         ...TEXT.heading,
         fontSize: "14px",
         color: selected ? COLORS.gold : COLORS.cream
       });
     });
+    this.paintSubMenuHint("selects a form");
+  }
+
+  private paintItemMenu(battle: BattleView): void {
+    this.add.text(28, 360, "CHOOSE AN ITEM", { ...TEXT.small, color: COLORS.gold });
+    if (battle.activeItems.length === 0) {
+      this.add.text(36, 393, "No usable item remains in the pack.", { ...TEXT.body, color: COLORS.muted });
+    }
+    battle.activeItems.forEach((item, index) => {
+      const selected = index === this.subMenuIndex;
+      this.add.text(36, 393 + index * 24, `${selected ? "›" : " "} ${item.name.padEnd(20)} x${item.quantity}`, {
+        ...TEXT.heading,
+        fontSize: "14px",
+        color: selected ? COLORS.gold : COLORS.cream
+      });
+      if (selected) {
+        this.add.text(340, 393 + index * 24, item.description, { ...TEXT.small, color: COLORS.muted });
+      }
+    });
+    this.paintSubMenuHint("selects an item");
+  }
+
+  private paintSubMenuHint(verb: string): void {
     const bindings = gameSettingsStore.get().keyBindings;
     this.add.text(
       36,
       488,
-      `${keyboardCodeLabel(bindings.up)}/${keyboardCodeLabel(bindings.down)} selects a form · `
+      `${keyboardCodeLabel(bindings.up)}/${keyboardCodeLabel(bindings.down)} ${verb} · `
       + `${keyboardCodeLabel(bindings.confirm)} / A confirms · ${keyboardCodeLabel(bindings.cancel)} / B back`,
       TEXT.small
     );
@@ -224,9 +256,15 @@ export class BattleScene extends Phaser.Scene {
   private move(delta: number): void {
     const battle = this.snapshot.battle;
     if (!battle || battle.phase !== "choosing" || this.resolving) return;
-    if (this.skillMenuOpen) {
+    if (this.subMenu === "skill") {
       if (battle.activeSkills.length === 0) return;
-      this.skillIndex = Phaser.Math.Wrap(this.skillIndex + delta, 0, battle.activeSkills.length);
+      this.subMenuIndex = Phaser.Math.Wrap(this.subMenuIndex + delta, 0, battle.activeSkills.length);
+      this.render();
+      return;
+    }
+    if (this.subMenu === "item") {
+      if (battle.activeItems.length === 0) return;
+      this.subMenuIndex = Phaser.Math.Wrap(this.subMenuIndex + delta, 0, battle.activeItems.length);
       this.render();
       return;
     }
@@ -243,27 +281,46 @@ export class BattleScene extends Phaser.Scene {
       this.scene.start("world");
       return;
     }
-    if (this.skillMenuOpen) {
-      const skill = battle.activeSkills[this.skillIndex];
+    if (this.subMenu === "skill") {
+      const skill = battle.activeSkills[this.subMenuIndex];
       playSound(this, "sfx.heal");
       this.resolving = true;
-      this.skillMenuOpen = false;
+      this.subMenu = "none";
       this.render();
       await this.bridge.chooseBattleAction("skill", skill?.id);
+      return;
+    }
+    if (this.subMenu === "item") {
+      if (battle.activeItems.length === 0) return;
+      const item = battle.activeItems[this.subMenuIndex];
+      playSound(this, "sfx.heal");
+      this.resolving = true;
+      this.subMenu = "none";
+      this.render();
+      await this.bridge.chooseBattleAction("item", item?.id);
       return;
     }
     const action = ACTIONS[this.actionIndex];
     if (!action) return;
     if (action.id === "skill" && battle.activeSkills.length > 1) {
-      this.skillMenuOpen = true;
-      this.skillIndex = 0;
+      this.subMenu = "skill";
+      this.subMenuIndex = 0;
+      this.render();
+      return;
+    }
+    if (action.id === "item" && battle.activeItems.length > 1) {
+      this.subMenu = "item";
+      this.subMenuIndex = 0;
       this.render();
       return;
     }
     playSound(this, action.id === "skill" || action.id === "item" ? "sfx.heal" : action.id === "attack" ? "sfx.attack" : "sfx.confirm");
     this.resolving = true;
     this.render();
-    await this.bridge.chooseBattleAction(action.id);
+    // With exactly one usable item, skip the submenu but still name it
+    // explicitly so a lone non-Root-Tonic item (e.g. only Ash Spice left)
+    // resolves correctly instead of falling back to a Root Tonic check.
+    await this.bridge.chooseBattleAction(action.id, action.id === "item" ? battle.activeItems[0]?.id : undefined);
   }
 
   private titleCase(value: string): string {

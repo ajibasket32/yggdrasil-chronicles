@@ -59,7 +59,8 @@ import type {
   NarrativeContext,
   PlayerCharacter,
   QuestDefinition,
-  Stats
+  Stats,
+  StatusInstance
 } from "../shared/types";
 
 const STARTING_LOCATION = "location.hearthcross";
@@ -320,6 +321,15 @@ const RECOVERY_ITEMS: Readonly<Record<string, Readonly<{ hp: number; mp: number 
   "item.aether-drop": { hp: 0, mp: 18 },
   "item.frost-resin": { hp: 24, mp: 8 },
   "item.cold-ember": { hp: 10, mp: 16 }
+};
+
+/**
+ * Statuses this item clears from one target in battle. The only counter-play
+ * to boss phases that inflict party-wide freeze/burn (root_party/scorch_party,
+ * see bossPhases) — otherwise those statuses can only be waited out.
+ */
+const STATUS_CURE_ITEMS: Readonly<Record<string, readonly StatusInstance["id"][]>> = {
+  "item.ash-spice": ["stun", "sleep", "freeze", "poison", "burn", "bleed"]
 };
 
 function commandFailure(message: string): GameCommandResult {
@@ -954,7 +964,7 @@ export class EngineGameBridge implements GameBridge {
     this.emit();
   }
 
-  async chooseBattleAction(action: BattleAction, skillId?: string): Promise<void> {
+  async chooseBattleAction(action: BattleAction, skillOrItemId?: string): Promise<void> {
     const active = this.#battle;
     if (!active || active.phase !== "choosing") return;
     const actor = active.state.party[active.partyTurnIndex];
@@ -970,19 +980,36 @@ export class EngineGameBridge implements GameBridge {
       active.log.push("There is no safe route away from this foe.");
     } else if (action === "item") {
       const state = this.requireState();
-      if (inventoryQuantity(state.inventory, "item.root-tonic") > 0) {
-        const healedParty = active.state.party.map((member) =>
-          member.id === actor.id ? { ...member, hp: Math.min(member.stats.maxHp, member.hp + 30) } : member
-        );
+      const requestedItemId = skillOrItemId && inventoryQuantity(state.inventory, skillOrItemId) > 0
+        && (RECOVERY_ITEMS[skillOrItemId] || STATUS_CURE_ITEMS[skillOrItemId])
+        ? skillOrItemId
+        : undefined;
+      const itemId = requestedItemId
+        ?? (inventoryQuantity(state.inventory, "item.root-tonic") > 0 ? "item.root-tonic" : undefined);
+      const cureList = itemId ? STATUS_CURE_ITEMS[itemId] : undefined;
+      const recovery = itemId ? RECOVERY_ITEMS[itemId] : undefined;
+      if (itemId && (recovery || cureList)) {
+        const itemName = items.find(({ id }) => id === itemId)?.name ?? itemId;
+        const healedParty = active.state.party.map((member) => {
+          if (member.id !== actor.id) return member;
+          const hp = recovery ? Math.min(member.stats.maxHp, member.hp + recovery.hp) : member.hp;
+          const mp = recovery ? Math.min(member.stats.maxMp, member.mp + recovery.mp) : member.mp;
+          const statuses = cureList
+            ? member.statuses.filter((status) => !cureList.includes(status.id))
+            : member.statuses;
+          return { ...member, hp, mp, statuses };
+        });
         active.state = { ...active.state, party: healedParty };
-        this.#state = { ...state, inventory: removeItem(state.inventory, "item.root-tonic") };
-        active.log.push(`${actor.name} drinks a Root Tonic and restores vitality.`);
+        this.#state = { ...state, inventory: removeItem(state.inventory, itemId) };
+        active.log.push(cureList
+          ? `${actor.name} uses ${itemName} and shakes off the affliction.`
+          : `${actor.name} uses ${itemName} and restores vitality.`);
       } else {
-        active.log.push("No Root Tonic remains in the pack.");
+        active.log.push("No usable item remains in the pack.");
       }
     } else {
-      const requestedSkillId = action === "skill" && skillId && actor.skills.includes(skillId) && SKILLS[skillId]
-        ? skillId
+      const requestedSkillId = action === "skill" && skillOrItemId && actor.skills.includes(skillOrItemId) && SKILLS[skillOrItemId]
+        ? skillOrItemId
         : undefined;
       const activeSkillId = requestedSkillId ?? actor.skills.find((candidate) => SKILLS[candidate]);
       const activeSkill = activeSkillId ? SKILLS[activeSkillId] : undefined;
@@ -1759,6 +1786,17 @@ export class EngineGameBridge implements GameBridge {
           .filter((skill): skill is CombatSkill => skill !== undefined)
           .map((skill) => ({ id: skill.id, name: skill.name, mpCost: skill.mpCost }));
       })(),
+      activeItems: (this.#state?.inventory ?? [])
+        .filter(({ itemId }) => RECOVERY_ITEMS[itemId] || STATUS_CURE_ITEMS[itemId])
+        .map(({ itemId, quantity }) => {
+          const definition = items.find(({ id }) => id === itemId);
+          return {
+            id: itemId,
+            name: definition?.name ?? itemId,
+            description: definition?.description ?? "",
+            quantity
+          };
+        }),
       bossPhase: active.activatedBossPhases.at(-1),
       log: active.log.slice(-8),
       round: active.state.round

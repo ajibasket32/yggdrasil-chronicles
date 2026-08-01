@@ -198,6 +198,59 @@ describe("EngineGameBridge party combat", () => {
     expect(bridge.getSnapshot().battle?.log.join(" ")).toContain("hooves split the flooded ground");
     expect(bridge.getSnapshot().battle?.actors.find(({ isParty }) => isParty)?.status).toBe("freeze");
   });
+
+  it("cures a blocking status with Ash Spice, the only in-battle counter to a boss freeze/burn phase", async () => {
+    const { bridge, saves } = createBridge();
+    await startChronicle(bridge);
+    const initial = await saves.load("autosave");
+    if (!initial) throw new Error("Expected an initial autosave");
+    await saves.save("autosave", {
+      ...initial,
+      party: initial.party.map((member) => ({
+        ...member,
+        stats: { ...member.stats, strength: 25, maxHp: 1_000 },
+        hp: 1_000
+      })),
+      inventory: [...initial.inventory, { itemId: "item.ash-spice", quantity: 1 }]
+    });
+    await bridge.continueGame();
+    bridge.startEncounter("encounter.mire-antler");
+    for (let turn = 0; turn < 8 && bridge.getSnapshot().battle?.bossPhase !== "Rooted Panic"; turn += 1) {
+      await bridge.chooseBattleAction("attack");
+    }
+    expect(bridge.getSnapshot().battle?.actors.find(({ isParty }) => isParty)?.status).toBe("freeze");
+
+    // Ash Spice must be offered as a usable item once the party is frozen,
+    // and choosing it explicitly clears the blocking status.
+    expect(bridge.getSnapshot().battle?.activeItems.map(({ id }) => id)).toContain("item.ash-spice");
+    await bridge.chooseBattleAction("item", "item.ash-spice");
+    expect(bridge.getSnapshot().battle?.actors.find(({ isParty }) => isParty)?.status).not.toBe("freeze");
+    expect(bridge.getSnapshot().battle?.log.join(" ")).toContain("shakes off the affliction");
+    expect(bridge.getSnapshot().inventory.some(({ itemId }) => itemId === "item.ash-spice")).toBe(false);
+  });
+
+  it("lets the player choose a specific usable item instead of always defaulting to Root Tonic", async () => {
+    const { bridge, saves } = createBridge();
+    await startChronicle(bridge);
+    const initial = await saves.load("autosave");
+    if (!initial) throw new Error("Expected an initial autosave");
+    await saves.save("autosave", {
+      ...initial,
+      inventory: [...initial.inventory, { itemId: "item.aether-drop", quantity: 1 }]
+    });
+    await bridge.continueGame();
+    bridge.startEncounter("encounter.mossroad-foragers");
+    const itemIds = bridge.getSnapshot().battle?.activeItems.map(({ id }) => id) ?? [];
+    expect(itemIds).toContain("item.root-tonic");
+    expect(itemIds).toContain("item.aether-drop");
+
+    const mpBefore = bridge.getSnapshot().party[0]?.mp ?? 0;
+    await bridge.chooseBattleAction("item", "item.aether-drop");
+    // Root Tonic (hp-only) must not have been consumed instead of the
+    // explicitly requested Aether Drop (mp-only).
+    expect(bridge.getSnapshot().inventory.some(({ itemId }) => itemId === "item.aether-drop")).toBe(false);
+    expect(bridge.getSnapshot().party[0]?.mp).toBeGreaterThanOrEqual(mpBefore);
+  });
 });
 
 describe("EngineGameBridge campaign persistence", () => {

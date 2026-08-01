@@ -164,6 +164,7 @@ export class DemoGameBridge implements GameBridge {
         actors,
         activeActorId: this.state.party[0]?.id,
         activeSkills: [],
+        activeItems: [],
         log: [`${encounter.name} bars the road.`],
         round: 1
       }
@@ -171,7 +172,7 @@ export class DemoGameBridge implements GameBridge {
     this.emit();
   }
 
-  chooseBattleAction(action: BattleAction, _skillId?: string): void {
+  chooseBattleAction(action: BattleAction, _skillOrItemId?: string): void {
     const battle = this.state.battle;
     if (!battle || battle.phase !== "choosing") return;
     if (action === "escape") {
