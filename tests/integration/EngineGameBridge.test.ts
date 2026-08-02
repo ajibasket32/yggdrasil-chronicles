@@ -16,6 +16,12 @@ async function startChronicle(bridge: EngineGameBridge): Promise<void> {
   await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "vanguard", difficulty: "normal" });
 }
 
+/** Every status id currently on the first party member, now that actors carry the full list. */
+function partyStatusIds(bridge: EngineGameBridge): string[] {
+  const actor = bridge.getSnapshot().battle?.actors.find(({ isParty }) => isParty);
+  return actor?.statuses.map(({ id }) => id) ?? [];
+}
+
 async function winCurrentBattle(bridge: EngineGameBridge): Promise<void> {
   for (let turn = 0; turn < 20; turn += 1) {
     const battle = bridge.getSnapshot().battle;
@@ -199,7 +205,7 @@ describe("EngineGameBridge party combat", () => {
     }
     expect(bridge.getSnapshot().battle?.bossPhase).toBe("Rooted Panic");
     expect(bridge.getSnapshot().battle?.log.join(" ")).toContain("hooves split the flooded ground");
-    expect(bridge.getSnapshot().battle?.actors.find(({ isParty }) => isParty)?.status).toBe("freeze");
+    expect(partyStatusIds(bridge)).toContain("freeze");
   });
 
   it("has a bloodied boss use its authored form instead of only ever basic-attacking", async () => {
@@ -255,13 +261,13 @@ describe("EngineGameBridge party combat", () => {
     for (let turn = 0; turn < 8 && bridge.getSnapshot().battle?.bossPhase !== "Rooted Panic"; turn += 1) {
       await bridge.chooseBattleAction("attack");
     }
-    expect(bridge.getSnapshot().battle?.actors.find(({ isParty }) => isParty)?.status).toBe("freeze");
+    expect(partyStatusIds(bridge)).toContain("freeze");
 
     // Ash Spice must be offered as a usable item once the party is frozen,
     // and choosing it explicitly clears the blocking status.
     expect(bridge.getSnapshot().battle?.activeItems.map(({ id }) => id)).toContain("item.ash-spice");
     await bridge.chooseBattleAction("item", "item.ash-spice");
-    expect(bridge.getSnapshot().battle?.actors.find(({ isParty }) => isParty)?.status).not.toBe("freeze");
+    expect(partyStatusIds(bridge)).not.toContain("freeze");
     expect(bridge.getSnapshot().battle?.log.join(" ")).toContain("shakes off the affliction");
     expect(bridge.getSnapshot().inventory.some(({ itemId }) => itemId === "item.ash-spice")).toBe(false);
   });

@@ -11,6 +11,7 @@ import {
   createInitialGameState,
   deriveCharacterCombatStats,
   equipItem,
+  getInitiativeOrder,
   grantExperience,
   inventoryQuantity,
   refreshQuestAvailability,
@@ -51,6 +52,8 @@ import type {
   GameSnapshot,
   InteractionView,
   PartyMemberView,
+  BattleEventView,
+  BattleStatusView,
   QuestView,
   SaveSlotSummaryView,
   ShopEntryView,
@@ -65,6 +68,7 @@ import type {
   PlayerCharacter,
   QuestDefinition,
   Stats,
+  StatusId,
   StatusInstance
 } from "../shared/types";
 
@@ -134,7 +138,7 @@ const COMBAT_SKILLS: readonly CombatSkill[] = [
   { id: "skill.shield-bash", name: "Shield Bash", element: "physical", power: 20, accuracy: 0.88, mpCost: 5, target: "enemy", status: { id: "stun", chance: 0.3, turns: 1, potency: 0 } },
   { id: "skill.aimed-shot", name: "Aimed Shot", element: "physical", power: 22, accuracy: 0.96, mpCost: 4, target: "enemy" },
   { id: "skill.quickstep", name: "Quickstep Cut", element: "wind", power: 17, accuracy: 0.98, mpCost: 3, target: "enemy", status: { id: "bleed", chance: 0.25, turns: 2, potency: 3 } },
-  { id: "skill.mend", name: "Mending Light", element: "radiant", power: 18, accuracy: 1, mpCost: 4, target: "self", healing: true },
+  { id: "skill.mend", name: "Mending Light", element: "radiant", power: 18, accuracy: 1, mpCost: 4, target: "ally", healing: true },
   { id: "skill.ward-thread", name: "Ward Thread", element: "aether", power: 15, accuracy: 1, mpCost: 3, target: "enemy", status: { id: "sleep", chance: 0.2, turns: 1, potency: 0 } },
   { id: "skill.ember-spark", name: "Ember Spark", element: "fire", power: 24, accuracy: 0.9, mpCost: 6, target: "enemy", status: { id: "burn", chance: 0.35, turns: 2, potency: 4 } },
   { id: "skill.tide-pulse", name: "Tide Pulse", element: "water", power: 20, accuracy: 0.94, mpCost: 5, target: "enemy" },
@@ -149,21 +153,21 @@ const COMBAT_SKILLS: readonly CombatSkill[] = [
   { id: "skill.rallying-strike", name: "Rallying Strike", element: "physical", power: 18, accuracy: 0.95, mpCost: 4, target: "enemy", status: { id: "bleed", chance: 0.3, turns: 2, potency: 4 } },
   { id: "skill.piercing-arrow", name: "Piercing Arrow", element: "physical", power: 28, accuracy: 0.92, mpCost: 6, target: "enemy" },
   { id: "skill.hunting-mark", name: "Hunting Mark", element: "physical", power: 19, accuracy: 0.97, mpCost: 4, target: "enemy", status: { id: "bleed", chance: 0.5, turns: 3, potency: 4 } },
-  { id: "skill.greater-mend", name: "Greater Mend", element: "radiant", power: 30, accuracy: 1, mpCost: 7, target: "self", healing: true },
+  { id: "skill.greater-mend", name: "Greater Mend", element: "radiant", power: 30, accuracy: 1, mpCost: 7, target: "ally", healing: true },
   { id: "skill.dawnfire-lance", name: "Dawnfire Lance", element: "radiant", power: 23, accuracy: 0.92, mpCost: 5, target: "enemy", status: { id: "burn", chance: 0.4, turns: 2, potency: 5 } },
   { id: "skill.storm-lance", name: "Storm Lance", element: "lightning", power: 26, accuracy: 0.88, mpCost: 7, target: "enemy", status: { id: "stun", chance: 0.35, turns: 1, potency: 0 } },
   { id: "skill.deep-resonance", name: "Deep Resonance", element: "water", power: 22, accuracy: 0.95, mpCost: 6, target: "enemy", status: { id: "freeze", chance: 0.3, turns: 1, potency: 0 } },
   { id: "skill.veil-strike", name: "Veil Strike", element: "shadow", power: 21, accuracy: 0.95, mpCost: 5, target: "enemy", status: { id: "sleep", chance: 0.35, turns: 2, potency: 0 } },
   { id: "skill.wild-gambit", name: "Wild Gambit", element: "physical", power: 32, accuracy: 0.8, mpCost: 6, target: "enemy" },
   { id: "skill.bramble-snare", name: "Bramble Snare", element: "nature", power: 22, accuracy: 0.9, mpCost: 6, target: "enemy", status: { id: "poison", chance: 0.5, turns: 3, potency: 5 } },
-  { id: "skill.verdant-bulwark", name: "Verdant Bulwark", element: "nature", power: 22, accuracy: 1, mpCost: 5, target: "self", healing: true },
+  { id: "skill.verdant-bulwark", name: "Verdant Bulwark", element: "nature", power: 22, accuracy: 1, mpCost: 5, target: "ally", healing: true },
   // Recruited companion signature forms: each grants a toolkit their base
   // Ranger/Vanguard/Mender kit otherwise entirely lacks (Tovin's Ranger kit
   // has no freeze; Keva's Vanguard kit has no sustain; Eira's Mender kit has
   // no damage-with-lasting-status), so recruiting them is a mechanically
   // distinct addition, not a stat-identical reskin of a self-made character.
   { id: "skill.marked-quarry", name: "Marked Quarry", element: "wind", power: 21, accuracy: 0.95, mpCost: 5, target: "enemy", status: { id: "freeze", chance: 0.3, turns: 1, potency: 0 } },
-  { id: "skill.delvers-grit", name: "Delver's Grit", element: "earth", power: 24, accuracy: 1, mpCost: 5, target: "self", healing: true },
+  { id: "skill.delvers-grit", name: "Delver's Grit", element: "earth", power: 24, accuracy: 1, mpCost: 5, target: "ally", healing: true },
   { id: "skill.bridgekeepers-warding", name: "Bridgekeeper's Warding", element: "nature", power: 19, accuracy: 0.94, mpCost: 5, target: "enemy", status: { id: "poison", chance: 0.4, turns: 2, potency: 4 } },
   // Boss-exclusive forms: zero MP cost (bosses never spend MP), each
   // matching that boss's own authored phase theme. chooseEnemyAction only
@@ -450,6 +454,14 @@ interface ActiveBattle {
   /** Index of the party member whose player turn is awaiting an action. */
   partyTurnIndex: number;
   activatedBossPhases: string[];
+  /** Engine events from the most recent action, projected onto the view for animation. */
+  events: CombatEvent[];
+  /**
+   * Last enemy the player aimed at. Remembered across turns and cleared when
+   * that enemy dies, so a repeat attack in a multi-enemy fight costs no
+   * keypresses — the genre convention.
+   */
+  lastTargetId?: string;
 }
 
 function statsForBuild(ancestryId: string, jobId: string): Stats {
@@ -596,6 +608,24 @@ function enemyCombatant(id: string, index: number, boss: boolean, level: number,
     isPlayerControlled: false
   };
 }
+
+/**
+ * Player-facing status names. The game previously never explained what any
+ * status did, so a freeze and a stun were indistinguishable to the player.
+ */
+const STATUS_LABELS: Readonly<Record<StatusId, string>> = {
+  guard: "Guarding — incoming harm reduced",
+  poison: "Poisoned — losing vitality each round",
+  burn: "Burning — losing vitality each round",
+  bleed: "Bleeding — losing vitality each round",
+  stun: "Stunned — cannot act",
+  sleep: "Asleep — cannot act",
+  freeze: "Frozen — cannot act",
+  weaken: "Weakened — dealing less harm",
+  fortify: "Fortified — taking less harm",
+  haste: "Hastened — acting sooner",
+  slow: "Slowed — acting later"
+};
 
 const SLOT_LABELS: Readonly<Record<GameSaveSlot, string>> = {
   autosave: "Autosave",
@@ -1123,18 +1153,22 @@ export class EngineGameBridge implements GameBridge {
       phase: "choosing",
       log: [`${encounter.name} bars the road.`],
       partyTurnIndex: this.firstLivingPartyIndex(party),
-      activatedBossPhases: []
+      activatedBossPhases: [],
+      events: []
     };
     this.applyBossPhaseTransitions(this.#battle);
     this.emit();
   }
 
-  async chooseBattleAction(action: BattleAction, skillOrItemId?: string): Promise<void> {
+  async chooseBattleAction(action: BattleAction, skillOrItemId?: string, targetId?: string): Promise<void> {
     const active = this.#battle;
     if (!active || active.phase !== "choosing") return;
     const actor = active.state.party[active.partyTurnIndex];
     const target = active.state.enemies.find(({ hp }) => hp > 0);
     if (!actor || actor.hp <= 0 || !target) return;
+    // Each action replaces the previous frame's events, so the scene animates
+    // what just happened rather than replaying the whole battle.
+    active.events = [];
     if (action === "escape") {
       const encounter = encounters.find(({ id }) => id === active.encounterId);
       if (!encounter?.boss) {
@@ -1160,8 +1194,13 @@ export class EngineGameBridge implements GameBridge {
       const recovery = itemId ? RECOVERY_ITEMS[itemId] : undefined;
       if (itemId && (recovery || cureList)) {
         const itemName = items.find(({ id }) => id === itemId)?.name ?? itemId;
+        // Items may now be handed to an ally. The branch used to hard-filter to
+        // the acting member, so a downed companion could never be reached and
+        // the dedicated healer could only ever treat themselves.
+        const recipientId = this.resolveActionTarget(active, actor.id, "ally", targetId, actor.id);
+        const recipient = active.state.party.find(({ id }) => id === recipientId);
         const healedParty = active.state.party.map((member) => {
-          if (member.id !== actor.id) return member;
+          if (member.id !== recipientId) return member;
           const hp = recovery ? Math.min(member.stats.maxHp, member.hp + recovery.hp) : member.hp;
           const mp = recovery ? Math.min(member.stats.maxMp, member.mp + recovery.mp) : member.mp;
           const statuses = cureList
@@ -1171,9 +1210,15 @@ export class EngineGameBridge implements GameBridge {
         });
         active.state = { ...active.state, party: healedParty };
         this.#state = { ...state, inventory: removeItem(state.inventory, itemId) };
+        const onSelf = recipientId === actor.id;
+        const recipientName = recipient?.name ?? "an ally";
         active.log.push(cureList
-          ? `${actor.name} uses ${itemName} and shakes off the affliction.`
-          : `${actor.name} uses ${itemName} and restores vitality.`);
+          ? onSelf
+            ? `${actor.name} uses ${itemName} and shakes off the affliction.`
+            : `${actor.name} uses ${itemName} on ${recipientName}, clearing the affliction.`
+          : onSelf
+            ? `${actor.name} uses ${itemName} and restores vitality.`
+            : `${actor.name} uses ${itemName} on ${recipientName}, restoring vitality.`);
       } else {
         active.log.push("No usable item remains in the pack.");
       }
@@ -1183,23 +1228,20 @@ export class EngineGameBridge implements GameBridge {
         : undefined;
       const activeSkillId = requestedSkillId ?? actor.skills.find((candidate) => SKILLS[candidate]);
       const activeSkill = activeSkillId ? SKILLS[activeSkillId] : undefined;
+      const scope = action === "skill" ? activeSkill?.target ?? "enemy" : "enemy";
+      const chosenTargetId = this.resolveActionTarget(active, actor.id, scope, targetId, target.id);
+      if (scope === "enemy") active.lastTargetId = chosenTargetId;
       const resolution = resolveCombatAction(
         active.state,
         action === "guard"
           ? { type: "guard", actorId: actor.id }
-          : action === "skill"
-            ? activeSkillId
-              ? {
-                  type: "skill",
-                  actorId: actor.id,
-                  targetId: activeSkill?.target === "enemy" ? target.id : actor.id,
-                  skillId: activeSkillId
-                }
-              : { type: "attack", actorId: actor.id, targetId: target.id }
-            : { type: "attack", actorId: actor.id, targetId: target.id },
+          : action === "skill" && activeSkillId
+            ? { type: "skill", actorId: actor.id, targetId: chosenTargetId, skillId: activeSkillId }
+            : { type: "attack", actorId: actor.id, targetId: chosenTargetId },
         SKILLS
       );
       active.state = resolution.state;
+      active.events.push(...resolution.events);
       active.log.push(...resolution.events.map((event) => this.describeEvent(event, active.state)));
       this.applyBossPhaseTransitions(active);
     }
@@ -1214,6 +1256,7 @@ export class EngineGameBridge implements GameBridge {
         const enemyAction = chooseEnemyAction(active.state, enemy.id, SKILLS);
         const resolution = resolveCombatAction(active.state, enemyAction, SKILLS);
         active.state = resolution.state;
+        active.events.push(...resolution.events);
         active.log.push(...resolution.events.map((event) => this.describeEvent(event, active.state)));
         if (active.state.outcome !== "ongoing") break;
       }
@@ -1221,6 +1264,7 @@ export class EngineGameBridge implements GameBridge {
     if (active.state.outcome === "ongoing") {
       const advanced = advanceCombatRound(active.state);
       active.state = advanced.state;
+      active.events.push(...advanced.events);
       active.log.push(...advanced.events.map((event) => this.describeEvent(event, active.state)));
       if (active.state.outcome === "ongoing") {
         active.partyTurnIndex = this.firstLivingPartyIndex(active.state.party);
@@ -1229,6 +1273,36 @@ export class EngineGameBridge implements GameBridge {
     if (active.state.outcome === "victory") await this.resolveVictory(active);
     if (active.state.outcome === "defeat") active.phase = "defeat";
     this.emit();
+  }
+
+  /**
+   * Picks the combatant an action lands on. An explicit, still-valid request
+   * always wins; otherwise the remembered target is reused, and only then does
+   * it fall back to the first living enemy. Self-scoped skills ignore all of
+   * this and hit the actor.
+   */
+  private resolveActionTarget(
+    active: ActiveBattle,
+    actorId: string,
+    scope: "enemy" | "ally" | "self",
+    requestedId: string | undefined,
+    defaultEnemyId: string
+  ): string {
+    if (scope === "self") return actorId;
+    const pool = scope === "ally" ? active.state.party : active.state.enemies;
+    const living = pool.filter(({ hp }) => hp > 0);
+    const requested = requestedId ? living.find(({ id }) => id === requestedId) : undefined;
+    if (requested) return requested.id;
+    if (scope === "ally") {
+      // Default to the ally who most needs it, which is what an unaimed heal means.
+      const neediest = [...living].sort((left, right) =>
+        (left.hp / left.stats.maxHp) - (right.hp / right.stats.maxHp) || left.id.localeCompare(right.id));
+      return neediest[0]?.id ?? actorId;
+    }
+    const remembered = active.lastTargetId
+      ? living.find(({ id }) => id === active.lastTargetId)
+      : undefined;
+    return remembered?.id ?? defaultEnemyId;
   }
 
   async leaveBattle(): Promise<void> {
@@ -2041,47 +2115,57 @@ export class EngineGameBridge implements GameBridge {
   private toBattleView(active: ActiveBattle): BattleView {
     const encounter = encounters.find(({ id }) => id === active.encounterId);
     const roster = this.#state?.party ?? [];
+    const acting = active.state.party[active.partyTurnIndex];
+    const toStatuses = (combatant: Combatant): BattleStatusView[] =>
+      combatant.statuses.map((status) => ({
+        id: status.id,
+        remainingTurns: status.remainingTurns,
+        label: STATUS_LABELS[status.id]
+      }));
     return {
       encounterId: active.encounterId,
       title: encounter?.name ?? "Encounter",
       phase: active.phase,
       actors: [...active.state.party, ...active.state.enemies].map((actor) => {
+        const shared = {
+          id: actor.id,
+          name: actor.name,
+          hp: actor.hp,
+          maxHp: actor.stats.maxHp,
+          mp: actor.mp,
+          maxMp: actor.stats.maxMp,
+          statuses: toStatuses(actor),
+          alive: actor.hp > 0,
+          targetable: actor.hp > 0
+        };
         if (actor.isPlayerControlled) {
           const member = roster.find(({ id }) => id === actor.id);
           return {
-            id: actor.id,
-            name: actor.name,
-            hp: actor.hp,
-            maxHp: actor.stats.maxHp,
+            ...shared,
             isParty: true,
-            status: actor.statuses[0]?.id,
             spriteKey: member ? spriteKeyForJob(member.jobId) : "sprite.player",
             tint: member ? ANCESTRY_TINTS[member.raceId] ?? 0xffffff : 0xffffff
           };
         }
         const { spriteKey, tint } = spriteForEnemyId(enemyContentId(actor.id));
-        return {
-          id: actor.id,
-          name: actor.name,
-          hp: actor.hp,
-          maxHp: actor.stats.maxHp,
-          isParty: false,
-          status: actor.statuses[0]?.id,
-          spriteKey,
-          tint
-        };
+        return { ...shared, isParty: false, spriteKey, tint };
       }),
-      activeActorId: active.phase === "choosing"
-        ? active.state.party[active.partyTurnIndex]?.id
-        : undefined,
-      activeSkills: (() => {
-        const actor = active.state.party[active.partyTurnIndex];
-        if (!actor) return [];
-        return actor.skills
+      activeActorId: active.phase === "choosing" ? acting?.id : undefined,
+      activeSkills: acting
+        ? acting.skills
           .map((skillId) => SKILLS[skillId])
           .filter((skill): skill is CombatSkill => skill !== undefined)
-          .map((skill) => ({ id: skill.id, name: skill.name, mpCost: skill.mpCost }));
-      })(),
+          .map((skill) => ({
+            id: skill.id,
+            name: skill.name,
+            mpCost: skill.mpCost,
+            element: skill.element,
+            power: skill.power,
+            target: skill.target,
+            status: skill.status?.id,
+            affordable: acting.mp >= skill.mpCost
+          }))
+        : [],
       activeItems: (this.#state?.inventory ?? [])
         .filter(({ itemId }) => RECOVERY_ITEMS[itemId] || STATUS_CURE_ITEMS[itemId])
         .map(({ itemId, quantity }) => {
@@ -2090,14 +2174,25 @@ export class EngineGameBridge implements GameBridge {
             id: itemId,
             name: definition?.name ?? itemId,
             description: definition?.description ?? "",
-            quantity
+            quantity,
+            target: "ally" as const
           };
         }),
+      events: active.events.map((event) => this.toBattleEventView(event)),
+      turnOrder: getInitiativeOrder(active.state),
       bossPhase: active.activatedBossPhases.at(-1),
       escapable: !encounter?.boss,
       log: active.log.slice(-8),
       round: active.state.round
     };
+  }
+
+  /** Structural projection of an engine event; the prose form stays in describeEvent for the log. */
+  private toBattleEventView(event: CombatEvent): BattleEventView {
+    if (event.type === "battle_ended") {
+      return { type: "battle_ended", outcome: event.outcome };
+    }
+    return event as BattleEventView;
   }
 
   private describeEvent(event: CombatEvent, state: CombatState): string {

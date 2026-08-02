@@ -1,4 +1,4 @@
-import type { QuestState, QuestStepKind } from "../shared/types";
+import type { Element, QuestState, QuestStepKind, StatusId } from "../shared/types";
 
 export type Direction = "up" | "down" | "left" | "right";
 export type OverlayKind = "journal" | "inventory" | "party" | "system" | "shop" | "ending";
@@ -82,13 +82,28 @@ export interface GameCommandResult {
   message: string;
 }
 
+export interface BattleStatusView {
+  id: StatusId;
+  remainingTurns: number;
+  /** Short player-facing description, so the UI never has to explain a mechanic itself. */
+  label: string;
+}
+
 export interface BattleActorView {
   id: string;
   name: string;
   hp: number;
   maxHp: number;
+  /** The resource layer was invisible on the one screen where it decides play. */
+  mp: number;
+  maxMp: number;
   isParty: boolean;
-  status?: string;
+  /** Every active status, not just the first. Empty when the actor is clean. */
+  statuses: BattleStatusView[];
+  /** False once incapacitated, so the UI can render a distinct down state rather than 0/max. */
+  alive: boolean;
+  /** Whether this actor can currently be chosen as a target by the acting character. */
+  targetable: boolean;
   /** Preloaded Phaser texture key; falls back to sprite.player/sprite.enemy when absent. */
   spriteKey?: string;
   /** Multiplicative tint applied on top of the sprite for further per-actor distinction. */
@@ -99,6 +114,14 @@ export interface BattleSkillOption {
   id: string;
   name: string;
   mpCost: number;
+  /** Read-only projection of the already-resolved CombatSkill, so the menu can teach the elemental layer. */
+  element: Element;
+  power: number;
+  target: "enemy" | "ally" | "self";
+  /** Present when the skill carries a status rider. */
+  status?: StatusId;
+  /** False when the acting character cannot currently pay for it. */
+  affordable: boolean;
 }
 
 export interface BattleItemOption {
@@ -106,17 +129,40 @@ export interface BattleItemOption {
   name: string;
   description: string;
   quantity: number;
+  /** Item effects target a party member; the UI needs to know whether to prompt for one. */
+  target: "ally" | "self";
 }
+
+/**
+ * Typed projection of the engine's CombatEvent. Previously every event was
+ * flattened to a sentence at the bridge, so damage numbers, criticals and
+ * misses could not be rendered as anything but log text.
+ */
+export type BattleEventView =
+  | { type: "damage"; actorId: string; targetId: string; amount: number; element: Element; critical: boolean }
+  | { type: "healing"; actorId: string; targetId: string; amount: number }
+  | { type: "miss"; actorId: string; targetId: string }
+  | { type: "guard"; actorId: string }
+  | { type: "status_applied"; targetId: string; status: StatusId }
+  | { type: "status_damage"; targetId: string; status: StatusId; amount: number }
+  | { type: "status_expired"; targetId: string; status: StatusId }
+  | { type: "insufficient_mp"; actorId: string; skillId: string }
+  | { type: "incapacitated"; actorId: string; status: StatusId }
+  | { type: "battle_ended"; outcome: "victory" | "defeat" | "escaped" };
 
 export interface BattleView {
   encounterId: string;
   title: string;
-  phase: "choosing" | "resolving" | "victory" | "defeat" | "escaped";
+  phase: "choosing" | "victory" | "defeat" | "escaped";
   actors: BattleActorView[];
   activeActorId?: string;
   activeSkills: BattleSkillOption[];
   /** Usable items currently in the shared pack (restoratives and status cures). */
   activeItems: BattleItemOption[];
+  /** Events produced by the most recent action, in order, for animation and damage numbers. */
+  events: BattleEventView[];
+  /** Turn order for the current round, most imminent first. */
+  turnOrder: string[];
   bossPhase?: string;
   /** False for boss encounters, which refuse escape. Lets the UI stop offering it. */
   escapable: boolean;
@@ -235,7 +281,13 @@ export interface GameBridge {
   interactNpc(npcId: string): InteractionView | Promise<InteractionView>;
   resolveInteractionChoice(choiceId: string): InteractionView | Promise<InteractionView>;
   startEncounter(encounterId: string): void | Promise<void>;
-  chooseBattleAction(action: BattleAction, skillOrItemId?: string): void | Promise<void>;
+  /**
+   * `targetId` is optional so callers that do not care keep working; the bridge
+   * picks a sensible default (first living enemy, or the actor for a self
+   * skill). Supplying it is what makes ally healing, item targeting and revive
+   * expressible at all.
+   */
+  chooseBattleAction(action: BattleAction, skillOrItemId?: string, targetId?: string): void | Promise<void>;
   leaveBattle(): void | Promise<void>;
   rest(): void | Promise<void>;
   save(slot: GameSaveSlot): void | Promise<void>;

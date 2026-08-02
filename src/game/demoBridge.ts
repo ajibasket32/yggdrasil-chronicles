@@ -157,6 +157,11 @@ export class DemoGameBridge implements GameBridge {
       name: id.replace("enemy.", "").replaceAll("-", " "),
       hp: encounter.boss ? 110 : 38,
       maxHp: encounter.boss ? 110 : 38,
+      mp: 0,
+      maxMp: 0,
+      statuses: [],
+      alive: true,
+      targetable: true,
       isParty: false
     }));
     const actors = [
@@ -165,6 +170,11 @@ export class DemoGameBridge implements GameBridge {
         name: member.name,
         hp: member.hp,
         maxHp: member.maxHp,
+        mp: member.mp,
+        maxMp: member.maxMp,
+        statuses: [],
+        alive: member.hp > 0,
+        targetable: member.hp > 0,
         isParty: true
       })),
       ...enemies
@@ -179,6 +189,8 @@ export class DemoGameBridge implements GameBridge {
         activeActorId: this.state.party[0]?.id,
         activeSkills: [],
         activeItems: [],
+        events: [],
+        turnOrder: actors.map(({ id }) => id),
         escapable: !encounter.boss,
         log: [`${encounter.name} bars the road.`],
         round: 1
