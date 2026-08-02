@@ -3,7 +3,7 @@ import { gameSettingsStore } from "../../settings";
 import type { BattleAction, BattleView, GameBridge, GameSnapshot } from "../bridge";
 import { gamepadButtonAction } from "../gamepadControls";
 import { keyboardActionForCode, keyboardCodeLabel } from "../keyboardControls";
-import { announceScene, COLORS, getBridge, playSound, TEXT } from "../runtime";
+import { announceScene, COLORS, getBridge, motionDuration, playSound, TEXT } from "../runtime";
 
 const ACTIONS: Array<{ id: BattleAction; label: string; hint: string }> = [
   { id: "attack", label: "ATTACK", hint: "A reliable physical strike." },
@@ -29,6 +29,8 @@ export class BattleScene extends Phaser.Scene {
   private actionIndex = 0;
   private subMenu: SubMenu = "none";
   private subMenuIndex = 0;
+  /** Where each actor was last drawn, so event feedback can be placed on them. */
+  private readonly actorPositions = new Map<string, { x: number; y: number; sprite: Phaser.GameObjects.Image }>();
   private unsubscribe?: () => void;
   private resolving = false;
 
@@ -121,6 +123,7 @@ export class BattleScene extends Phaser.Scene {
     if (!battle) return;
     this.paintArena(battle);
     this.paintActors(battle);
+    this.playEventFeedback(battle);
     if (this.subMenu === "skill") this.paintSkillMenu(battle);
     else if (this.subMenu === "item") this.paintItemMenu(battle);
     else this.paintCommandPanel(battle);
@@ -145,15 +148,20 @@ export class BattleScene extends Phaser.Scene {
   private paintActors(battle: BattleView): void {
     const party = battle.actors.filter(({ isParty }) => isParty);
     const enemies = battle.actors.filter(({ isParty }) => !isParty);
+    // Recorded so the event pass can find who to animate and where.
+    this.actorPositions.clear();
     party.forEach((actor, index) => {
       const x = 160 + index * 96;
       const y = 245 - (index % 2) * 45;
       const key = actor.spriteKey && this.textures.exists(actor.spriteKey) ? actor.spriteKey : "sprite.player";
       const sprite = this.add.image(x, y, key).setScale(1.8).setFlipX(true);
       if (actor.tint !== undefined) sprite.setTint(actor.tint);
-      if (actor.hp <= 0) sprite.setTint(0x4d545d);
+      if (!actor.alive) sprite.setTint(0x4d545d);
+      this.actorPositions.set(actor.id, { x, y, sprite });
       this.drawActiveActorMarker(x, y, actor.id === battle.activeActorId, actor.name);
       this.drawHealth(x - 48, y + 38, 96, actor.hp, actor.maxHp, actor.name, true);
+      this.drawResource(x - 48, y + 56, 96, actor.mp, actor.maxMp);
+      this.drawStatuses(x - 48, y + 68, actor.statuses);
     });
     enemies.forEach((actor, index) => {
       const x = 690 + (index % 2) * 105;
@@ -161,10 +169,96 @@ export class BattleScene extends Phaser.Scene {
       const key = actor.spriteKey && this.textures.exists(actor.spriteKey) ? actor.spriteKey : "sprite.enemy";
       const sprite = this.add.image(x, y, key).setScale(actor.maxHp > 80 ? 2 : 1.45);
       if (actor.tint !== undefined) sprite.setTint(actor.tint);
-      if (actor.hp <= 0) sprite.setAlpha(0.25);
+      if (!actor.alive) sprite.setAlpha(0.25);
+      this.actorPositions.set(actor.id, { x, y, sprite });
       this.drawActiveActorMarker(x, y, actor.id === battle.activeActorId, this.titleCase(actor.name));
       this.drawHealth(x - 48, y + 42, 96, actor.hp, actor.maxHp, this.titleCase(actor.name), false);
+      this.drawStatuses(x - 48, y + 60, actor.statuses);
     });
+  }
+
+  /**
+   * Plays the typed events from the most recent action: a floating number per
+   * damage or heal, and a recoil on whoever was struck. The bridge already
+   * carries amount, element and critical, so none of this needs to re-derive
+   * anything from the log text.
+   */
+  private playEventFeedback(battle: BattleView): void {
+    if (battle.events.length === 0) return;
+    let delay = 0;
+    for (const event of battle.events) {
+      if (event.type === "damage") {
+        this.floatNumber(event.targetId, `${event.amount}`, event.critical ? 0xf2c66d : 0xe46e76, delay, event.critical);
+        this.recoil(event.targetId, delay);
+        delay += 90;
+      } else if (event.type === "healing") {
+        this.floatNumber(event.targetId, `+${event.amount}`, 0x64ba83, delay, false);
+        delay += 90;
+      } else if (event.type === "miss") {
+        this.floatNumber(event.targetId, "MISS", 0x9fb0bd, delay, false);
+        delay += 70;
+      } else if (event.type === "status_damage") {
+        this.floatNumber(event.targetId, `${event.amount}`, 0xb98cd6, delay, false);
+        delay += 70;
+      }
+    }
+  }
+
+  private floatNumber(actorId: string, text: string, color: number, delay: number, emphatic: boolean): void {
+    const position = this.actorPositions.get(actorId);
+    if (!position) return;
+    const label = this.add.text(position.x, position.y - 18, text, {
+      ...TEXT.heading,
+      fontSize: emphatic ? "22px" : "17px",
+      color: `#${color.toString(16).padStart(6, "0")}`
+    }).setOrigin(0.5).setDepth(60).setAlpha(0);
+
+    this.tweens.add({
+      targets: label,
+      alpha: 1,
+      duration: motionDuration(70),
+      delay: motionDuration(delay),
+      onComplete: () => {
+        this.tweens.add({
+          targets: label,
+          y: position.y - 62,
+          alpha: 0,
+          duration: motionDuration(520),
+          ease: "Sine.easeOut",
+          onComplete: () => label.destroy()
+        });
+      }
+    });
+  }
+
+  private recoil(actorId: string, delay: number): void {
+    const position = this.actorPositions.get(actorId);
+    if (!position) return;
+    const origin = position.x;
+    this.tweens.add({
+      targets: position.sprite,
+      x: origin + 9,
+      duration: motionDuration(60),
+      delay: motionDuration(delay),
+      yoyo: true,
+      repeat: 1,
+      ease: "Sine.easeInOut",
+      onComplete: () => position.sprite.setX(origin)
+    });
+  }
+
+  private drawResource(x: number, y: number, width: number, mp: number, maxMp: number): void {
+    if (maxMp <= 0) return;
+    const ratio = Phaser.Math.Clamp(mp / maxMp, 0, 1);
+    this.add.rectangle(x, y, width, 4, 0x11151c).setOrigin(0);
+    this.add.rectangle(x, y, width * ratio, 4, 0x5f8fd0).setOrigin(0);
+  }
+
+  /** Status tokens, so the one screen where conditions decide play finally shows them. */
+  private drawStatuses(x: number, y: number, statuses: BattleView["actors"][number]["statuses"]): void {
+    if (statuses.length === 0) return;
+    const text = statuses.map(({ id, remainingTurns }) => `${id.slice(0, 3).toUpperCase()}${remainingTurns}`).join(" ");
+    this.add.text(x, y, text, { ...TEXT.small, fontSize: "9px", color: COLORS.gold }).setOrigin(0);
   }
 
   private drawActiveActorMarker(x: number, y: number, active: boolean, name: string): void {
