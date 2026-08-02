@@ -484,6 +484,19 @@ export function enemyMaxHealth(level: number, bossTier: boolean, attackers = 1):
   return Math.max(1, Math.round((curve.base + Math.max(1, level) * curve.perLevel) * scale));
 }
 
+/**
+ * Experience must grow with the square of the level because the level curve
+ * does: `totalExperienceForLevel` is 50*L*(L-1), so each level costs about
+ * 100*L more than the last. A purely linear reward therefore falls further
+ * behind at every level by construction — a completionist finished the
+ * campaign around level 16 against an authored final band of 14-22, having
+ * done everything the game offers.
+ *
+ * The quadratic term is deliberately small (1 per level squared): it closes
+ * the gap without making late content trivial, and it moves rewards rather
+ * than the curve. Changing `totalExperienceForLevel` would silently change
+ * what the `experience` value in every existing save means.
+ */
 export function calculateBattleReward(tier: RewardTier, averageEnemyLevel: number, seed: string): BattleReward {
   const level = Math.max(1, Math.floor(averageEnemyLevel));
   const multiplier = REWARD_MULTIPLIERS[tier];
@@ -492,7 +505,7 @@ export function calculateBattleReward(tier: RewardTier, averageEnemyLevel: numbe
   rng = currencyVariance.rng;
   const itemRoll = randomInt(rng, 0, 999);
   return {
-    experience: Math.round((30 + level * 18) * multiplier),
+    experience: Math.round((30 + level * 18 + level * level) * multiplier),
     currency: Math.round((12 + level * 7) * multiplier * currencyVariance.value / 100),
     itemRoll: itemRoll.value
   };
