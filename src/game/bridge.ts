@@ -214,6 +214,14 @@ export interface ShopEntryView {
   /** Present only for items the party currently carries at least one of. */
   sellPrice?: number;
   ownedQuantity: number;
+  /**
+   * For equipment: how this piece would change the selected character's stats
+   * against what they wear now. Absent for consumables and for gear the
+   * character cannot equip. Without it, buying is a guess.
+   */
+  statDelta?: Array<{ stat: string; delta: number }>;
+  /** Set when the character cannot use this piece, with the reason. */
+  unusableReason?: string;
 }
 
 export interface ShopView {

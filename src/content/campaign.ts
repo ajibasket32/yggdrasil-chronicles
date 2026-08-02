@@ -570,7 +570,35 @@ export const items: ItemDefinition[] = [
   { id: "item.emberglass-charm", name: "Emberglass Charm", kind: "accessory", description: "A kiln-glass bead that keeps a coal-warm focus.", value: 260, requiredLevel: 7, modifiers: { maxMp: 14, intellect: 3 }, allowedBands: ["caster"] },
   { id: "item.rootbound-edge", name: "Rootbound Edge", kind: "weapon", description: "A pale-canopy blade grown rather than forged.", value: 420, requiredLevel: 14, modifiers: { strength: 10, dexterity: 5, agility: 2 }, allowedBands: ["martial"] },
   { id: "item.canopy-ward", name: "Canopy Ward", kind: "armor", description: "White-bough lamellar that turns aside starlit harm.", value: 400, requiredLevel: 14, modifiers: { maxHp: 44, vitality: 7, wisdom: 2 } },
-  { id: "item.starlit-signet", name: "Starlit Signet", kind: "accessory", description: "A ring cut from a star absent from every chart.", value: 460, requiredLevel: 14, modifiers: { maxMp: 22, intellect: 4, wisdom: 4 }, allowedBands: ["caster"] }
+  { id: "item.starlit-signet", name: "Starlit Signet", kind: "accessory", description: "A ring cut from a star absent from every chart.", value: 460, requiredLevel: 14, modifiers: { maxMp: 22, intellect: 4, wisdom: 4 }, allowedBands: ["caster"] },
+
+  // Sidegrades, one per slot per region. Two tiers per slot made every choice a
+  // strict upgrade, so equipping was never a decision — you wore the newest
+  // thing you owned. Each of these trades one stat away for another, so a
+  // player picks against the fight ahead rather than against a bigger number.
+  // Purchasable, unlike the boss-dropped tier, which keeps the shop relevant.
+  { id: "item.reed-knife", name: "Reed Knife", kind: "weapon", description: "Light enough to strike twice while a sword swings once.", value: 130, modifiers: { dexterity: 5, agility: 3, strength: -1 }, allowedBands: ["martial"] },
+  { id: "item.orchard-wrap", name: "Orchard Wrap", kind: "armor", description: "Woven pear-bark that keeps a body quick rather than shielded.", value: 120, modifiers: { maxHp: 6, agility: 3, wisdom: 2 } },
+  { id: "item.rain-charm", name: "Rain Charm", kind: "accessory", description: "A glass drop that steadies the hand more than the mind.", value: 170, modifiers: { maxMp: 4, dexterity: 3, charisma: 2 } },
+  // Caster-banded openers, so a scholarly build has its own tier-1 choice
+  // rather than only the martial pair.
+  { id: "item.rootwood-focus", name: "Rootwood Focus", kind: "weapon", description: "A carved branch that listens better than it strikes.", value: 135, modifiers: { intellect: 4, wisdom: 3, strength: -2 }, allowedBands: ["caster"] },
+  { id: "item.warden-mantle", name: "Warden's Mantle", kind: "armor", description: "Rootwarden wool: warm, plain, and quietly stubborn.", value: 125, modifiers: { maxHp: 10, maxMp: 6, wisdom: 1 } },
+  { id: "item.listener-cord", name: "Listener's Cord", kind: "accessory", description: "Knotted twine that steadies a nervous mind.", value: 165, modifiers: { maxMp: 10, wisdom: 3, agility: -1 } },
+
+  { id: "item.slagsteel-maul", name: "Slagsteel Maul", kind: "weapon", description: "Heavy Cinder March iron: it lands hard and slowly.", value: 250, requiredLevel: 7, modifiers: { strength: 9, agility: -3 }, allowedBands: ["martial"] },
+  { id: "item.kiln-censer", name: "Kiln Censer", kind: "weapon", description: "A swinging brazier that carries heat further than a blade.", value: 255, requiredLevel: 7, modifiers: { intellect: 7, maxMp: 8, vitality: -2 }, allowedBands: ["caster"] },
+  { id: "item.emberweave-coat", name: "Emberweave Coat", kind: "armor", description: "Kiln-thread cloth that answers heat instead of blows.", value: 230, requiredLevel: 7, modifiers: { maxHp: 14, wisdom: 5, intellect: 2 } },
+  { id: "item.slagplate-harness", name: "Slagplate Harness", kind: "armor", description: "Refinery scrap, riveted: it stops everything except haste.", value: 235, requiredLevel: 7, modifiers: { maxHp: 34, vitality: 4, agility: -3, maxMp: -4 } },
+  { id: "item.foundry-seal", name: "Foundry Seal", kind: "accessory", description: "A union token that steadies a voice in a crowded room.", value: 250, requiredLevel: 7, modifiers: { charisma: 5, maxMp: 6, vitality: 2 } },
+  { id: "item.ashglass-lens", name: "Ashglass Lens", kind: "accessory", description: "Smoked glass that finds the seam in anything burning.", value: 265, requiredLevel: 7, modifiers: { dexterity: 5, intellect: 3, wisdom: -1 } },
+
+  { id: "item.whitebough-spear", name: "Whitebough Spear", kind: "weapon", description: "Pale reach: it keeps trouble further away than a blade can.", value: 430, requiredLevel: 14, modifiers: { strength: 6, dexterity: 8, vitality: 3 }, allowedBands: ["martial"] },
+  { id: "item.starless-rod", name: "Starless Rod", kind: "weapon", description: "Vault-cut obsidian that answers to nothing above it.", value: 440, requiredLevel: 14, modifiers: { intellect: 11, wisdom: 4, strength: -3 }, allowedBands: ["caster"] },
+  { id: "item.vaultglass-mail", name: "Vaultglass Mail", kind: "armor", description: "Observatory glass-scale: it turns aether where steel would not.", value: 410, requiredLevel: 14, modifiers: { maxHp: 22, maxMp: 16, wisdom: 6 } },
+  { id: "item.bonewood-cuirass", name: "Bonewood Cuirass", kind: "armor", description: "Bridge-timber plate that trades every ounce of grace for cover.", value: 415, requiredLevel: 14, modifiers: { maxHp: 52, vitality: 8, agility: -4, dexterity: -2 } },
+  { id: "item.chart-fragment", name: "Chart Fragment", kind: "accessory", description: "A sliver of a star map that sharpens judgement under pressure.", value: 450, requiredLevel: 14, modifiers: { intellect: 6, dexterity: 4, agility: 3 } },
+  { id: "item.quiet-bell", name: "Quiet Bell", kind: "accessory", description: "It rings inward. Choir work, and it steadies more than it inspires.", value: 455, requiredLevel: 14, modifiers: { wisdom: 8, maxMp: 12, charisma: -2 } }
 ];
 
 export const coreCampaign: ContentPack = {
@@ -747,21 +775,21 @@ export const vendorProfiles: readonly VendorProfile[] = [
     id: "vendor.joryn-hale",
     npcId: "npc.joryn-hale",
     shopName: "Joryn's Rainy Hearth",
-    catalogItemIds: ["item.vesleaf", "item.root-tonic", "item.trail-rations", "item.aether-drop", "item.wayfarer-blade", "item.resin-vest"],
+    catalogItemIds: ["item.vesleaf", "item.root-tonic", "item.trail-rations", "item.aether-drop", "item.wayfarer-blade", "item.resin-vest", "item.reed-knife", "item.orchard-wrap", "item.rain-charm", "item.rootwood-focus", "item.warden-mantle", "item.listener-cord"],
     sellRate: 0.4
   },
   {
     id: "vendor.hett-copper",
     npcId: "npc.hett-copper",
     shopName: "Hett's Resin-Glass Forge",
-    catalogItemIds: ["item.root-tonic", "item.trail-rations", "item.cold-ember", "item.hearthsteel-blade", "item.kilnforge-plate", "item.emberglass-charm"],
+    catalogItemIds: ["item.root-tonic", "item.trail-rations", "item.cold-ember", "item.hearthsteel-blade", "item.kilnforge-plate", "item.emberglass-charm", "item.slagsteel-maul", "item.kiln-censer", "item.emberweave-coat", "item.slagplate-harness", "item.foundry-seal", "item.ashglass-lens"],
     sellRate: 0.4
   },
   {
     id: "vendor.thyme-vale",
     npcId: "npc.thyme-vale",
     shopName: "Thyme's Frost Apothecary",
-    catalogItemIds: ["item.frost-resin", "item.trail-rations", "item.cold-ember", "item.aether-drop", "item.ash-spice"],
+    catalogItemIds: ["item.frost-resin", "item.trail-rations", "item.cold-ember", "item.aether-drop", "item.ash-spice", "item.whitebough-spear", "item.starless-rod", "item.vaultglass-mail", "item.bonewood-cuirass", "item.chart-fragment", "item.quiet-bell"],
     sellRate: 0.4
   }
 ];

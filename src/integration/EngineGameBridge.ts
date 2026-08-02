@@ -11,6 +11,7 @@ import {
   createInitialGameState,
   deriveCharacterCombatStats,
   enemyMaxHealth,
+  canEquipItem,
   equipItem,
   failQuest,
   getInitiativeOrder,
@@ -77,6 +78,7 @@ import type {
   NarrativeContext,
   PlayerCharacter,
   QuestDefinition,
+  ItemDefinition,
   Stats,
   StatusId,
   StatusInstance
@@ -2598,6 +2600,7 @@ export class EngineGameBridge implements GameBridge {
       const definition = items.find(({ id }) => id === itemId);
       if (!definition || definition.kind === "key") return [];
       const ownedQuantity = inventoryQuantity(inventory, itemId);
+      const comparison = this.compareEquipmentForLead(definition);
       return [{
         itemId,
         name: definition.name,
@@ -2605,10 +2608,48 @@ export class EngineGameBridge implements GameBridge {
         kind: definition.kind,
         buyPrice: definition.value,
         sellPrice: ownedQuantity > 0 ? Math.max(1, Math.round(definition.value * vendor.sellRate)) : undefined,
-        ownedQuantity
+        ownedQuantity,
+        ...comparison
       }];
     });
     return { vendorId: vendor.id, shopName: vendor.shopName, catalog };
+  }
+
+  /**
+   * How a piece of gear would change the lead character's stats against what
+   * they already wear. Buying was otherwise a guess: the shop showed a price
+   * and a description, and nothing about whether the item was an improvement.
+   */
+  private compareEquipmentForLead(definition: ItemDefinition): {
+    statDelta?: Array<{ stat: string; delta: number }>;
+    unusableReason?: string;
+  } {
+    if (definition.kind !== "weapon" && definition.kind !== "armor" && definition.kind !== "accessory") return {};
+    const member = this.#state?.party[0];
+    if (!member) return {};
+
+    const catalogEntry = EQUIPMENT[definition.id];
+    if (catalogEntry) {
+      const blocker = canEquipItem(member, catalogEntry);
+      if (!blocker) {
+        return { unusableReason: `${member.name} cannot use this.` };
+      }
+    }
+
+    const current = deriveCharacterCombatStats(member, EQUIPMENT);
+    const swapped = deriveCharacterCombatStats(
+      { ...member, equipment: { ...member.equipment, [definition.kind]: definition.id } },
+      EQUIPMENT
+    );
+    const statDelta = (Object.keys(current) as Array<keyof Stats>)
+      .map((stat) => ({ stat, delta: swapped[stat] - current[stat] }))
+      .filter(({ delta }) => delta !== 0);
+    if (statDelta.length > 0) return { statDelta };
+    // No delta means it is what they already wear — say so, rather than
+    // leaving the row silent and indistinguishable from an unknown.
+    return member.equipment[definition.kind] === definition.id
+      ? { unusableReason: `${member.name} already wears this.` }
+      : { unusableReason: "No change for this character." };
   }
 
   private toBattleView(active: ActiveBattle): BattleView {

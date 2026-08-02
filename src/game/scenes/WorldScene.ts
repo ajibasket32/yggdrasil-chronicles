@@ -997,8 +997,16 @@ export class WorldScene extends Phaser.Scene {
     }
     if (!shop.catalog.length) return `${header}\n\nThis shop has nothing to sell right now.`;
     const view = windowAround(shop.catalog, this.shopIndex, SHOP_VISIBLE_ROWS);
-    const rows = view.items.map((entry, index) =>
-      `${index === view.cursor ? "›" : " "} ${entry.name}  —  ${entry.buyPrice} marks  [${entry.kind.toUpperCase()}]\n   ${entry.description}`);
+    const rows = view.items.map((entry, index) => {
+      // Show what the gear would do for the lead character: a price and a
+      // description alone made buying equipment a guess.
+      const comparison = entry.unusableReason
+        ? `\n   ${entry.unusableReason}`
+        : entry.statDelta?.length
+          ? `\n   ${entry.statDelta.map(({ stat, delta }) => `${delta > 0 ? "+" : ""}${delta} ${stat}`).join("  ")}`
+          : "";
+      return `${index === view.cursor ? "›" : " "} ${entry.name}  —  ${entry.buyPrice} marks  [${entry.kind.toUpperCase()}]\n   ${entry.description}${comparison}`;
+    });
     return this.windowedBody(header, rows, view);
   }
 
