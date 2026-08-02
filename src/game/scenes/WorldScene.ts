@@ -61,7 +61,13 @@ export class WorldScene extends Phaser.Scene {
   private shopMode: "buy" | "sell" = "buy";
   private npcSprites: Array<{ id: string; point: Point; sprite: Phaser.GameObjects.Image }> = [];
   private encounterSprite?: Phaser.GameObjects.Image;
-  private activeInteraction?: { view: InteractionView; index: number; choiceIndex: number };
+  private activeInteraction?: {
+    view: InteractionView;
+    index: number;
+    choiceIndex: number;
+    /** Set once the player has armed an irreversible choice; the next confirm commits it. */
+    confirmingChoiceId?: string;
+  };
   private endingShown = false;
 
   constructor() {
@@ -149,6 +155,9 @@ export class WorldScene extends Phaser.Scene {
         0,
         activeChoices.length
       );
+      // Moving off a choice disarms it, so the confirmation always refers to
+      // the option currently under the cursor.
+      this.activeInteraction.confirmingChoiceId = undefined;
       this.drawDialogue();
       return;
     }
@@ -599,10 +608,26 @@ export class WorldScene extends Phaser.Scene {
           }
         ));
       });
+      const arming = active.confirmingChoiceId
+        && active.confirmingChoiceId === choices[active.choiceIndex]?.id;
+      if (active.view.pointOfNoReturn) {
+        children.push(this.add.text(
+          50,
+          panelY + panelHeight - 52,
+          arming
+            ? `⚠ ${active.view.pointOfNoReturn}  Press Enter again to commit, Esc to step back.`
+            : `⚠ ${active.view.pointOfNoReturn}`,
+          {
+            ...TEXT.small,
+            color: arming ? COLORS.gold : COLORS.muted,
+            wordWrap: { width: 620 }
+          }
+        ));
+      }
       children.push(this.add.text(
         684,
         panelY + panelHeight - 27,
-        "↑↓ Choose  Enter Confirm",
+        arming ? "Enter Confirm — final" : "↑↓ Choose  Enter Confirm",
         TEXT.small
       ).setOrigin(1, 0));
     } else {
@@ -622,6 +647,13 @@ export class WorldScene extends Phaser.Scene {
     }
     const choice = active.view.choices?.[active.choiceIndex];
     if (choice) {
+      // An irreversible choice takes two deliberate confirmations. The first
+      // press arms it and redraws with the warning; only the second commits.
+      if (active.view.pointOfNoReturn && !active.confirmingChoiceId) {
+        active.confirmingChoiceId = choice.id;
+        this.drawDialogue();
+        return;
+      }
       const view = await this.bridge.resolveInteractionChoice(choice.id);
       this.activeInteraction = { view, index: 0, choiceIndex: 0 };
       this.drawDialogue();
@@ -629,6 +661,7 @@ export class WorldScene extends Phaser.Scene {
     }
     const recruited = active.view.recruitedMember;
     const opensVendorId = active.view.opensVendorId;
+    const startedQuestTitle = active.view.startedQuestTitle;
     this.activeInteraction = undefined;
     this.overlay?.destroy();
     this.overlay = undefined;
@@ -641,6 +674,7 @@ export class WorldScene extends Phaser.Scene {
     }
     this.locked = false;
     if (recruited) this.showToast(`${recruited.name} joined the party.`);
+    else if (startedQuestTitle) this.showToast(`New quest — ${startedQuestTitle}`);
     this.refreshObjectiveActors();
     if (this.snapshot.campaign?.complete) this.showCampaignEnding();
     this.refreshPrompt();
@@ -1050,6 +1084,13 @@ export class WorldScene extends Phaser.Scene {
 
   private escape(): void {
     if (this.activeInteraction) {
+      // Step back from an armed irreversible choice rather than closing the
+      // whole conversation, so backing out never costs the player the dialogue.
+      if (this.activeInteraction.confirmingChoiceId) {
+        this.activeInteraction.confirmingChoiceId = undefined;
+        this.drawDialogue();
+        return;
+      }
       this.activeInteraction = undefined;
       this.closeOverlay();
       return;

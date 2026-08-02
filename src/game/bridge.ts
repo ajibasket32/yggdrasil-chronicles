@@ -183,7 +183,15 @@ export interface InteractionView {
   lines: readonly string[];
   choices?: InteractionChoiceView[];
   recruitedMember?: PartyMemberView;
+  /** Set when this conversation started a quest, so the scene can announce it. */
   startedQuestId?: string;
+  startedQuestTitle?: string;
+  /**
+   * Set when confirming a choice here is irreversible. The scene must require
+   * a deliberate second confirmation rather than committing on the same
+   * keypress that advances ordinary dialogue.
+   */
+  pointOfNoReturn?: string;
   /** Set when this NPC is a vendor; the scene should open the shop overlay after the dialogue closes. */
   opensVendorId?: string;
 }

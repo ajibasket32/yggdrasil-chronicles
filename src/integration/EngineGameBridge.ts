@@ -990,11 +990,15 @@ export class EngineGameBridge implements GameBridge {
     const previousConversationCount = Number(state.world.flags[conversationFlag] ?? 0);
     const conversationCount = (Number.isFinite(previousConversationCount) ? previousConversationCount : 0) + 1;
     let progress = state.quests;
+    // Remember which quest this conversation started so the scene can announce
+    // it. Quests were previously acquired in complete silence.
+    let startedQuestId: string | undefined;
     for (const definition of quests) {
       const entry = progress.find(({ questId }) => questId === definition.id);
       const introducesQuest = definition.steps[0]?.kind === "talk" && definition.steps[0].targetId === npcId;
       if (entry?.state === "available" && introducesQuest) {
         progress = startQuest(progress, definition.id);
+        startedQuestId ??= definition.id;
       }
     }
     const awaitsConcordChoice = this.isAwaitingConcordChoice(progress, npcId);
@@ -1057,6 +1061,16 @@ export class EngineGameBridge implements GameBridge {
         : this.responsiveDialogue(npcId),
       choices: awaitsConcordChoice
         ? CONCORD_CHOICES.map(({ id, label, description }) => ({ id, label, description }))
+        : undefined,
+      // The Concord choice ends the campaign and closes two of three futures.
+      // Flagging it lets the scene demand an explicit confirmation instead of
+      // committing it on the same keypress as any other dialogue line.
+      pointOfNoReturn: awaitsConcordChoice
+        ? "This decision ends the chronicle and closes the futures you do not choose."
+        : undefined,
+      startedQuestId,
+      startedQuestTitle: startedQuestId
+        ? quests.find(({ id }) => id === startedQuestId)?.title
         : undefined,
       recruitedMember,
       opensVendorId: vendor?.id
