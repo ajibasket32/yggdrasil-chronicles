@@ -1,6 +1,10 @@
 import type { GameState } from "../shared/types";
 
-export const SAVE_SLOTS = ["autosave", "manual-1", "manual-2", "manual-3"] as const;
+/**
+ * `quick` is a dedicated slot so the quick-save key can never clobber a slot the
+ * player deliberately parked something in. Order here drives load-menu ordering.
+ */
+export const SAVE_SLOTS = ["autosave", "quick", "manual-1", "manual-2", "manual-3"] as const;
 export type SaveSlot = typeof SAVE_SLOTS[number];
 
 export interface SaveRecordPayload {

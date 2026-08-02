@@ -46,6 +46,7 @@ export class DemoGameBridge implements GameBridge {
     ],
     quests: [],
     autosave: "idle",
+    storageAvailable: true,
     chronicleHint: "A rain-heavy morning in Hearthcross."
   };
 
@@ -81,12 +82,19 @@ export class DemoGameBridge implements GameBridge {
     this.emit();
   }
 
-  continueGame(): void {
+  continueGame(): GameCommandResult {
     this.emit();
+    return { success: true, message: "Autosave loaded." };
   }
 
-  load(_slot: GameSaveSlot): void {
+  load(_slot: GameSaveSlot): GameCommandResult {
     this.emit();
+    return { success: true, message: "Chronicle loaded." };
+  }
+
+  deleteSave(_slot: GameSaveSlot): GameCommandResult {
+    this.emit();
+    return { success: true, message: "Chronicle deleted." };
   }
 
   travel(locationId: string): void {
@@ -171,6 +179,7 @@ export class DemoGameBridge implements GameBridge {
         activeActorId: this.state.party[0]?.id,
         activeSkills: [],
         activeItems: [],
+        escapable: !encounter.boss,
         log: [`${encounter.name} bars the road.`],
         round: 1
       }

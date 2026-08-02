@@ -13,6 +13,14 @@ const ACTIONS: Array<{ id: BattleAction; label: string; hint: string }> = [
   { id: "escape", label: "ESCAPE", hint: "Look for a safe route out." }
 ];
 
+/**
+ * Boss encounters refuse escape, so offering it invited a wasted turn the UI
+ * had actively advertised. Omitting the row means the choice never exists.
+ */
+function actionsFor(battle: BattleView | undefined): typeof ACTIONS {
+  return battle?.escapable === false ? ACTIONS.filter((action) => action.id !== "escape") : ACTIONS;
+}
+
 type SubMenu = "none" | "skill" | "item";
 
 export class BattleScene extends Phaser.Scene {
@@ -62,6 +70,8 @@ export class BattleScene extends Phaser.Scene {
 
   private onKeyboard(event: KeyboardEvent): void {
     const action = keyboardActionForCode(event.code, gameSettingsStore.get().keyBindings);
+    if (!action) return;
+    event.preventDefault();
     if (action === "up" || action === "left") this.move(-1);
     else if (action === "down" || action === "right") this.move(1);
     else if (action === "confirm" || action === "interact") void this.confirm();
@@ -77,19 +87,38 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private cancel(): void {
+    // Manual unstick. Cancel is the one key guaranteed to be reachable, so it
+    // clears a stuck gate rather than being swallowed by it.
+    if (this.resolving) {
+      this.resolving = false;
+      this.render();
+      return;
+    }
     if (this.subMenu !== "none") {
       this.subMenu = "none";
       this.render();
       return;
     }
-    this.actionIndex = ACTIONS.length - 1;
+    this.actionIndex = actionsFor(this.snapshot.battle).length - 1;
     this.render();
+  }
+
+  /**
+   * `children.removeAll()` only detaches from the display list — every Text
+   * keeps its backing canvas and its game-scoped texture entry, so a repaint
+   * per keypress grows memory without bound over a long campaign. Destroying
+   * releases both.
+   */
+  private clearDisplayList(): void {
+    this.children.removeAll(true);
   }
 
   private render(): void {
     const battle = this.snapshot.battle;
+    // Clear first, unconditionally. Bailing before the clear left the stale
+    // panel painted on screen during the battle-to-world handover.
+    this.clearDisplayList();
     if (!battle) return;
-    this.children.removeAll();
     this.paintArena(battle);
     this.paintActors(battle);
     if (this.subMenu === "skill") this.paintSkillMenu(battle);
@@ -169,7 +198,8 @@ export class BattleScene extends Phaser.Scene {
     }
 
     this.add.text(28, 360, "CHOOSE ACTION", { ...TEXT.small, color: COLORS.gold });
-    ACTIONS.forEach((action, index) => {
+    const actions = actionsFor(battle);
+    actions.forEach((action, index) => {
       this.add.text(28 + index * 121, 393, action.label, {
         ...TEXT.heading,
         fontSize: "16px",
@@ -178,19 +208,18 @@ export class BattleScene extends Phaser.Scene {
         padding: { x: 8, y: 7 }
       });
     });
-    const isSkillRow = this.actionIndex === 1;
-    const isItemRow = this.actionIndex === 2;
-    const skillSummary = isSkillRow && battle.activeSkills.length > 0
+    const selected = actions[this.actionIndex];
+    const skillSummary = selected?.id === "skill" && battle.activeSkills.length > 0
       ? battle.activeSkills.map((skill) => skill.name).join(" / ")
       : undefined;
-    const itemSummary = isItemRow && battle.activeItems.length > 0
+    const itemSummary = selected?.id === "item" && battle.activeItems.length > 0
       ? battle.activeItems.map((item) => `${item.name} x${item.quantity}`).join(" / ")
       : undefined;
     const hint = skillSummary
-      ? `${skillSummary}: ${ACTIONS[this.actionIndex]?.hint ?? ""}`
+      ? `${skillSummary}: ${selected?.hint ?? ""}`
       : itemSummary
-        ? `${itemSummary}: ${ACTIONS[this.actionIndex]?.hint ?? ""}`
-        : ACTIONS[this.actionIndex]?.hint ?? "";
+        ? `${itemSummary}: ${selected?.hint ?? ""}`
+        : selected?.hint ?? "";
     this.add.text(36, 446, hint, { ...TEXT.body, color: COLORS.muted });
     const recentLog = battle.log.slice(-3).join("\n");
     this.add.text(670, 365, recentLog, {
@@ -268,39 +297,68 @@ export class BattleScene extends Phaser.Scene {
       this.render();
       return;
     }
-    this.actionIndex = Phaser.Math.Wrap(this.actionIndex + delta, 0, ACTIONS.length);
+    this.actionIndex = Phaser.Math.Wrap(this.actionIndex + delta, 0, actionsFor(this.snapshot.battle).length);
     this.render();
+  }
+
+  /**
+   * Every awaited bridge call runs through `runResolving`. `resolving` is the
+   * only input gate in this scene and, unlike WorldScene, there is no system
+   * menu to escape to — so a call that rejects or fails to emit would freeze
+   * combat with the pre-battle autosave as the newest state on disk.
+   */
+  private async runResolving(work: () => Promise<void>): Promise<void> {
+    this.resolving = true;
+    try {
+      await work();
+    } catch (error) {
+      console.error("Battle action failed", error);
+    } finally {
+      this.resolving = false;
+      this.render();
+    }
   }
 
   private async confirm(): Promise<void> {
     const battle = this.snapshot.battle;
     if (!battle || this.resolving) return;
     if (battle.phase === "victory" || battle.phase === "defeat" || battle.phase === "escaped") {
-      this.resolving = true;
-      await this.bridge.leaveBattle();
-      this.scene.start("world");
+      // Leave for the world scene in a finally: the transition sits behind an
+      // awaited autosave, and a slow or failed write must not strand the player
+      // on a victory panel where every key is a no-op.
+      try {
+        this.resolving = true;
+        await this.bridge.leaveBattle();
+      } catch (error) {
+        console.error("Leaving battle failed", error);
+      } finally {
+        this.resolving = false;
+        this.scene.start("world");
+      }
       return;
     }
     if (this.subMenu === "skill") {
       const skill = battle.activeSkills[this.subMenuIndex];
       playSound(this, "sfx.heal");
-      this.resolving = true;
       this.subMenu = "none";
       this.render();
-      await this.bridge.chooseBattleAction("skill", skill?.id);
+      await this.runResolving(async () => {
+        await this.bridge.chooseBattleAction("skill", skill?.id);
+      });
       return;
     }
     if (this.subMenu === "item") {
       if (battle.activeItems.length === 0) return;
       const item = battle.activeItems[this.subMenuIndex];
       playSound(this, "sfx.heal");
-      this.resolving = true;
       this.subMenu = "none";
       this.render();
-      await this.bridge.chooseBattleAction("item", item?.id);
+      await this.runResolving(async () => {
+        await this.bridge.chooseBattleAction("item", item?.id);
+      });
       return;
     }
-    const action = ACTIONS[this.actionIndex];
+    const action = actionsFor(battle)[this.actionIndex];
     if (!action) return;
     if (action.id === "skill" && battle.activeSkills.length > 1) {
       this.subMenu = "skill";
@@ -315,12 +373,12 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
     playSound(this, action.id === "skill" || action.id === "item" ? "sfx.heal" : action.id === "attack" ? "sfx.attack" : "sfx.confirm");
-    this.resolving = true;
-    this.render();
-    // With exactly one usable item, skip the submenu but still name it
-    // explicitly so a lone non-Root-Tonic item (e.g. only Ash Spice left)
-    // resolves correctly instead of falling back to a Root Tonic check.
-    await this.bridge.chooseBattleAction(action.id, action.id === "item" ? battle.activeItems[0]?.id : undefined);
+    await this.runResolving(async () => {
+      // With exactly one usable item, skip the submenu but still name it
+      // explicitly so a lone non-Root-Tonic item (e.g. only Ash Spice left)
+      // resolves correctly instead of falling back to a Root Tonic check.
+      await this.bridge.chooseBattleAction(action.id, action.id === "item" ? battle.activeItems[0]?.id : undefined);
+    });
   }
 
   private titleCase(value: string): string {

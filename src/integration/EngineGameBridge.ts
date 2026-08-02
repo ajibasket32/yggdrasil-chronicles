@@ -52,6 +52,7 @@ import type {
   InteractionView,
   PartyMemberView,
   QuestView,
+  SaveSlotSummaryView,
   ShopEntryView,
   ShopView,
   SnapshotListener
@@ -596,6 +597,22 @@ function enemyCombatant(id: string, index: number, boss: boolean, level: number,
   };
 }
 
+const SLOT_LABELS: Readonly<Record<GameSaveSlot, string>> = {
+  autosave: "Autosave",
+  quick: "Quick Save",
+  "manual-1": "Manual Slot 1",
+  "manual-2": "Manual Slot 2",
+  "manual-3": "Manual Slot 3"
+};
+
+function slotLabel(slot: GameSaveSlot): string {
+  return SLOT_LABELS[slot];
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export class EngineGameBridge implements GameBridge {
   readonly #listeners = new Set<SnapshotListener>();
   readonly #saves: SaveRepository;
@@ -604,8 +621,16 @@ export class EngineGameBridge implements GameBridge {
   /** The vendor whose ledger is currently open, if any. Closed on travel/battle/title-return. */
   #openVendorId?: string;
   #autosave: GameSnapshot["autosave"] = "idle";
+  #autosaveSlot?: GameSaveSlot;
   #hasSave = false;
+  /**
+   * False once persistence has proven unusable. The game stays fully playable —
+   * it simply stops pretending saves are happening.
+   */
+  #storageAvailable = true;
   readonly #saveSlots = new Set<GameSaveSlot>();
+  readonly #newSeed: () => string;
+  #saveSummaries: SaveSlotSummaryView[] = [];
   readonly #narrative = new NarrativeCheckpointQueue({
     validationCatalog: {
       knownEntityIds: new Set([
@@ -619,12 +644,45 @@ export class EngineGameBridge implements GameBridge {
     }
   });
 
-  constructor(saves = new SaveRepository()) {
+  /**
+   * `newSeed` exists so tests and tools can pin the chronicle seed. Production
+   * keeps the random default; without the seam, any test comparing two
+   * chronicles is comparing two different RNG streams and cannot isolate the
+   * variable it means to measure.
+   */
+  constructor(saves = new SaveRepository(), newSeed: () => string = () => crypto.randomUUID()) {
     this.#saves = saves;
+    this.#newSeed = newSeed;
   }
 
+  /**
+   * Never throws. A storage backend that cannot open (private browsing, quota,
+   * blocked upgrade) degrades to an explicit no-persistence mode rather than
+   * aborting startup and leaving the player with a blank page.
+   */
   async initialize(): Promise<void> {
-    for (const record of await this.#saves.list()) this.#saveSlots.add(record.slot);
+    try {
+      await this.refreshSaveIndex();
+    } catch (error) {
+      console.error("Save storage unavailable; continuing without persistence.", error);
+      this.#storageAvailable = false;
+      this.#saveSlots.clear();
+      this.#saveSummaries = [];
+      this.#hasSave = false;
+    }
+  }
+
+  private async refreshSaveIndex(): Promise<void> {
+    const records = await this.#saves.list();
+    this.#saveSlots.clear();
+    for (const record of records) this.#saveSlots.add(record.slot);
+    this.#saveSummaries = records.map((record) => ({
+      slot: record.slot,
+      updatedAt: record.updatedAt,
+      locationName: locations.find(({ id }) => id === record.locationId)?.name ?? record.locationId,
+      partyLevel: record.partyLevel,
+      playTimeMinutes: record.playTimeMinutes
+    }));
     this.#hasSave = this.#saveSlots.has("autosave");
   }
 
@@ -642,7 +700,10 @@ export class EngineGameBridge implements GameBridge {
         inventory: [],
         quests: [],
         saveSlots: [...this.#saveSlots],
+        saveSummaries: this.#saveSummaries,
         autosave: this.#autosave,
+        autosaveSlot: this.#autosaveSlot,
+        storageAvailable: this.#storageAvailable,
         chronicleHint: "A rain-heavy morning in Hearthcross."
       };
     }
@@ -718,7 +779,10 @@ export class EngineGameBridge implements GameBridge {
           )
       },
       saveSlots: [...this.#saveSlots],
+      saveSummaries: this.#saveSummaries,
       autosave: this.#autosave,
+      autosaveSlot: this.#autosaveSlot,
+      storageAvailable: this.#storageAvailable,
       chronicleHint: this.#state.world.chronicle.at(-1)?.body ?? "The road is waiting."
     };
   }
@@ -734,7 +798,7 @@ export class EngineGameBridge implements GameBridge {
     );
     if (!loadout) throw new Error(`Unknown starting build '${draft.ancestryId}/${draft.jobId}'`);
     let state = createInitialGameState({
-      seed: `${draft.name || "Rowan"}-${crypto.randomUUID()}`,
+      seed: `${draft.name || "Rowan"}-${this.#newSeed()}`,
       startingLocationId: STARTING_LOCATION,
       party: [playerFromDraft(draft)],
       contentPackVersions: { "core.yggdrasil-chronicles": CORE_PACK_VERSION },
@@ -767,21 +831,58 @@ export class EngineGameBridge implements GameBridge {
     await this.persist("autosave");
   }
 
-  async continueGame(): Promise<void> {
-    await this.load("autosave");
+  async continueGame(): Promise<GameCommandResult> {
+    return this.load("autosave");
   }
 
-  async load(slot: GameSaveSlot): Promise<void> {
-    this.#state = await this.#saves.load(slot);
-    this.#hasSave = Boolean(this.#state);
-    if (this.#state) {
-      const recoveredCanonicalState = this.applyCompletedQuestRewards();
-      const recoveredLegacyEnding = this.backfillLegacyEndingChoice();
-      if (recoveredCanonicalState || recoveredLegacyEnding) await this.persist(slot);
-      else this.emit();
-    } else {
+  /**
+   * A corrupt or unreadable slot reports failure and leaves the previously
+   * loaded state untouched, so one bad record costs the player that record
+   * rather than access to every other save.
+   */
+  async load(slot: GameSaveSlot): Promise<GameCommandResult> {
+    let loaded: GameState | undefined;
+    try {
+      loaded = await this.#saves.load(slot);
+    } catch (error) {
+      console.error(`Load failed for slot '${slot}'`, error);
       this.emit();
+      return {
+        success: false,
+        message: `${slotLabel(slot)} could not be read: ${errorMessage(error)}`
+      };
     }
+    if (!loaded) {
+      this.#saveSlots.delete(slot);
+      if (slot === "autosave") this.#hasSave = false;
+      this.emit();
+      return { success: false, message: `${slotLabel(slot)} is empty.` };
+    }
+    this.#state = loaded;
+    this.#saveSlots.add(slot);
+    this.#hasSave = true;
+    const recoveredCanonicalState = this.applyCompletedQuestRewards();
+    const recoveredLegacyEnding = this.backfillLegacyEndingChoice();
+    if (recoveredCanonicalState || recoveredLegacyEnding) await this.persist(slot);
+    else this.emit();
+    return { success: true, message: `${slotLabel(slot)} loaded.` };
+  }
+
+  async deleteSave(slot: GameSaveSlot): Promise<GameCommandResult> {
+    if (!this.#saveSlots.has(slot)) {
+      return { success: false, message: `${slotLabel(slot)} is already empty.` };
+    }
+    try {
+      await this.#saves.delete(slot);
+    } catch (error) {
+      console.error(`Delete failed for slot '${slot}'`, error);
+      return { success: false, message: `${slotLabel(slot)} could not be deleted.` };
+    }
+    this.#saveSlots.delete(slot);
+    this.#saveSummaries = this.#saveSummaries.filter((entry) => entry.slot !== slot);
+    if (slot === "autosave") this.#hasSave = false;
+    this.emit();
+    return { success: true, message: `${slotLabel(slot)} deleted.` };
   }
 
   async travel(locationId: string): Promise<void> {
@@ -1000,6 +1101,10 @@ export class EngineGameBridge implements GameBridge {
     const encounter = encounters.find(({ id }) => id === encounterId);
     if (!encounter) throw new Error(`Unknown encounter '${encounterId}'`);
     if (encounter.boss && state.world.defeatedBossIds.includes(encounterId)) return;
+    // Fail safe rather than throwing out of an awaited scene call: createCombatState
+    // rejects an all-incapacitated party, and that rejection would strand the caller
+    // mid-transition with its input gate still closed.
+    if (!state.party.some((member) => member.hp > 0)) return;
     const averageLevel = Math.max(1, Math.round(state.party.reduce((sum, member) => sum + member.level, 0) / state.party.length));
     const difficulty = difficultyOf(state);
     const enemies = encounter.enemyIds.map((id, index) => enemyCombatant(id, index, encounter.boss, averageLevel, difficulty));
@@ -1037,7 +1142,12 @@ export class EngineGameBridge implements GameBridge {
         this.emit();
         return;
       }
+      // Return without falling through to the enemy-turn tail: a refused escape
+      // must cost nothing. Falling through made it identical to skipping a turn,
+      // and with a solo party that handed the enemy a free round.
       active.log.push("There is no safe route away from this foe.");
+      this.emit();
+      return;
     } else if (action === "item") {
       const state = this.requireState();
       const requestedItemId = skillOrItemId && inventoryQuantity(state.inventory, skillOrItemId) > 0
@@ -1149,6 +1259,13 @@ export class EngineGameBridge implements GameBridge {
           statuses: []
         }))
       };
+      // A wipe must not overwrite the pre-battle autosave: that snapshot is the
+      // player's only route back to the state they lost from. The revived party
+      // stays in memory so play can continue, and the next ordinary autosave
+      // (travel, victory, purchase) commits it deliberately.
+      this.#battle = undefined;
+      this.emit();
+      return;
     }
     this.#battle = undefined;
     await this.persist("autosave");
@@ -1404,9 +1521,13 @@ export class EngineGameBridge implements GameBridge {
       if (!original) return member as PlayerCharacter;
       const missingHp = Math.max(0, member.stats.maxHp - member.hp);
       const missingMp = Math.max(0, member.stats.maxMp - member.mp);
+      // Floor at 1. resolveOutcome checks enemies before party, so a damage-over-time
+      // tick that kills both sides in the same round reports "victory" with a dead
+      // party; without this floor that 0 HP persists and the next startEncounter
+      // throws "Combat requires at least one living combatant on each side".
       return grantExperience({
         ...original,
-        hp: Math.max(0, original.stats.maxHp - missingHp),
+        hp: Math.max(1, original.stats.maxHp - missingHp),
         mp: Math.max(0, original.stats.maxMp - missingMp),
         statuses: member.statuses
       }, reward.experience).character;
@@ -1772,20 +1893,42 @@ export class EngineGameBridge implements GameBridge {
     });
   }
 
-  private async persist(slot: SaveSlot): Promise<void> {
-    if (!this.#state) return;
+  /**
+   * Reports which slot the status refers to so a failed manual save is not
+   * rendered as an autosave failure, and marks storage unavailable on failure
+   * so the UI can say why saving stopped working.
+   */
+  private async persist(slot: SaveSlot): Promise<boolean> {
+    if (!this.#state) return false;
     this.#autosave = "saving";
+    this.#autosaveSlot = slot;
     this.emit();
     try {
-      await this.#saves.save(slot, this.#state);
+      const record = await this.#saves.save(slot, this.#state);
       this.#saveSlots.add(slot);
-      this.#hasSave = true;
+      this.#saveSummaries = [
+        ...this.#saveSummaries.filter((entry) => entry.slot !== slot),
+        {
+          slot,
+          updatedAt: record.updatedAt,
+          locationName: locations.find(({ id }) => id === this.#state?.world.currentLocationId)?.name
+            ?? this.#state.world.currentLocationId,
+          partyLevel: Math.max(...this.#state.party.map((member) => member.level)),
+          playTimeMinutes: this.#state.world.worldMinutes
+        }
+      ];
+      this.#hasSave = this.#saveSlots.has("autosave");
+      this.#storageAvailable = true;
       this.#autosave = "saved";
+      this.emit();
+      return true;
     } catch (error) {
-      console.error("Save failed", error);
+      console.error(`Save failed for slot '${slot}'`, error);
       this.#autosave = "error";
+      this.#storageAvailable = false;
+      this.emit();
+      return false;
     }
-    this.emit();
   }
 
   private emit(): void {
@@ -1951,6 +2094,7 @@ export class EngineGameBridge implements GameBridge {
           };
         }),
       bossPhase: active.activatedBossPhases.at(-1),
+      escapable: !encounter?.boss,
       log: active.log.slice(-8),
       round: active.state.round
     };

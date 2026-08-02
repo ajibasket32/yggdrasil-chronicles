@@ -38,6 +38,12 @@ export class WorldScene extends Phaser.Scene {
   private playerGrid: Point = { x: 5, y: 9 };
   private moving = false;
   private locked = false;
+  /**
+   * True only while an awaited bridge call is in flight (travel, encounter
+   * launch). Distinguishes "busy, will unlock itself" from "an overlay owns
+   * input", so `escape()` can still reach the system menu in the latter case.
+   */
+  private transitioning = false;
   private unsubscribe?: () => void;
   private hud?: Phaser.GameObjects.Container;
   private prompt?: Phaser.GameObjects.Text;
@@ -65,6 +71,12 @@ export class WorldScene extends Phaser.Scene {
   create(): void {
     this.bridge = getBridge(this);
     this.snapshot = this.bridge.getSnapshot();
+    // create() re-runs on every scene.start("world"), including the return from
+    // the title after finishing a campaign. Without this reset a second
+    // playthrough in the same tab silently never shows its ending.
+    this.endingShown = false;
+    this.locked = false;
+    this.transitioning = false;
     this.cameras.main.fadeIn(motionDuration(280), 10, 18, 24);
     this.renderLocation();
     this.bindKeys();
@@ -97,6 +109,11 @@ export class WorldScene extends Phaser.Scene {
 
   private onKeyboard(event: KeyboardEvent): void {
     const action = keyboardActionForCode(event.code, gameSettingsStore.get().keyBindings);
+    if (!action) return;
+    // Claim the key before acting on it. Without this the browser's own meaning
+    // still fires — the reason a quick-save could navigate the tab away
+    // mid-write — and arrow keys scroll the page behind the canvas.
+    event.preventDefault();
     if (action === "up" || action === "down" || action === "left" || action === "right") this.handleDirection(action);
     else if (action === "confirm" || action === "interact") void this.interact();
     else if (action === "cancel") this.escape();
@@ -104,7 +121,8 @@ export class WorldScene extends Phaser.Scene {
     else if (action === "inventory") this.toggleOverlay("inventory");
     else if (action === "party") this.toggleOverlay("party");
     else if (action === "encounter") void this.launchEncounter();
-    else if (action === "quickSave") void this.manualSave();
+    else if (action === "quickSave") void this.quickSave();
+    else if (action === "quickLoad") void this.quickLoad();
   }
 
   private onGamepadButton(_pad: Phaser.Input.Gamepad.Gamepad, button: Phaser.Input.Gamepad.Button): void {
@@ -155,8 +173,13 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private renderLocation(resetPlayerPosition = true): void {
-    this.children.removeAll();
+    // Destroy, do not merely detach: a bare removeAll() leaves every Text's
+    // backing canvas and game-scoped texture alive, so each repaint leaks.
+    this.children.removeAll(true);
     this.npcSprites = [];
+    // Every field below referenced an object the clear just destroyed. Dropping
+    // the references keeps them from being re-destroyed or drawn into.
+    this.hud = undefined;
     this.overlay = undefined;
     this.overlayKind = undefined;
     this.prompt = undefined;
@@ -444,17 +467,32 @@ export class WorldScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * The camera is faded to black across an await here, so a rejection must never
+   * skip the fade back in: the player would be left on a black screen where even
+   * the system-menu recovery is invisible.
+   */
   private async travelFromEdge(direction: ExitDirection): Promise<void> {
     const exit = getLocationExits(this.snapshot.locationId).find((candidate) => candidate.direction === direction);
     if (!exit) return;
     this.locked = true;
+    this.transitioning = true;
     this.cameras.main.fadeOut(motionDuration(180), 10, 18, 24);
-    await this.bridge.travel(exit.targetId);
-    this.time.delayedCall(motionDuration(200), () => {
+    try {
+      await this.bridge.travel(exit.targetId);
+      this.time.delayedCall(motionDuration(200), () => {
+        this.cameras.main.fadeIn(motionDuration(180), 10, 18, 24);
+        playSound(this, "sfx.door");
+        this.locked = false;
+      });
+    } catch (error) {
+      console.error("Travel failed", error);
       this.cameras.main.fadeIn(motionDuration(180), 10, 18, 24);
-      playSound(this, "sfx.door");
       this.locked = false;
-    });
+      this.showToast("The road ahead could not be reached.");
+    } finally {
+      this.transitioning = false;
+    }
   }
 
   private nearestNpc(): { id: string; point: Point; sprite: Phaser.GameObjects.Image } | undefined {
@@ -611,6 +649,14 @@ export class WorldScene extends Phaser.Scene {
   private showCampaignEnding(): void {
     if (this.endingShown || !this.snapshot.campaign?.complete) return;
     this.endingShown = true;
+    // Take ownership of the overlay slot the way every other overlay does. The
+    // ending fires 250 ms after create(), by which point the player may already
+    // have opened a panel; overwriting the field without destroying the
+    // container orphaned an undismissable panel over the map.
+    this.overlay?.destroy();
+    this.overlay = undefined;
+    this.activeInteraction = undefined;
+    this.overlayKind = "ending";
     this.locked = true;
     const ending = this.snapshot.campaign.ending ?? {
       title: "THE CHRONICLE CONTINUES",
@@ -678,6 +724,11 @@ export class WorldScene extends Phaser.Scene {
       this.closeOverlay();
       return;
     }
+    // A transition owns the screen (travel fade, encounter launch); opening a
+    // panel over it would desync `overlayKind` from what is drawn. A plain
+    // `locked` without a transition still admits the system menu, which is the
+    // player's recovery route.
+    if (this.transitioning) return;
     const openingSystem = kind === "system" && this.overlayKind !== "system";
     this.locked = true;
     this.overlayKind = kind;
@@ -1024,10 +1075,30 @@ export class WorldScene extends Phaser.Scene {
     this.refreshPrompt();
   }
 
-  private async manualSave(): Promise<void> {
-    if (this.activeInteraction) return;
-    await this.bridge.save("manual-1");
-    this.showToast("Chronicle saved to Manual Slot 1.");
+  /**
+   * Writes to the dedicated `quick` slot, never a manual one. The old binding
+   * overwrote Manual Slot 1, silently destroying whatever the player had
+   * deliberately parked there.
+   */
+  private async quickSave(): Promise<void> {
+    if (this.activeInteraction || this.locked) return;
+    if (!this.snapshot.storageAvailable) {
+      this.showToast("Saving is unavailable in this browser session.");
+      return;
+    }
+    await this.bridge.save("quick");
+    const failed = this.bridge.getSnapshot().autosave === "error";
+    this.showToast(failed ? "Quick save failed." : "Quick saved.");
+  }
+
+  private async quickLoad(): Promise<void> {
+    if (this.activeInteraction || this.locked) return;
+    if (!this.snapshot.saveSlots?.includes("quick")) {
+      this.showToast("No quick save to load.");
+      return;
+    }
+    const result = await this.bridge.load("quick");
+    this.showToast(result.message);
   }
 
   private moveSystem(delta: number): void {
@@ -1165,9 +1236,25 @@ export class WorldScene extends Phaser.Scene {
     const id = this.encounterSprite?.getData("encounterId") as string | undefined;
     if (!id) return;
     this.locked = true;
-    await this.bridge.startEncounter(id);
-    this.cameras.main.flash(motionDuration(220), 238, 221, 179);
-    this.time.delayedCall(motionDuration(240), () => this.scene.start("battle"));
+    this.transitioning = true;
+    try {
+      await this.bridge.startEncounter(id);
+      // startEncounter declines rather than throwing when it cannot build a
+      // battle. Without this check the scene would transition into an empty one.
+      if (!this.bridge.getSnapshot().battle) {
+        this.showToast("The party is in no condition to fight.");
+        this.locked = false;
+        return;
+      }
+      this.cameras.main.flash(motionDuration(220), 238, 221, 179);
+      this.time.delayedCall(motionDuration(240), () => this.scene.start("battle"));
+    } catch (error) {
+      console.error("Encounter failed to start", error);
+      this.locked = false;
+      this.showToast("That encounter could not be started.");
+    } finally {
+      this.transitioning = false;
+    }
   }
 
   private showToast(message: string): void {

@@ -3,6 +3,7 @@ import {
   DEFAULT_GAME_SETTINGS,
   DEFAULT_KEYBOARD_BINDINGS,
   REBINDABLE_ACTIONS,
+  RESERVED_KEY_CODES,
   SETTINGS_STORAGE_KEY,
   type GameSettings,
   type GameSettingsPatch
@@ -40,15 +41,21 @@ function readVolume(value: unknown, fallback: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
+/**
+ * Heals persisted bindings as well as validating them. A player who saved
+ * settings while quickSave still defaulted to F5 keeps that binding in
+ * localStorage forever otherwise, so browser-owned keys are rejected on read
+ * and fall back to the current default.
+ */
 function readKeyBindings(value: unknown): GameSettings["keyBindings"] {
   const record = isRecord(value) ? value : {};
   const bindings = Object.fromEntries(
     REBINDABLE_ACTIONS.map((action) => {
       const candidate = record[action];
-      const code = typeof candidate === "string" && /^[A-Za-z0-9]{1,24}$/.test(candidate)
-        ? candidate
-        : DEFAULT_KEYBOARD_BINDINGS[action];
-      return [action, code];
+      const usable = typeof candidate === "string"
+        && /^[A-Za-z0-9]{1,24}$/.test(candidate)
+        && !RESERVED_KEY_CODES.includes(candidate);
+      return [action, usable ? candidate : DEFAULT_KEYBOARD_BINDINGS[action]];
     })
   ) as GameSettings["keyBindings"];
   return new Set(Object.values(bindings)).size === REBINDABLE_ACTIONS.length

@@ -1,9 +1,9 @@
 import type { QuestState } from "../shared/types";
 
 export type Direction = "up" | "down" | "left" | "right";
-export type OverlayKind = "journal" | "inventory" | "party" | "system" | "shop";
+export type OverlayKind = "journal" | "inventory" | "party" | "system" | "shop" | "ending";
 export type BattleAction = "attack" | "skill" | "item" | "guard" | "escape";
-export type GameSaveSlot = "autosave" | "manual-1" | "manual-2" | "manual-3";
+export type GameSaveSlot = "autosave" | "quick" | "manual-1" | "manual-2" | "manual-3";
 
 export type Difficulty = "easy" | "normal" | "hard";
 
@@ -108,6 +108,8 @@ export interface BattleView {
   /** Usable items currently in the shared pack (restoratives and status cures). */
   activeItems: BattleItemOption[];
   bossPhase?: string;
+  /** False for boss encounters, which refuse escape. Lets the UI stop offering it. */
+  escapable: boolean;
   log: string[];
   round: number;
 }
@@ -181,8 +183,25 @@ export interface GameSnapshot {
     }>;
   };
   saveSlots?: GameSaveSlot[];
+  /** Per-slot detail the repository already computes, so the load menu can show more than AVAILABLE/EMPTY. */
+  saveSummaries?: SaveSlotSummaryView[];
   autosave: "idle" | "saving" | "saved" | "error";
+  /** Which slot the last autosave status refers to, so a failed manual save is not reported as an autosave failure. */
+  autosaveSlot?: GameSaveSlot;
+  /**
+   * False when persistence is unavailable (private browsing, quota, blocked
+   * upgrade). The game still boots and plays; it just cannot save.
+   */
+  storageAvailable: boolean;
   chronicleHint: string;
+}
+
+export interface SaveSlotSummaryView {
+  slot: GameSaveSlot;
+  updatedAt: string;
+  locationName: string;
+  partyLevel: number;
+  playTimeMinutes: number;
 }
 
 export type SnapshotListener = (snapshot: Readonly<GameSnapshot>) => void;
@@ -195,8 +214,13 @@ export interface GameBridge {
   getSnapshot(): Readonly<GameSnapshot>;
   subscribe(listener: SnapshotListener): () => void;
   newGame(draft: CharacterCreationDraft): void | Promise<void>;
-  continueGame(): void | Promise<void>;
-  load(slot: GameSaveSlot): void | Promise<void>;
+  /**
+   * Loading can fail on a corrupt or unreadable slot. Both report the failure
+   * rather than throwing so the title screen can show it and stay usable.
+   */
+  continueGame(): GameCommandResult | Promise<GameCommandResult>;
+  load(slot: GameSaveSlot): GameCommandResult | Promise<GameCommandResult>;
+  deleteSave(slot: GameSaveSlot): GameCommandResult | Promise<GameCommandResult>;
   travel(locationId: string): void | Promise<void>;
   interactNpc(npcId: string): InteractionView | Promise<InteractionView>;
   resolveInteractionChoice(choiceId: string): InteractionView | Promise<InteractionView>;

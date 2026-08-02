@@ -4,7 +4,7 @@ import {
   gameSettingsStore,
   REBINDABLE_ACTIONS
 } from "../../settings";
-import type { CharacterCreationDraft, Difficulty, GameBridge } from "../bridge";
+import type { CharacterCreationDraft, Difficulty, GameBridge, GameCommandResult } from "../bridge";
 import { gamepadButtonAction } from "../gamepadControls";
 import {
   keyboardActionForCode,
@@ -15,7 +15,14 @@ import {
 import { announceGameStatus, announceScene, COLORS, getBridge, motionDuration, playSound, TEXT } from "../runtime";
 
 const NAME_CHOICES = ["Rowan", "Aster", "Marlowe", "Sage", "Kestrel", "Vale"] as const;
-const MANUAL_SLOTS = ["manual-1", "manual-2", "manual-3"] as const;
+/** Slots the load menu offers, in display order. `quick` is listed so a quick save is recoverable from the title. */
+const MANUAL_SLOTS = ["quick", "manual-1", "manual-2", "manual-3"] as const;
+const SLOT_TITLES: Readonly<Record<(typeof MANUAL_SLOTS)[number], string>> = {
+  quick: "QUICK SAVE",
+  "manual-1": "SLOT 1",
+  "manual-2": "SLOT 2",
+  "manual-3": "SLOT 3"
+};
 const DIFFICULTY_CHOICES: readonly { readonly id: Difficulty; readonly label: string; readonly description: string }[] = [
   { id: "easy", label: "Easy", description: "Enemies hit softer and battles pay out slightly less." },
   { id: "normal", label: "Normal", description: "The authored balance: no combat adjustment." },
@@ -41,6 +48,8 @@ export class TitleScene extends Phaser.Scene {
   private controlsText?: Phaser.GameObjects.Text;
   private creationTexts: Phaser.GameObjects.Text[] = [];
   private loading = false;
+  /** Armed by the first NEW CHRONICLE press so overwriting an existing run takes two. */
+  private confirmingNewGame = false;
   private settingsIndex = 0;
   private bindingIndex = 0;
   private capturingBinding = false;
@@ -113,6 +122,8 @@ export class TitleScene extends Phaser.Scene {
       return;
     }
     const action = keyboardActionForCode(event.code, gameSettingsStore.get().keyBindings);
+    if (!action) return;
+    event.preventDefault();
     if (action === "up") this.move(-1);
     else if (action === "down") this.move(1);
     else if (action === "left") this.adjust(-1);
@@ -140,26 +151,41 @@ export class TitleScene extends Phaser.Scene {
     else if (action === "cancel") this.back();
   }
 
-  private drawTitleMenu(): void {
+  private drawTitleMenu(message?: string): void {
     this.menuTexts.forEach((text) => text.destroy());
     this.creationTexts.forEach((text) => text.destroy());
     this.detailText?.destroy();
+    this.detailText = undefined;
     this.creationTexts = [];
     this.refreshControlsText();
-    const hasSave = this.bridge.getSnapshot().hasSave;
-    const manualSaveCount = MANUAL_SLOTS.filter((slot) => this.hasSlot(slot)).length;
+    const snapshot = this.bridge.getSnapshot();
+    const hasSave = snapshot.hasSave;
+    const savedCount = MANUAL_SLOTS.filter((slot) => this.hasSlot(slot)).length;
     const choices = [
-      "NEW CHRONICLE",
+      this.confirmingNewGame ? "NEW CHRONICLE  —  CONFIRM OVERWRITE" : "NEW CHRONICLE",
       hasSave ? "CONTINUE  —  AUTOSAVE" : "CONTINUE  —  NO AUTOSAVE",
-      `LOAD CHRONICLE  —  ${manualSaveCount}/3 MANUAL`,
+      `LOAD CHRONICLE  —  ${savedCount}/${MANUAL_SLOTS.length} SAVED`,
       "SETTINGS  —  ACCESSIBILITY & AUDIO"
     ];
     this.menuTexts = choices.map((label, index) =>
       this.add.text(72, 245 + index * 48, label, {
         ...TEXT.heading,
-        color: index === this.titleIndex ? COLORS.gold : index === 1 && !hasSave ? "#64727a" : COLORS.cream
+        color: index === this.titleIndex
+          ? COLORS.gold
+          : index === 1 && !hasSave ? "#64727a" : COLORS.cream
       })
     );
+    const notice = message ?? (snapshot.storageAvailable
+      ? undefined
+      : "Saving is unavailable in this browser session. The game is fully playable, but progress will not persist.");
+    if (notice) {
+      this.detailText = this.add.text(72, 450, notice, {
+        ...TEXT.small,
+        color: COLORS.gold,
+        wordWrap: { width: 620 },
+        lineSpacing: 5
+      });
+    }
     this.mode = "title";
   }
 
@@ -240,12 +266,13 @@ export class TitleScene extends Phaser.Scene {
     this.detailText?.destroy();
     this.creationTexts = [];
     this.mode = "load";
-    const heading = this.add.text(72, 220, "LOAD A CHRONICLE", { ...TEXT.heading, color: COLORS.gold });
+    const heading = this.add.text(72, 210, "LOAD A CHRONICLE", { ...TEXT.heading, color: COLORS.gold });
     const slotTexts = MANUAL_SLOTS.map((slot, index) => {
       const available = this.hasSlot(slot);
       const selected = index === this.loadIndex;
-      return this.add.text(72, 264 + index * 48, `${selected ? "›" : " "} SLOT ${index + 1}  —  ${available ? "AVAILABLE" : "EMPTY"}`, {
+      return this.add.text(72, 250 + index * 42, `${selected ? "›" : " "} ${SLOT_TITLES[slot]}  —  ${this.slotSummary(slot)}`, {
         ...TEXT.heading,
+        fontSize: "17px",
         color: selected ? (available ? COLORS.gold : COLORS.muted) : available ? COLORS.cream : "#64727a"
       });
     });
@@ -254,12 +281,23 @@ export class TitleScene extends Phaser.Scene {
     const selectedAvailable = selectedSlot ? this.hasSlot(selectedSlot) : false;
     this.detailText = this.add.text(
       72,
-      424,
+      430,
       message ?? (selectedAvailable
-        ? "Confirm to load this manual chronicle. The current session will be replaced."
-        : "This manual slot is empty. Choose an available chronicle, or return with Esc / B."),
-      { ...TEXT.small, color: selectedAvailable ? COLORS.cream : COLORS.muted, wordWrap: { width: 500 }, lineSpacing: 5 }
+        ? "Confirm to load this chronicle. The current session will be replaced."
+        : "This slot is empty. Choose an available chronicle, or return with Esc / B."),
+      { ...TEXT.small, color: selectedAvailable ? COLORS.cream : COLORS.muted, wordWrap: { width: 620 }, lineSpacing: 5 }
     );
+  }
+
+  /** Surfaces the metadata the repository already computes instead of a bare AVAILABLE/EMPTY. */
+  private slotSummary(slot: (typeof MANUAL_SLOTS)[number]): string {
+    const summary = this.bridge.getSnapshot().saveSummaries?.find((entry) => entry.slot === slot);
+    if (!summary) return "EMPTY";
+    const saved = new Date(summary.updatedAt);
+    const stamp = Number.isNaN(saved.getTime())
+      ? ""
+      : `  ${saved.toLocaleDateString()} ${saved.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    return `Lv ${summary.partyLevel}  ${summary.locationName}${stamp}`;
   }
 
   private hasSlot(slot: (typeof MANUAL_SLOTS)[number]): boolean {
@@ -300,6 +338,9 @@ export class TitleScene extends Phaser.Scene {
 
   private move(delta: number): void {
     if (this.mode === "title") {
+      // Moving off the row disarms the overwrite confirmation, so it can never
+      // fire from a stale arm the player has forgotten about.
+      this.confirmingNewGame = false;
       this.titleIndex = Phaser.Math.Wrap(this.titleIndex + delta, 0, 4);
       this.drawTitleMenu();
     } else if (this.mode === "load") {
@@ -343,10 +384,17 @@ export class TitleScene extends Phaser.Scene {
     if (this.loading) return;
     if (this.mode === "title") {
       if (this.titleIndex === 0) {
+        // A completed run lives in the autosave, and that autosave is what NG+
+        // carry-over reads. Starting a new chronicle over it must be deliberate.
+        if (this.bridge.getSnapshot().hasSave && !this.confirmingNewGame) {
+          this.confirmingNewGame = true;
+          this.drawTitleMenu("An existing chronicle will be overwritten. Confirm again to begin a new one, or press Esc / B to keep it.");
+          return;
+        }
+        this.confirmingNewGame = false;
         this.drawCreation();
       } else if (this.titleIndex === 1 && this.bridge.getSnapshot().hasSave) {
-        await this.bridge.continueGame();
-        this.scene.start("world");
+        await this.loadInto(() => this.bridge.continueGame());
       } else if (this.titleIndex === 2) {
         this.drawLoadMenu();
       } else if (this.titleIndex === 3) {
@@ -378,14 +426,10 @@ export class TitleScene extends Phaser.Scene {
       const slot = MANUAL_SLOTS[this.loadIndex];
       if (!slot) return;
       if (!this.hasSlot(slot)) {
-        this.drawLoadMenu("This manual slot is empty. It cannot be loaded.");
+        this.drawLoadMenu("This slot is empty. It cannot be loaded.");
         return;
       }
-      this.loading = true;
-      await this.bridge.load(slot);
-      this.loading = false;
-      this.cameras.main.fadeOut(motionDuration(260), 10, 18, 24);
-      this.time.delayedCall(motionDuration(270), () => this.scene.start("world"));
+      await this.loadInto(() => this.bridge.load(slot));
       return;
     }
     if (this.creationRow < CREATION_ROW_COUNT - 1) {
@@ -404,6 +448,36 @@ export class TitleScene extends Phaser.Scene {
     this.time.delayedCall(motionDuration(270), () => this.scene.start("world"));
   }
 
+  /**
+   * The `loading` latch must always reopen. Without the finally, one unreadable
+   * slot froze every title action — including NEW CHRONICLE — so a single bad
+   * record cost the player access to all their other saves and left no escape
+   * but a browser reload.
+   */
+  private async loadInto(run: () => GameCommandResult | Promise<GameCommandResult>): Promise<void> {
+    this.loading = true;
+    let result: GameCommandResult;
+    try {
+      result = await run();
+    } catch (error) {
+      console.error("Load failed", error);
+      result = {
+        success: false,
+        message: error instanceof Error ? `Load failed: ${error.message}` : "Load failed."
+      };
+    } finally {
+      this.loading = false;
+    }
+    if (!result.success) {
+      playSound(this, "sfx.cancel");
+      if (this.mode === "load") this.drawLoadMenu(`${result.message} Choose another chronicle, or return with Esc / B.`);
+      else this.drawTitleMenu(result.message);
+      return;
+    }
+    this.cameras.main.fadeOut(motionDuration(260), 10, 18, 24);
+    this.time.delayedCall(motionDuration(270), () => this.scene.start("world"));
+  }
+
   private back(): void {
     if (this.capturingBinding) {
       this.capturingBinding = false;
@@ -411,6 +485,10 @@ export class TitleScene extends Phaser.Scene {
     } else if (this.mode === "bindings") {
       this.drawSettings();
     } else if (this.mode === "creation" || this.mode === "load" || this.mode === "settings") {
+      this.confirmingNewGame = false;
+      this.drawTitleMenu();
+    } else if (this.confirmingNewGame) {
+      this.confirmingNewGame = false;
       this.drawTitleMenu();
     }
   }

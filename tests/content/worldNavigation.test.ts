@@ -18,6 +18,7 @@ const snapshotWith = (locationId: string, quest: QuestView): GameSnapshot => ({
   inventory: [],
   quests: [quest],
   autosave: "saved",
+  storageAvailable: true,
   chronicleHint: ""
 });
 

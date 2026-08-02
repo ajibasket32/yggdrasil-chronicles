@@ -4,9 +4,12 @@ import { EngineGameBridge } from "../../src/integration/EngineGameBridge";
 import { MemorySaveStorage } from "../../src/save/memory-storage";
 import { SaveRepository } from "../../src/save/repository";
 
-function createBridge(): { bridge: EngineGameBridge; saves: SaveRepository } {
+function createBridge(seed?: string): { bridge: EngineGameBridge; saves: SaveRepository } {
   const saves = new SaveRepository(new MemorySaveStorage());
-  return { bridge: new EngineGameBridge(saves), saves };
+  return {
+    bridge: seed === undefined ? new EngineGameBridge(saves) : new EngineGameBridge(saves, () => seed),
+    saves
+  };
 }
 
 async function startChronicle(bridge: EngineGameBridge): Promise<void> {
@@ -955,9 +958,13 @@ describe("EngineGameBridge difficulty", () => {
     expect(hardHp).toBeGreaterThan(normalHp);
   });
 
+  // Pinned seed. With a random one this compared three different RNG streams:
+  // the ±10% reward variance overlapped the 0.85/1.0/1.2 difficulty multipliers,
+  // and on hard the solo starting party lost the fight outright about half the
+  // time, so the assertion never got to run. Same seed, one variable.
   it("scales battle victory rewards up on hard and down on easy relative to normal", async () => {
     const currencyAfterVictory = async (difficulty: "easy" | "normal" | "hard"): Promise<number> => {
-      const { bridge } = createBridge();
+      const { bridge } = createBridge("difficulty-reward-fixture");
       await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "vanguard", difficulty });
       bridge.startEncounter("encounter.mossroad-foragers");
       await winCurrentBattle(bridge);

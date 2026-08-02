@@ -4,7 +4,15 @@ import { EngineGameBridge } from "./integration/EngineGameBridge";
 import { applySettingsToPhaserGame, gameSettingsStore } from "./settings";
 
 const bridge = new EngineGameBridge();
-await bridge.initialize();
+// A top-level await with no boundary meant any storage failure aborted the
+// module and left an empty <div id="app"> — a blank page with no explanation.
+// initialize() no longer throws, but a boundary here keeps a future failure
+// anywhere in bootstrap from costing the player the whole product.
+try {
+  await bridge.initialize();
+} catch (error) {
+  console.error("Bootstrap failed while preparing saves; starting without persistence.", error);
+}
 const app = document.querySelector<HTMLElement>("#app");
 if (app) {
   app.setAttribute("role", "application");

@@ -1,5 +1,6 @@
 import {
   REBINDABLE_ACTIONS,
+  RESERVED_KEY_CODES,
   type KeyboardAction,
   type KeyboardBindings
 } from "../settings";
@@ -16,8 +17,14 @@ const ACTION_LABELS: Readonly<Record<KeyboardAction, string>> = {
   inventory: "Inventory",
   party: "Party",
   encounter: "Quick Encounter",
-  quickSave: "Quick Save"
+  quickSave: "Quick Save",
+  quickLoad: "Quick Load"
 };
+
+/** True when the browser itself acts on this key, so the game must not claim it. */
+export function isReservedKeyCode(code: string): boolean {
+  return RESERVED_KEY_CODES.includes(code);
+}
 
 export function keyboardActionForCode(
   code: string,
@@ -39,12 +46,16 @@ export function keyboardCodeLabel(code: string): string {
     .replace("Space", "Spacebar");
 }
 
-/** Rebinding swaps conflicts so every action remains reachable. */
+/**
+ * Rebinding swaps conflicts so every action remains reachable. Browser-owned
+ * keys are refused outright — binding one means the browser still acts on it.
+ */
 export function rebindKeyboardAction(
   bindings: Readonly<KeyboardBindings>,
   action: KeyboardAction,
   code: string
 ): KeyboardBindings {
+  if (isReservedKeyCode(code)) return { ...bindings };
   const next = { ...bindings };
   const previousCode = next[action];
   const conflict = keyboardActionForCode(code, bindings);
