@@ -368,7 +368,16 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private spawnNpcs(locationId: string): void {
-    const residents = npcs.filter((npc) => npc.locationId === locationId).slice(0, 6);
+    // Someone travelling with the party cannot also be standing in their home
+    // town waiting to be recruited again.
+    const travelling = new Set([
+      ...this.snapshot.party.map(({ id }) => id),
+      ...(this.snapshot.reserve ?? []).map(({ id }) => id)
+    ]);
+    const residents = npcs
+      .filter((npc) => npc.locationId === locationId)
+      .filter((npc) => !travelling.has(npc.id.replace("npc.", "party.")))
+      .slice(0, 6);
     const points = getNpcSpawnPoints(residents.length);
     const guidance = getObjectiveGuidance(this.snapshot);
     residents.forEach((npc, index) => {

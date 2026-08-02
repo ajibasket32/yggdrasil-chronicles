@@ -1145,6 +1145,8 @@ export class EngineGameBridge implements GameBridge {
     this.advanceCampaign();
     this.applyCompletedQuestRewards();
     let recruitedMember: PartyMemberView | undefined;
+    let recruitmentMoment: string | undefined;
+    let joinedReserve = false;
     const profile = recruitProfiles.find((candidate) => candidate.npcId === npcId);
     if (profile) {
       const completed = this.#state.quests.some(
@@ -1177,6 +1179,10 @@ export class EngineGameBridge implements GameBridge {
           )
         };
         recruitedMember = this.toPartyView(recruited, Math.max(0, party.length - 1));
+        // The authored moment was written for all three recruits and used
+        // nowhere: joining the party was a two-second toast.
+        recruitmentMoment = profile.recruitmentMoment;
+        joinedReserve = !joinsActiveParty;
       }
     }
     const vendor = vendorProfiles.find((candidate) => candidate.npcId === npcId);
@@ -1185,14 +1191,25 @@ export class EngineGameBridge implements GameBridge {
     const npc = npcId.replace("npc.", "").split("-").map((word) =>
       `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`
     ).join(" ");
+    const baseLines = awaitsConcordChoice
+      ? [
+          ...this.responsiveDialogue(npcId),
+          "Three futures remain possible. The last word belongs to the chronicle you have made."
+        ]
+      : this.responsiveDialogue(npcId);
     return {
       speaker: npc,
-      lines: awaitsConcordChoice
+      // A companion joining is one of the moments a JRPG is built around, so
+      // it gets its authored line in the conversation rather than a toast.
+      lines: recruitmentMoment
         ? [
-            ...this.responsiveDialogue(npcId),
-            "Three futures remain possible. The last word belongs to the chronicle you have made."
+            ...baseLines,
+            recruitmentMoment,
+            joinedReserve
+              ? `${recruitedMember?.name ?? "They"} will wait with the reserve until there is room on the road.`
+              : `${recruitedMember?.name ?? "They"} joins the party.`
           ]
-        : this.responsiveDialogue(npcId),
+        : baseLines,
       choices: awaitsConcordChoice
         ? CONCORD_CHOICES.map(({ id, label, description }) => ({ id, label, description }))
         : undefined,
