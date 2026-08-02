@@ -424,16 +424,24 @@ export const quests: QuestDefinition[] = makeQuests([
   ...hiddenQuestSeeds
 ]);
 
+/**
+ * `level` is authored, never derived from the party. Scaling enemies to the
+ * party average made enemy stats grow faster than the player's, so levelling
+ * up narrowed the party's margin — the inversion this field removes. Levels
+ * track each encounter's region band (Verdant 1-8, Cinder 7-15, Pale 14-22)
+ * and its position within that region, so arriving under-levelled is a real,
+ * recoverable difficulty rather than an invisible tax on progress.
+ */
 export const encounters: EncounterDefinition[] = [
-  { id: "encounter.mossroad-foragers", name: "Briar Foragers", enemyIds: ["enemy.briar-wolf", "enemy.root-gnawer"], rewardTier: "minor", boss: false },
-  { id: "encounter.flooded-grove", name: "Flooded Grove", enemyIds: ["enemy.mireling", "enemy.mireling", "enemy.root-gnawer"], rewardTier: "standard", boss: false },
-  { id: "encounter.mire-antler", name: "Mire Antler", enemyIds: ["enemy.mire-antler"], rewardTier: "major", boss: true },
-  { id: "encounter.ashfall-motes", name: "Ashfall Motes", enemyIds: ["enemy.ash-mote", "enemy.ash-mote", "enemy.cinder-hound"], rewardTier: "standard", boss: false },
-  { id: "encounter.kiln-watch", name: "Kiln Watch", enemyIds: ["enemy.cinder-wraith", "enemy.brass-sentinel"], rewardTier: "major", boss: false },
-  { id: "encounter.kiln-heart", name: "The Kiln Heart", enemyIds: ["enemy.kiln-heart"], rewardTier: "major", boss: true },
-  { id: "encounter.whitebough-hunt", name: "Whitebough Hunt", enemyIds: ["enemy.rime-stag", "enemy.frost-moth"], rewardTier: "standard", boss: false },
-  { id: "encounter.vault-echoes", name: "Vault Echoes", enemyIds: ["enemy.star-echo", "enemy.star-echo", "enemy.pale-custodian"], rewardTier: "major", boss: false },
-  { id: "encounter.varn-rootless", name: "Varn, Architect of Severance", enemyIds: ["enemy.varn-rootless"], rewardTier: "boss", boss: true }
+  { id: "encounter.mossroad-foragers", name: "Briar Foragers", enemyIds: ["enemy.briar-wolf", "enemy.root-gnawer"], rewardTier: "minor", boss: false, level: 2 },
+  { id: "encounter.flooded-grove", name: "Flooded Grove", enemyIds: ["enemy.mireling", "enemy.mireling", "enemy.root-gnawer"], rewardTier: "standard", boss: false, level: 4 },
+  { id: "encounter.mire-antler", name: "Mire Antler", enemyIds: ["enemy.mire-antler"], rewardTier: "major", boss: true, level: 7 },
+  { id: "encounter.ashfall-motes", name: "Ashfall Motes", enemyIds: ["enemy.ash-mote", "enemy.ash-mote", "enemy.cinder-hound"], rewardTier: "standard", boss: false, level: 9 },
+  { id: "encounter.kiln-watch", name: "Kiln Watch", enemyIds: ["enemy.cinder-wraith", "enemy.brass-sentinel"], rewardTier: "major", boss: false, level: 12 },
+  { id: "encounter.kiln-heart", name: "The Kiln Heart", enemyIds: ["enemy.kiln-heart"], rewardTier: "major", boss: true, level: 14 },
+  { id: "encounter.whitebough-hunt", name: "Whitebough Hunt", enemyIds: ["enemy.rime-stag", "enemy.frost-moth"], rewardTier: "standard", boss: false, level: 16 },
+  { id: "encounter.vault-echoes", name: "Vault Echoes", enemyIds: ["enemy.star-echo", "enemy.star-echo", "enemy.pale-custodian"], rewardTier: "major", boss: false, level: 19 },
+  { id: "encounter.varn-rootless", name: "Varn, Architect of Severance", enemyIds: ["enemy.varn-rootless"], rewardTier: "boss", boss: true, level: 21 }
 ];
 
 export const locationEncounters: Readonly<Record<string, readonly string[]>> = {

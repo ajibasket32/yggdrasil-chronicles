@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { encounters, jobs, recruitProfiles, startingBuildLoadouts } from "../../src/content";
+import { grantExperience, totalExperienceForLevel } from "../../src/engine/progression";
 import { EngineGameBridge } from "../../src/integration/EngineGameBridge";
 import { MemorySaveStorage } from "../../src/save/memory-storage";
 import { SaveRepository } from "../../src/save/repository";
@@ -970,8 +971,19 @@ describe("EngineGameBridge difficulty", () => {
   // time, so the assertion never got to run. Same seed, one variable.
   it("scales battle victory rewards up on hard and down on easy relative to normal", async () => {
     const currencyAfterVictory = async (difficulty: "easy" | "normal" | "hard"): Promise<number> => {
-      const { bridge } = createBridge("difficulty-reward-fixture");
+      const { bridge, saves } = createBridge("difficulty-reward-fixture");
       await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "vanguard", difficulty });
+      // Grow the party past the encounter's authored level so the fight is
+      // winnable on every difficulty. Encounters no longer scale to the party,
+      // so a level-1 hero cannot beat a level-2 pack on hard — and this test is
+      // about the reward multiplier, not about survivability.
+      const state = await saves.load("autosave");
+      if (!state) throw new Error("expected an autosave");
+      await saves.save("autosave", {
+        ...state,
+        party: state.party.map((member) => grantExperience(member, totalExperienceForLevel(6)).character)
+      });
+      await bridge.continueGame();
       bridge.startEncounter("encounter.mossroad-foragers");
       await winCurrentBattle(bridge);
       await bridge.leaveBattle();

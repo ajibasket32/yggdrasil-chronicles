@@ -63,6 +63,7 @@ import type {
 import { SaveRepository, type SaveSlot } from "../save";
 import type {
   Combatant,
+  EncounterDefinition,
   EquipmentBand,
   GameState,
   NarrativeContext,
@@ -539,8 +540,35 @@ function difficultyOf(state: GameState): Difficulty {
   return isDifficulty(value) ? value : "normal";
 }
 
-function enemyCombatant(id: string, index: number, boss: boolean, level: number, difficulty: Difficulty): Combatant {
+/**
+ * Every combatant acts once per round, so a lone hero facing three enemies
+ * takes three times the incoming actions while dealing one. Authored encounter
+ * levels exposed this: `flooded-grove` (3 enemies) was unwinnable at its own
+ * level while `mossroad-foragers` (2 enemies) was comfortable.
+ *
+ * Scaling each enemy's offence by the action ratio makes a group's TOTAL output
+ * track the party's, so an encounter's difficulty comes from its authored level
+ * rather than from how many bodies it fields. Health is untouched — a group
+ * should still take longer to clear. Solo encounters (every boss) are
+ * unaffected at ratio 1.
+ */
+function actionEconomyScale(enemyCount: number, partySize: number): number {
+  if (enemyCount <= partySize) return 1;
+  // Square root, not the raw ratio: full normalisation would make a mob of six
+  // feel like a single enemy, which removes the pressure a group should create.
+  return Math.sqrt(Math.max(1, partySize) / enemyCount);
+}
+
+function enemyCombatant(
+  id: string,
+  index: number,
+  boss: boolean,
+  level: number,
+  difficulty: Difficulty,
+  economyScale = 1
+): Combatant {
   const scale = DIFFICULTY_ENEMY_MULTIPLIER[difficulty];
+  const offenceScale = scale * economyScale;
   const maxHp = Math.max(1, Math.round((boss ? 150 + level * 12 : 38 + level * 9) * scale));
   return {
     id: `${id}.${index}`,
@@ -549,11 +577,11 @@ function enemyCombatant(id: string, index: number, boss: boolean, level: number,
     stats: {
       maxHp,
       maxMp: 0,
-      strength: Math.max(1, Math.round((7 + level * 2) * scale)),
+      strength: Math.max(1, Math.round((7 + level * 2) * offenceScale)),
       dexterity: 7 + level,
       agility: 6 + level,
       vitality: 6 + level,
-      intellect: Math.max(1, Math.round((4 + level) * scale)),
+      intellect: Math.max(1, Math.round((4 + level) * offenceScale)),
       wisdom: 5 + level,
       charisma: 1
     },
@@ -1083,6 +1111,19 @@ export class EngineGameBridge implements GameBridge {
     return `memory.${npcId}.conversations`;
   }
 
+  /**
+   * Authored level wins. Falling back to the party average is only for
+   * encounters not yet authored with one — and it is deliberately NOT a floor
+   * or a clamp against the party, because scaling enemies to the party is
+   * exactly the inversion the authored level exists to remove: enemy stats
+   * grew faster than the player's, so levelling narrowed the party's margin.
+   */
+  private encounterLevel(encounter: EncounterDefinition, state: GameState): number {
+    if (typeof encounter.level === "number") return Math.max(1, encounter.level);
+    const total = state.party.reduce((sum, member) => sum + member.level, 0);
+    return Math.max(1, Math.round(total / Math.max(1, state.party.length)));
+  }
+
   startEncounter(encounterId: string): void {
     const state = this.requireState();
     const encounter = encounters.find(({ id }) => id === encounterId);
@@ -1092,9 +1133,12 @@ export class EngineGameBridge implements GameBridge {
     // rejects an all-incapacitated party, and that rejection would strand the caller
     // mid-transition with its input gate still closed.
     if (!state.party.some((member) => member.hp > 0)) return;
-    const averageLevel = Math.max(1, Math.round(state.party.reduce((sum, member) => sum + member.level, 0) / state.party.length));
+    const encounterLevel = this.encounterLevel(encounter, state);
     const difficulty = difficultyOf(state);
-    const enemies = encounter.enemyIds.map((id, index) => enemyCombatant(id, index, encounter.boss, averageLevel, difficulty));
+    const livingParty = state.party.filter((member) => member.hp > 0).length;
+    const economyScale = actionEconomyScale(encounter.enemyIds.length, livingParty);
+    const enemies = encounter.enemyIds.map((id, index) =>
+      enemyCombatant(id, index, encounter.boss, encounterLevel, difficulty, economyScale));
     const party = state.party.map((member) => {
       const stats = deriveCharacterCombatStats(member, EQUIPMENT);
       return {

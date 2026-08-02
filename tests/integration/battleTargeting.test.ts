@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { grantExperience, totalExperienceForLevel } from "../../src/engine/progression";
 import { EngineGameBridge } from "../../src/integration/EngineGameBridge";
 import { MemorySaveStorage } from "../../src/save/memory-storage";
 import { SaveRepository } from "../../src/save/repository";
@@ -199,12 +200,23 @@ describe("battle view carries what the screen needs", () => {
   // Guard is consumed by the first hit and the enemy phase runs before the next
   // snapshot, so guard itself is not observable here. A boss-applied freeze is:
   // it lasts a turn and is the status the player most needs explained.
+  //
+  // The party is grown to the boss's authored level first. Encounters no longer
+  // scale to the party, so a level-1 hero is killed by a level-7 boss before it
+  // reaches the phase that applies the status.
   it("reports a status with a player-readable label", async () => {
-    const { bridge } = createBridge();
-    await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "vanguard", difficulty: "normal" });
+    const { bridge, saves } = createBridge();
+    await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "vanguard", difficulty: "easy" });
+    const state = await saves.load("autosave");
+    if (!state) throw new Error("expected an autosave");
+    await saves.save("autosave", {
+      ...state,
+      party: state.party.map((member) => grantExperience(member, totalExperienceForLevel(9)).character)
+    });
+    await bridge.continueGame();
     bridge.startEncounter("encounter.mire-antler");
 
-    for (let turn = 0; turn < 8; turn += 1) {
+    for (let turn = 0; turn < 12; turn += 1) {
       const battle = bridge.getSnapshot().battle;
       if (!battle || battle.phase !== "choosing") break;
       const hero = battle.actors.find((actor) => actor.isParty);
