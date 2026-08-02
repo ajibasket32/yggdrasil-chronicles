@@ -1347,7 +1347,7 @@ export class EngineGameBridge implements GameBridge {
         mp: Math.min(stats.maxMp, member.mp + Math.max(0, stats.maxMp - member.stats.maxMp))
       };
     });
-    this.#battle = {
+    const active: ActiveBattle = {
       encounterId,
       state: createCombatState(party, enemies, `${state.seed}:${encounterId}:${state.world.worldMinutes}`),
       phase: "choosing",
@@ -1356,6 +1356,11 @@ export class EngineGameBridge implements GameBridge {
       activatedBossPhases: [],
       events: []
     };
+    // Open on whoever initiative puts first, not on whoever happens to sit at
+    // index 0 — otherwise the very first turn of every battle contradicts the
+    // order shown to the player.
+    active.partyTurnIndex = this.partyTurnQueue(active)[0] ?? active.partyTurnIndex;
+    this.#battle = active;
     this.applyBossPhaseTransitions(this.#battle);
     this.emit();
   }
@@ -1468,7 +1473,10 @@ export class EngineGameBridge implements GameBridge {
       active.events.push(...advanced.events);
       active.log.push(...advanced.events.map((event) => this.describeEvent(event, active.state)));
       if (active.state.outcome === "ongoing") {
-        active.partyTurnIndex = this.firstLivingPartyIndex(active.state.party);
+        // Start the new round on whoever initiative puts first, so a haste or
+        // slow landed last round actually changes who leads this one.
+        active.partyTurnIndex = this.partyTurnQueue(active)[0]
+          ?? this.firstLivingPartyIndex(active.state.party);
       }
     }
     if (active.state.outcome === "victory") await this.resolveVictory(active);
@@ -2235,6 +2243,7 @@ export class EngineGameBridge implements GameBridge {
     return room > 0 ? addItem(inventory, itemId, Math.min(quantity, room)) : inventory;
   }
 
+  /** The member who acts first in a fresh round: fastest living, not first in the array. */
   private firstLivingPartyIndex(party: readonly Combatant[]): number {
     const index = party.findIndex(({ hp }) => hp > 0);
     if (index < 0) throw new Error("A battle requires a living party member");
@@ -2312,15 +2321,33 @@ export class EngineGameBridge implements GameBridge {
   }
 
   /** Returns true when another living party member must act before enemies. */
+  /**
+   * Party members act in initiative order rather than array order, so agility
+   * — and haste and slow, which scale it — decide who moves first. Order is
+   * recomputed each time because a landed status must be able to change it
+   * mid-round; that is the point of having the statuses at all.
+   */
+  private partyTurnQueue(active: ActiveBattle): number[] {
+    const order = getInitiativeOrder(active.state);
+    const positionOf = new Map(order.map((id, position) => [id, position]));
+    return active.state.party
+      .map((member, index) => ({ member, index }))
+      .filter(({ member }) => member.hp > 0)
+      .sort((left, right) =>
+        (positionOf.get(left.member.id) ?? Number.MAX_SAFE_INTEGER)
+        - (positionOf.get(right.member.id) ?? Number.MAX_SAFE_INTEGER))
+      .map(({ index }) => index);
+  }
+
   private advancePartyTurn(active: ActiveBattle): boolean {
-    for (let index = active.partyTurnIndex + 1; index < active.state.party.length; index += 1) {
-      const member = active.state.party[index];
-      if (member && member.hp > 0) {
-        active.partyTurnIndex = index;
-        return true;
-      }
-    }
-    return false;
+    const queue = this.partyTurnQueue(active);
+    const current = queue.indexOf(active.partyTurnIndex);
+    // A member who died mid-round drops out of the queue; resume from whoever
+    // is next rather than restarting the round.
+    const next = current >= 0 ? queue[current + 1] : queue.find((index) => index > active.partyTurnIndex);
+    if (next === undefined) return false;
+    active.partyTurnIndex = next;
+    return true;
   }
 
   private findFlag(source: "location" | "encounter", id: string): string {

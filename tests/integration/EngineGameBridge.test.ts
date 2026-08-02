@@ -56,18 +56,28 @@ describe("EngineGameBridge party combat", () => {
     await bridge.interactNpc("npc.tovin-ash");
     bridge.startEncounter("encounter.mossroad-foragers");
 
-    expect(bridge.getSnapshot().battle?.activeActorId).toBe("party.protagonist");
-    await bridge.chooseBattleAction("guard");
-    expect(bridge.getSnapshot().battle).toMatchObject({
-      phase: "choosing",
-      activeActorId: "party.tovin-ash",
-      round: 1
-    });
+    // Turn order follows initiative, not array position: Tovin is a Ranger and
+    // outpaces the Vanguard protagonist, so he leads. The contract under test
+    // is that every living member acts exactly once before the enemies answer.
+    const battle = bridge.getSnapshot().battle;
+    const partyIds = battle?.actors.filter(({ isParty }) => isParty).map(({ id }) => id) ?? [];
+    expect(partyIds).toHaveLength(2);
+    expect(battle?.turnOrder.filter((id) => partyIds.includes(id))).toEqual(["party.tovin-ash", "party.protagonist"]);
+    expect(battle?.activeActorId).toBe("party.tovin-ash");
 
     await bridge.chooseBattleAction("guard");
     expect(bridge.getSnapshot().battle).toMatchObject({
       phase: "choosing",
       activeActorId: "party.protagonist",
+      round: 1
+    });
+
+    await bridge.chooseBattleAction("guard");
+    // Both acted, the enemies answered, and the next round opens on the fastest
+    // member again.
+    expect(bridge.getSnapshot().battle).toMatchObject({
+      phase: "choosing",
+      activeActorId: "party.tovin-ash",
       round: 2
     });
   });

@@ -11,6 +11,19 @@ function createBridge(): { bridge: EngineGameBridge; saves: SaveRepository } {
   return { bridge: new EngineGameBridge(saves, () => FIXED_SEED), saves };
 }
 
+/**
+ * Guards past other party members until `actorId` holds the turn. Turn order
+ * follows initiative, so no test may assume a given character acts first.
+ */
+async function advanceUntilActive(bridge: EngineGameBridge, actorId: string): Promise<void> {
+  for (let guard = 0; guard < 8; guard += 1) {
+    const battle = bridge.getSnapshot().battle;
+    if (!battle || battle.phase !== "choosing" || battle.activeActorId === actorId) return;
+    await bridge.chooseBattleAction("guard");
+  }
+  throw new Error(`${actorId} never took a turn`);
+}
+
 /** A two-member party, reached by completing the recruitment quest the bridge gates on. */
 async function startTwoMemberParty(bridge: EngineGameBridge, saves: SaveRepository): Promise<void> {
   await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "mender", difficulty: "normal" });
@@ -115,7 +128,10 @@ describe("ally-targeted support", () => {
     await bridge.continueGame();
     bridge.startEncounter("encounter.mossroad-foragers");
 
-    const healer = bridge.getSnapshot().battle?.actors.find((actor) => actor.isParty);
+    // Turn order follows initiative, so the healer is not necessarily first.
+    // Guard until it is their turn rather than assuming array position.
+    await advanceUntilActive(bridge, "party.protagonist");
+    const healer = bridge.getSnapshot().battle?.actors.find(({ id }) => id === "party.protagonist");
     expect(healer?.hp).toBe(healer?.maxHp);
 
     await bridge.chooseBattleAction("skill", "skill.mend", `party.${companion.id.replace("party.", "")}`);
@@ -140,14 +156,18 @@ describe("ally-targeted support", () => {
     await startTwoMemberParty(bridge, saves);
     const loaded = await saves.load("autosave");
     if (!loaded || loaded.party.length < 2) throw new Error("expected a two-member party");
+    // Wound everyone, so whoever initiative puts first has a genuinely hurt
+    // ally to hand the tonic to. Turn order is not the array order.
     await saves.save("autosave", {
       ...loaded,
-      party: loaded.party.map((member, index) => index === 1 ? { ...member, hp: 3 } : member)
+      party: loaded.party.map((member) => ({ ...member, hp: 3 }))
     });
     await bridge.continueGame();
     bridge.startEncounter("encounter.mossroad-foragers");
 
-    const companionId = bridge.getSnapshot().battle?.actors.filter((actor) => actor.isParty)[1]?.id;
+    const companionId = bridge.getSnapshot().battle?.actors
+      .filter((actor) => actor.isParty)
+      .find(({ id }) => id !== bridge.getSnapshot().battle?.activeActorId)?.id;
     if (!companionId) throw new Error("expected a companion in battle");
     const before = bridge.getSnapshot().battle?.actors.find(({ id }) => id === companionId)?.hp ?? 0;
 
