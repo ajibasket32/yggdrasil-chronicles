@@ -61,9 +61,13 @@ test("system menu exposes all manual save slots and can return to the title", as
 
   // Save slot 3 is reachable with the same directional controls as the rest
   // of the game, then the last command returns to the title scene.
+  //
+  // These counts track SYSTEM_MENU_COMMAND_COUNT in WorldScene: "Return to
+  // Title" is the final row, so adding a command shifts every walk that ends
+  // there. Update both walks in this file together.
   await pressRepeatedly(page, "ArrowDown", 2);
   await page.keyboard.press("Enter");
-  await pressRepeatedly(page, "ArrowDown", 8);
+  await pressRepeatedly(page, "ArrowDown", 9);
   await page.keyboard.press("Enter");
   await expect(page.locator("#app")).toHaveAttribute("data-scene", "title");
 });
@@ -90,7 +94,7 @@ test("manual load restores the selected chronicle from the title", async ({ page
 
   // Return to the title through the system menu, then load Manual Slot 1.
   await page.keyboard.press("Escape");
-  await pressRepeatedly(page, "ArrowDown", 10);
+  await pressRepeatedly(page, "ArrowDown", 11);
   await page.keyboard.press("Enter");
   await expect(app).toHaveAttribute("data-scene", "title");
   await pressRepeatedly(page, "ArrowDown", 2);
@@ -98,6 +102,9 @@ test("manual load restores the selected chronicle from the title", async ({ page
   // Phaser redraws the title into the load sub-menu on the next render tick.
   // Keep the load confirmation separate so a slower CI renderer cannot drop it.
   await page.waitForTimeout(400);
+  // The load menu opens on the quick-save slot, so step down to Manual Slot 1.
+  await page.keyboard.press("ArrowDown");
+  await page.waitForTimeout(150);
   await page.keyboard.press("Enter");
 
   await expect(app).toHaveAttribute("data-scene", "world", { timeout: 15_000 });
