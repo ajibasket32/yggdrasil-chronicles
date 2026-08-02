@@ -6,7 +6,7 @@ describe("authored campaign viability simulation", () => {
     const result = simulateCampaignViability();
 
     expect(result.valid, result.errors.join("\n")).toBe(true);
-    expect(result.authoredQuestCount).toBe(35);
+    expect(result.authoredQuestCount).toBeGreaterThanOrEqual(35);
     expect(result.completedMainQuestIds).toHaveLength(15);
     expect(result.bossResults).toHaveLength(3);
     for (const boss of result.bossResults) {

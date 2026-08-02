@@ -212,6 +212,11 @@ type QuestSeed = {
   steps: QuestDefinition["steps"];
   rewardTier?: QuestDefinition["rewardTier"];
   mainStory?: boolean;
+  /** World flags that must already hold before this quest becomes available. */
+  requiredFlags?: QuestDefinition["requiredFlags"];
+  /** Hidden quests are authored but not listed until their flag reveals them. */
+  hidden?: boolean;
+  failure?: QuestDefinition["failure"];
 };
 
 const mainQuestSeeds: QuestSeed[] = [
@@ -354,7 +359,26 @@ const regionalQuestSeeds: QuestSeed[] = [
   { id: "frost-for-thyme", title: "Frost for Thyme", summary: "Collect resin crystals before they thaw.", steps: [step("collect", "item.frost-resin", 4), step("talk", "npc.thyme-vale")] },
   { id: "rooks-high-road", title: "Rook's High Road", summary: "Chart a safer climb through Whitebough.", steps: [step("travel", "location.whitebough"), step("talk", "npc.rook-silva")] },
   { id: "courier-in-white", title: "Courier in White", summary: "Find Otis and deliver the letter he protected.", steps: [step("talk", "npc.otis-snow"), step("talk", "npc.corin-mist")] },
-  { id: "conservators-choice", title: "The Conservator's Choice", summary: "Decide which damaged memory the Archive restores.", prerequisites: ["quest.stars-out-of-place"], steps: [step("talk", "npc.corin-mist"), step("collect", "item.memory-shard", 3)] },
+  // Failure with a recovery branch, per GAME_DESIGN's promise that a lost
+  // main-story thread always leaves another way forward. Restoring the
+  // Archive's own record first means the contested memory is gone; the
+  // recovery quest is the attempt to reconstruct it from fragments instead.
+  {
+    id: "conservators-choice",
+    title: "The Conservator's Choice",
+    summary: "Decide which damaged memory the Archive restores.",
+    prerequisites: ["quest.stars-out-of-place"],
+    steps: [step("talk", "npc.corin-mist"), step("collect", "item.memory-shard", 3)],
+    failure: { whenFlag: "outcome.quest.what-the-tree-forgot", equals: true, recoveryQuestId: "quest.conservators-amends" }
+  },
+  {
+    id: "conservators-amends",
+    title: "The Conservator's Amends",
+    summary: "Rebuild what the Archive could not save, from the fragments it discarded.",
+    steps: [step("collect", "item.memory-shard", 4), step("talk", "npc.corin-mist")],
+    rewardTier: "major",
+    requiredFlags: [{ key: "outcome.quest.what-the-tree-forgot", equals: true }]
+  },
   { id: "eiras-burden", title: "Eira's Burden", summary: "Learn why the bridgekeeper refuses to leave her post.", prerequisites: ["quest.bridge-of-bonewood"], steps: [step("talk", "npc.eira-lune"), step("talk", "npc.thea-nacre")], rewardTier: "major" }
 ];
 
@@ -415,7 +439,10 @@ const makeQuests = (seeds: QuestSeed[]): QuestDefinition[] =>
     steps: seed.steps,
     rewardTier: seed.rewardTier ?? "minor",
     mainStory: seed.mainStory ?? false,
-    consequences: completionConsequences(seed)
+    consequences: completionConsequences(seed),
+    ...(seed.requiredFlags ? { requiredFlags: seed.requiredFlags } : {}),
+    ...(seed.hidden ? { hidden: true } : {}),
+    ...(seed.failure ? { failure: seed.failure } : {})
   }));
 
 export const quests: QuestDefinition[] = makeQuests([

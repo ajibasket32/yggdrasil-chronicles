@@ -11,6 +11,7 @@ import {
   createInitialGameState,
   deriveCharacterCombatStats,
   equipItem,
+  failQuest,
   getInitiativeOrder,
   grantExperience,
   inventoryQuantity,
@@ -1815,13 +1816,57 @@ export class EngineGameBridge implements GameBridge {
     return true;
   }
 
+  /**
+   * Fails any active quest whose authored failure condition now holds, and
+   * unlocks its recovery branch. GAME_DESIGN promises that main-story failure
+   * always exposes a recovery path; the engine's failQuest/resetFailedQuest
+   * pair existed and was tested but had no caller anywhere, so the `failed`
+   * state was unreachable and the promise was unimplemented.
+   */
+  private applyQuestFailures(): boolean {
+    const state = this.#state;
+    if (!state) return false;
+    let progress = state.quests;
+    let changed = false;
+    for (const definition of quests) {
+      const failure = definition.failure;
+      if (!failure) continue;
+      const entry = progress.find(({ questId }) => questId === definition.id);
+      if (entry?.state !== "active") continue;
+      if (state.world.flags[failure.whenFlag] !== failure.equals) continue;
+      progress = failQuest(progress, definition.id);
+      changed = true;
+      if (failure.recoveryQuestId) {
+        progress = progress.map((quest) =>
+          quest.questId === failure.recoveryQuestId && quest.state === "locked"
+            ? { ...quest, state: "available" as const }
+            : quest
+        );
+      }
+    }
+    if (changed) this.#state = { ...state, quests: progress };
+    return changed;
+  }
+
   private advanceCampaign(): void {
     if (!this.#state) return;
-    let progress = refreshQuestAvailability(this.#state.quests, quests);
+    this.applyQuestFailures();
+    let progress = refreshQuestAvailability(this.#state.quests, quests, this.#state.world.flags);
     const nextMain = quests.find((definition) =>
       definition.mainStory && progress.some((entry) => entry.questId === definition.id && entry.state === "available")
     );
-    if (nextMain) progress = startQuest(progress, nextMain.id);
+    if (nextMain) {
+      progress = startQuest(progress, nextMain.id);
+      // Credit a first objective the player has already satisfied. A quest that
+      // starts while standing in the location it asks you to travel to reads as
+      // broken, even though walking out and back would clear it.
+      progress = this.applyObjectiveToActiveQuests(
+        progress,
+        "travel",
+        this.#state.world.currentLocationId,
+        1
+      );
+    }
     this.#state = { ...this.#state, quests: progress };
   }
 

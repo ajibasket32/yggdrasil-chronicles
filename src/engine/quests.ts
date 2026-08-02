@@ -14,9 +14,16 @@ export function createQuestProgress(definitions: readonly QuestDefinition[]): Qu
   }));
 }
 
+/**
+ * `flags` lets a quest gate on authored world state rather than only on
+ * finished prerequisites — the mechanism behind ending-gated and
+ * choice-gated content. Omitting it keeps the prior prerequisite-only
+ * behaviour exactly.
+ */
 export function refreshQuestAvailability(
   progress: readonly QuestProgress[],
-  definitions: readonly QuestDefinition[]
+  definitions: readonly QuestDefinition[],
+  flags: Readonly<Record<string, boolean | number | string>> = {}
 ): QuestProgress[] {
   const completedIds = new Set(progress.filter((quest) => quest.state === "completed").map((quest) => quest.questId));
   const definitionsById = new Map(definitions.map((definition) => [definition.id, definition]));
@@ -28,7 +35,9 @@ export function refreshQuestAvailability(
     if (!definition) {
       throw new Error(`Missing quest definition '${quest.questId}'`);
     }
-    return definition.prerequisites.every((id) => completedIds.has(id))
+    const prerequisitesMet = definition.prerequisites.every((id) => completedIds.has(id));
+    const flagsMet = (definition.requiredFlags ?? []).every(({ key, equals }) => flags[key] === equals);
+    return prerequisitesMet && flagsMet
       ? { ...quest, state: "available" }
       : { ...quest };
   });
