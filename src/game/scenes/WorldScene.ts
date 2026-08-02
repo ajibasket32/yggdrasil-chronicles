@@ -11,6 +11,7 @@ import type {
 } from "../bridge";
 import { gamepadButtonAction } from "../gamepadControls";
 import { keyboardActionForCode, keyboardCodeLabel } from "../keyboardControls";
+import { windowAround, windowFooter, type OverlayWindow } from "../overlayWindow";
 import { getNpcSpawnPoints } from "../npcPlacement";
 import { announceGameStatus, announceScene, COLORS, getBridge, motionDuration, playSound, TEXT } from "../runtime";
 import {
@@ -27,6 +28,9 @@ const HUD_X = MAP_COLUMNS * TILE;
 const EQUIPMENT_SLOTS = ["weapon", "armor", "accessory"] as const;
 /** Must match the length of the `commands` array built in overlayContent's "system" branch. */
 const SYSTEM_MENU_COMMAND_COUNT = 12;
+/** Rows that fit the overlay panel without the cursor leaving the visible area. */
+const INVENTORY_VISIBLE_ROWS = 6;
+const SHOP_VISIBLE_ROWS = 5;
 
 type Point = { x: number; y: number };
 type InteractiveOverlayMode = "browse" | "target" | "jobs" | "equipment";
@@ -930,11 +934,20 @@ export class WorldScene extends Phaser.Scene {
       const party = this.snapshot.party;
       return `${action}: ${item?.name ?? "Unknown item"}\n${item?.description ?? ""}\n\n${party.map((member, index) => `${index === this.partyIndex ? "›" : " "} ${member.name}  Lv ${member.level}\n   HP ${member.hp}/${member.maxHp}  MP ${member.mp}/${member.maxMp}`).join("\n\n") || "No party member can receive this item."}`;
     }
-    return inventory.map((item, index) => {
+    // Windowed: the pack holds up to ninety-nine distinct stacks, and without
+    // this the cursor walks off the bottom of the panel.
+    const view = windowAround(inventory, this.inventoryIndex, INVENTORY_VISIBLE_ROWS);
+    const rows = view.items.map((item, index) => {
       const kind = this.itemKind(item).toUpperCase();
       const equipped = item.equippedBy?.length ? `  EQUIPPED: ${item.equippedBy.join(", ")}` : "";
-      return `${index === this.inventoryIndex ? "›" : " "} ${item.name} ×${item.quantity}  [${kind}]${equipped}\n   ${item.description}`;
-    }).join("\n\n");
+      return `${index === view.cursor ? "›" : " "} ${item.name} ×${item.quantity}  [${kind}]${equipped}\n   ${item.description}`;
+    });
+    return [
+      view.hasBefore ? "  ▲ more above" : "",
+      rows.join("\n\n"),
+      view.hasAfter ? "  ▼ more below" : "",
+      windowFooter(view)
+    ].filter(Boolean).join("\n");
   }
 
   private partyOverlayContent(): string {
@@ -969,10 +982,28 @@ export class WorldScene extends Phaser.Scene {
     if (this.shopMode === "sell") {
       const owned = shop.catalog.filter((entry) => entry.ownedQuantity > 0);
       if (!owned.length) return `${header}\n\nThe party carries nothing this shop will buy back.`;
-      return `${header}\n\n${owned.map((entry, index) => `${index === this.shopIndex ? "›" : " "} ${entry.name}  —  sell ${entry.sellPrice ?? 0} marks  (owned ${entry.ownedQuantity})\n   ${entry.description}`).join("\n\n")}`;
+      const view = windowAround(owned, this.shopIndex, SHOP_VISIBLE_ROWS);
+      const rows = view.items.map((entry, index) =>
+        `${index === view.cursor ? "›" : " "} ${entry.name}  —  sell ${entry.sellPrice ?? 0} marks  (owned ${entry.ownedQuantity})\n   ${entry.description}`);
+      return this.windowedBody(header, rows, view);
     }
     if (!shop.catalog.length) return `${header}\n\nThis shop has nothing to sell right now.`;
-    return `${header}\n\n${shop.catalog.map((entry, index) => `${index === this.shopIndex ? "›" : " "} ${entry.name}  —  ${entry.buyPrice} marks  [${entry.kind.toUpperCase()}]\n   ${entry.description}`).join("\n\n")}`;
+    const view = windowAround(shop.catalog, this.shopIndex, SHOP_VISIBLE_ROWS);
+    const rows = view.items.map((entry, index) =>
+      `${index === view.cursor ? "›" : " "} ${entry.name}  —  ${entry.buyPrice} marks  [${entry.kind.toUpperCase()}]\n   ${entry.description}`);
+    return this.windowedBody(header, rows, view);
+  }
+
+  /** Shared framing so both windowed overlays read identically. */
+  private windowedBody(header: string, rows: readonly string[], view: OverlayWindow<unknown>): string {
+    return [
+      header,
+      "",
+      view.hasBefore ? "  ▲ more above" : "",
+      rows.join("\n\n"),
+      view.hasAfter ? "  ▼ more below" : "",
+      windowFooter(view)
+    ].filter(Boolean).join("\n");
   }
 
   private itemKind(item: InventoryView | undefined): NonNullable<InventoryView["kind"]> {

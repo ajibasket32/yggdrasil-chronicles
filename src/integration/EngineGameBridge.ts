@@ -13,6 +13,7 @@ import {
   equipItem,
   failQuest,
   getInitiativeOrder,
+  getJobUnlockBlockers,
   grantExperience,
   inventoryQuantity,
   refreshQuestAvailability,
@@ -1781,8 +1782,25 @@ export class EngineGameBridge implements GameBridge {
     } else {
       const advancedJob = advancedJobs.find((job) => job.id === jobId && job.baseJobId === baseJob.id);
       if (!advancedJob) return commandFailure("That job is not part of this character's branch.");
-      if (member.level < advancedJob.minimumLevel) {
-        return commandFailure(`${advancedJob.name} unlocks at level ${advancedJob.minimumLevel}.`);
+      // Route the gate through the engine's unlock API rather than re-checking
+      // the level here. That API was implemented and tested and had no caller,
+      // so the bridge and the engine could disagree about the same rule.
+      const blockers = getJobUnlockBlockers(
+        member,
+        {
+          id: advancedJob.id,
+          name: advancedJob.name,
+          prerequisiteJobIds: [advancedJob.baseJobId],
+          minimumLevel: advancedJob.minimumLevel,
+          requiredSkillIds: []
+        },
+        [baseJob.id]
+      );
+      if (blockers.length > 0) {
+        const levelBlocker = blockers.find((blocker) => blocker.type === "minimum_level");
+        return commandFailure(levelBlocker
+          ? `${advancedJob.name} unlocks at level ${advancedJob.minimumLevel}.`
+          : `${advancedJob.name} is not yet open to ${member.name}.`);
       }
       flags = { ...flags, [jobUnlockFlag(member.id, advancedJob.id)]: true };
       const withForms = withBonusSkill(
