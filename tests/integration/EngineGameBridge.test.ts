@@ -5,12 +5,15 @@ import { EngineGameBridge } from "../../src/integration/EngineGameBridge";
 import { MemorySaveStorage } from "../../src/save/memory-storage";
 import { SaveRepository } from "../../src/save/repository";
 
-function createBridge(seed?: string): { bridge: EngineGameBridge; saves: SaveRepository } {
+/**
+ * Seeded by default. Combat resolves from the chronicle seed, so an unseeded
+ * bridge makes every battle assertion a different fight each run — which is
+ * exactly how a rare, hard-to-place failure got into this file. Pass an
+ * explicit seed only when a test needs two chronicles to differ.
+ */
+function createBridge(seed = "engine-bridge-fixture"): { bridge: EngineGameBridge; saves: SaveRepository } {
   const saves = new SaveRepository(new MemorySaveStorage());
-  return {
-    bridge: seed === undefined ? new EngineGameBridge(saves) : new EngineGameBridge(saves, () => seed),
-    saves
-  };
+  return { bridge: new EngineGameBridge(saves, () => seed), saves };
 }
 
 async function startChronicle(bridge: EngineGameBridge): Promise<void> {
