@@ -181,6 +181,21 @@ export interface BattleView {
   round: number;
 }
 
+export interface SceneLineView {
+  speaker: string;
+  text: string;
+  portraitTag?: string;
+}
+
+/**
+ * A scripted story beat waiting to be played. The scene owns presentation;
+ * the bridge decides when one fires and records that it has been seen.
+ */
+export interface PendingSceneView {
+  id: string;
+  lines: SceneLineView[];
+}
+
 export interface InteractionView {
   speaker: string;
   lines: readonly string[];
@@ -267,6 +282,8 @@ export interface GameSnapshot {
   };
   /** Companions who have joined but are waiting outside the active party. */
   reserve?: PartyMemberView[];
+  /** A scripted scene waiting to play; cleared by `acknowledgeScene`. */
+  pendingScene?: PendingSceneView;
   saveSlots?: GameSaveSlot[];
   /** Per-slot detail the repository already computes, so the load menu can show more than AVAILABLE/EMPTY. */
   saveSummaries?: SaveSlotSummaryView[];
@@ -338,6 +355,8 @@ export interface GameBridge {
    * fills an empty slot; passing both benches the active member.
    */
   swapPartyMember(reserveMemberId: string, activeMemberId?: string): GameCommandResult | Promise<GameCommandResult>;
+  /** Marks the pending scene as seen so it does not play again. */
+  acknowledgeScene(sceneId: string): void | Promise<void>;
   buyItem(itemId: string): GameCommandResult | Promise<GameCommandResult>;
   sellItem(itemId: string): GameCommandResult | Promise<GameCommandResult>;
   leaveShop(): void | Promise<void>;

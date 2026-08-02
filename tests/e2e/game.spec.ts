@@ -11,13 +11,27 @@ async function pressRepeatedly(
   }
 }
 
+/**
+ * Walks the title screen into a playable world: six confirms through character
+ * creation, then past the prologue. The prologue is a scripted scene that owns
+ * input until it finishes, so every walk has to clear it before it can move.
+ */
+async function startNewChronicle(page: Page): Promise<void> {
+  await pressRepeatedly(page, "Enter", 6);
+  await expect(page.locator("#app")).toHaveAttribute("data-scene", "world");
+  // One confirm per line, plus slack: the scene ends on the last one and
+  // further presses fall through harmlessly to the world.
+  await pressRepeatedly(page, "Enter", 9);
+  await page.waitForTimeout(200);
+}
+
 test("new chronicle reaches exploration and deterministic battle", async ({ page }) => {
   await page.goto("/");
   const canvas = page.locator("canvas");
   await expect(canvas).toBeVisible();
   await expect(page.locator("#app")).toHaveAttribute("data-scene", "title");
 
-  await pressRepeatedly(page, "Enter", 6);
+  await startNewChronicle(page);
 
   await expect(canvas).toBeVisible();
   const app = page.locator("#app");
@@ -51,7 +65,7 @@ test("system menu exposes all manual save slots and can return to the title", as
   const canvas = page.locator("canvas");
   await expect(canvas).toBeVisible();
   await expect(page.locator("#app")).toHaveAttribute("data-scene", "title");
-  await pressRepeatedly(page, "Enter", 6);
+  await startNewChronicle(page);
   await expect(page.locator("#app")).toHaveAttribute("data-scene", "world");
 
   const world = await canvas.screenshot();
@@ -77,7 +91,7 @@ test("manual load restores the selected chronicle from the title", async ({ page
   const app = page.locator("#app");
   await expect(page.locator("canvas")).toBeVisible();
   await expect(app).toHaveAttribute("data-scene", "title");
-  await pressRepeatedly(page, "Enter", 6);
+  await startNewChronicle(page);
   await expect(app).toHaveAttribute("data-scene", "world");
 
   // Mossroad is the identifiable state captured in Manual Slot 1.
@@ -117,7 +131,7 @@ test("inventory targets a party member and visibly consumes a restorative", asyn
   const canvas = page.locator("canvas");
   await expect(canvas).toBeVisible();
   await expect(app).toHaveAttribute("data-scene", "title");
-  await pressRepeatedly(page, "Enter", 6);
+  await startNewChronicle(page);
   await expect(app).toHaveAttribute("data-scene", "world");
 
   // Take one hit so the selected restorative has a meaningful target.
@@ -153,7 +167,7 @@ test("system menu exports the autosave as a named JSON download", async ({ page 
   const app = page.locator("#app");
   await expect(page.locator("canvas")).toBeVisible();
   await expect(app).toHaveAttribute("data-scene", "title");
-  await pressRepeatedly(page, "Enter", 6);
+  await startNewChronicle(page);
   await expect(app).toHaveAttribute("data-scene", "world");
 
   await page.keyboard.press("Escape");
@@ -215,7 +229,7 @@ test("a rebound journal key persists and controls the world scene", async ({ pag
   await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
   await pressRepeatedly(page, "ArrowUp", 3);
-  await pressRepeatedly(page, "Enter", 6);
+  await startNewChronicle(page);
   await expect(app).toHaveAttribute("data-scene", "world");
 
   const world = await canvas.screenshot();
@@ -235,7 +249,7 @@ test("an authored quest permanently updates world reputation and the journal", a
   const canvas = page.locator("canvas");
   await expect(canvas).toBeVisible();
   await expect(app).toHaveAttribute("data-scene", "title");
-  await pressRepeatedly(page, "Enter", 6);
+  await startNewChronicle(page);
   await expect(app).toHaveAttribute("data-scene", "world");
   await expect(app).toHaveAttribute("data-faction-standing-count", "0");
 

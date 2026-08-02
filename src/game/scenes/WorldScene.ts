@@ -74,6 +74,8 @@ export class WorldScene extends Phaser.Scene {
     /** Set once the player has armed an irreversible choice; the next confirm commits it. */
     confirmingChoiceId?: string;
   };
+  /** A scripted scene currently playing, and how far through it the player is. */
+  private activeScene?: { id: string; index: number };
   private endingShown = false;
 
   constructor() {
@@ -103,9 +105,81 @@ export class WorldScene extends Phaser.Scene {
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unsubscribe?.());
     announceScene("world");
-    if (this.snapshot.campaign?.complete) {
+    if (this.snapshot.pendingScene) {
+      this.time.delayedCall(200, () => this.playPendingScene());
+    } else if (this.snapshot.campaign?.complete) {
       this.time.delayedCall(250, () => this.showCampaignEnding());
     }
+  }
+
+  /**
+   * Plays a scripted story beat: an authored sequence with its own speakers,
+   * rather than an NPC's rotating small talk. Reuses the dialogue presentation
+   * so a scene reads like the rest of the game's conversation.
+   */
+  private playPendingScene(): void {
+    const scene = this.snapshot.pendingScene;
+    if (!scene || this.activeScene || this.activeInteraction) return;
+    this.activeScene = { id: scene.id, index: 0 };
+    this.locked = true;
+    this.drawSceneLine();
+  }
+
+  private drawSceneLine(): void {
+    const scene = this.snapshot.pendingScene;
+    const active = this.activeScene;
+    if (!scene || !active) return;
+    const line = scene.lines[active.index];
+    if (!line) {
+      void this.finishScene();
+      return;
+    }
+
+    this.overlay?.destroy();
+    const panel = this.add.rectangle(0, 340, 960, 200, COLORS.panel, 0.98).setOrigin(0);
+    const edge = this.add.rectangle(0, 340, 960, 2, 0x6f8f82).setOrigin(0);
+    const children: Phaser.GameObjects.GameObject[] = [panel, edge];
+
+    // Narration has no speaker; style it apart from spoken lines so the two
+    // never read as the same voice.
+    if (line.speaker) {
+      children.push(this.add.text(40, 364, line.speaker.toUpperCase(), { ...TEXT.small, color: COLORS.gold }));
+    }
+    children.push(this.add.text(40, line.speaker ? 392 : 380, line.text, {
+      ...TEXT.body,
+      fontSize: line.speaker ? "15px" : "14px",
+      color: line.speaker ? COLORS.cream : COLORS.muted,
+      fontStyle: line.speaker ? "normal" : "italic",
+      wordWrap: { width: 870 },
+      lineSpacing: 8
+    }));
+    children.push(this.add.text(40, 500, `${active.index + 1} / ${scene.lines.length}   Enter  Continue`, TEXT.small));
+
+    this.overlay = this.add.container(0, 0, children).setDepth(70);
+    this.overlayKind = undefined;
+  }
+
+  private async advanceScene(): Promise<void> {
+    const scene = this.snapshot.pendingScene;
+    const active = this.activeScene;
+    if (!scene || !active) return;
+    if (active.index < scene.lines.length - 1) {
+      active.index += 1;
+      this.drawSceneLine();
+      return;
+    }
+    await this.finishScene();
+  }
+
+  private async finishScene(): Promise<void> {
+    const active = this.activeScene;
+    this.activeScene = undefined;
+    this.overlay?.destroy();
+    this.overlay = undefined;
+    this.locked = false;
+    if (active) await this.bridge.acknowledgeScene(active.id);
+    this.refreshPrompt();
+    if (this.snapshot.campaign?.complete) this.showCampaignEnding();
   }
 
   private bindKeys(): void {
@@ -560,6 +634,11 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private async interact(): Promise<void> {
+    // A scripted scene owns confirm until it finishes.
+    if (this.activeScene) {
+      await this.advanceScene();
+      return;
+    }
     if (this.activeInteraction) {
       await this.advanceDialogue();
       return;
@@ -1180,6 +1259,12 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private escape(): void {
+    // Cancel advances a scene rather than dismissing it: a scripted beat is
+    // authored content, not an overlay the player opened by accident.
+    if (this.activeScene) {
+      void this.advanceScene();
+      return;
+    }
     if (this.activeInteraction) {
       // Step back from an armed irreversible choice rather than closing the
       // whole conversation, so backing out never costs the player the dialogue.

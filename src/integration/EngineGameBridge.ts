@@ -42,12 +42,15 @@ import {
   npcs,
   levelUpSkillsFor,
   postgameEncounterIds,
+  sceneFlagFor,
+  scenesForTrigger,
   skillsLearnedBetween,
   quests,
   recruitProfiles,
   startingBuildLoadouts,
   vendorProfiles,
-  type RecruitProfile
+  type RecruitProfile,
+  type SceneTrigger
 } from "../content";
 import type {
   BattleAction,
@@ -62,6 +65,7 @@ import type {
   PartyMemberView,
   BattleEventView,
   BattleStatusView,
+  PendingSceneView,
   QuestView,
   SaveSlotSummaryView,
   ShopEntryView,
@@ -745,6 +749,8 @@ export class EngineGameBridge implements GameBridge {
   readonly #saveSlots = new Set<GameSaveSlot>();
   readonly #newSeed: () => string;
   #saveSummaries: SaveSlotSummaryView[] = [];
+  /** A scripted scene waiting for the presentation layer to play it. */
+  #pendingScene?: PendingSceneView;
   readonly #narrative = new NarrativeCheckpointQueue({
     validationCatalog: {
       knownEntityIds: new Set([
@@ -838,6 +844,7 @@ export class EngineGameBridge implements GameBridge {
       difficulty: difficultyOf(this.#state),
       party: party.map((member, index) => this.toPartyView(member, index)),
       reserve: this.#state.reserve.map((member, index) => this.toPartyView(member, party.length + index)),
+      pendingScene: this.#pendingScene,
       inventory: this.#state.inventory.flatMap((stack) => {
         const definition = items.find(({ id }) => id === stack.itemId);
         const equippedBy = party
@@ -943,6 +950,7 @@ export class EngineGameBridge implements GameBridge {
     };
     this.#state = state;
     this.#battle = undefined;
+    this.queueScene((trigger) => trigger.kind === "campaign_start");
     await this.persist("autosave");
   }
 
@@ -1101,6 +1109,7 @@ export class EngineGameBridge implements GameBridge {
     this.applyInventoryObjectives();
     this.advanceCampaign();
     this.applyCompletedQuestRewards();
+    this.queueScene((trigger) => trigger.kind === "location_first_visit" && trigger.locationId === locationId);
     await this.persist("autosave");
     this.enqueueNarrativeCheckpoint("world_event", `The party crossed into ${locationId.replace("location.", "").replaceAll("-", " ")}.`);
   }
@@ -1341,6 +1350,42 @@ export class EngineGameBridge implements GameBridge {
     return { ...character, skills: [...character.skills, ...learned] };
   }
 
+  /**
+   * Queues a scripted scene if its trigger matches and it has not been seen.
+   * The seen-flag lives in world state, so replaying a chronicle — including
+   * through New Game+ — replays its scenes.
+   */
+  private queueScene(matches: (trigger: SceneTrigger) => boolean): void {
+    const state = this.#state;
+    if (!state || this.#pendingScene) return;
+    const scene = scenesForTrigger(matches).find((candidate) =>
+      candidate.repeatable === true || state.world.flags[sceneFlagFor(candidate.id)] !== true);
+    if (!scene) return;
+    this.#pendingScene = {
+      id: scene.id,
+      lines: scene.lines.map((line) => ({
+        speaker: line.speaker,
+        text: line.text,
+        ...(line.portraitTag ? { portraitTag: line.portraitTag } : {})
+      }))
+    };
+  }
+
+  async acknowledgeScene(sceneId: string): Promise<void> {
+    if (this.#pendingScene?.id !== sceneId) return;
+    this.#pendingScene = undefined;
+    const state = this.#state;
+    if (!state) {
+      this.emit();
+      return;
+    }
+    this.#state = {
+      ...state,
+      world: { ...state.world, flags: { ...state.world.flags, [sceneFlagFor(sceneId)]: true } }
+    };
+    await this.persist("autosave");
+  }
+
   /** True once every main-story quest is complete. */
   private isCampaignComplete(state: GameState): boolean {
     const mainQuestIds = new Set(quests.filter(({ mainStory }) => mainStory).map(({ id }) => id));
@@ -1405,6 +1450,7 @@ export class EngineGameBridge implements GameBridge {
     active.partyTurnIndex = this.partyTurnQueue(active)[0] ?? active.partyTurnIndex;
     this.#battle = active;
     this.applyBossPhaseTransitions(this.#battle);
+    this.queueScene((trigger) => trigger.kind === "encounter_start" && trigger.encounterId === encounterId);
     this.emit();
   }
 

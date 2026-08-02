@@ -294,6 +294,10 @@ export class DemoGameBridge implements GameBridge {
     return { success: false, message: "The demo road has no finished chronicle to carry." };
   }
 
+  acknowledgeScene(_sceneId: string): void {
+    // The demo road stages no scripted scenes.
+  }
+
   swapPartyMember(_reserveMemberId: string, _activeMemberId?: string): GameCommandResult {
     return { success: false, message: "The demo road travels with a fixed company." };
   }
