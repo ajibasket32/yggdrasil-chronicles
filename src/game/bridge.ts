@@ -104,6 +104,14 @@ export interface BattleActorView {
   alive: boolean;
   /** Whether this actor can currently be chosen as a target by the acting character. */
   targetable: boolean;
+  /**
+   * Elements this actor is weak to, revealed once the player has landed that
+   * element on this species. Elemental identity is unlearnable otherwise —
+   * the player would be guessing against numbers they can never see.
+   */
+  knownWeaknesses: Element[];
+  /** Elements this actor resists, revealed the same way. */
+  knownResistances: Element[];
   /** Preloaded Phaser texture key; falls back to sprite.player/sprite.enemy when absent. */
   spriteKey?: string;
   /** Multiplicative tint applied on top of the sprite for further per-actor distinction. */

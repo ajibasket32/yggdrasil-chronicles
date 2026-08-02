@@ -63,6 +63,7 @@ import type {
 import { SaveRepository, type SaveSlot } from "../save";
 import type {
   Combatant,
+  Element,
   EncounterDefinition,
   EquipmentBand,
   GameState,
@@ -167,7 +168,9 @@ const COMBAT_SKILLS: readonly CombatSkill[] = [
   { id: "skill.greater-mend", name: "Greater Mend", element: "radiant", power: 30, accuracy: 1, mpCost: 7, target: "ally", healing: true },
   { id: "skill.dawnfire-lance", name: "Dawnfire Lance", element: "radiant", power: 23, accuracy: 0.92, mpCost: 5, target: "enemy", status: { id: "burn", chance: 0.4, turns: 2, potency: 5 } },
   { id: "skill.storm-lance", name: "Storm Lance", element: "lightning", power: 26, accuracy: 0.88, mpCost: 7, target: "enemy", status: { id: "stun", chance: 0.35, turns: 1, potency: 0 } },
-  { id: "skill.deep-resonance", name: "Deep Resonance", element: "water", power: 22, accuracy: 0.95, mpCost: 6, target: "enemy", status: { id: "freeze", chance: 0.3, turns: 1, potency: 0 } },
+  // Rethemed from water to ice: it always applied freeze, and Pale Canopy is
+  // an entire frost region that had no ice-element form to answer it.
+  { id: "skill.deep-resonance", name: "Deep Resonance", element: "ice", power: 22, accuracy: 0.95, mpCost: 6, target: "enemy", status: { id: "freeze", chance: 0.3, turns: 1, potency: 0 } },
   { id: "skill.veil-strike", name: "Veil Strike", element: "shadow", power: 21, accuracy: 0.95, mpCost: 5, target: "enemy", status: { id: "sleep", chance: 0.35, turns: 2, potency: 0 } },
   { id: "skill.wild-gambit", name: "Wild Gambit", element: "physical", power: 32, accuracy: 0.8, mpCost: 6, target: "enemy" },
   { id: "skill.bramble-snare", name: "Bramble Snare", element: "nature", power: 22, accuracy: 0.9, mpCost: 6, target: "enemy", status: { id: "poison", chance: 0.5, turns: 3, potency: 5 } },
@@ -522,6 +525,37 @@ const ENEMY_SKILLS: Readonly<Record<string, readonly string[]>> = {
 };
 
 /**
+ * Per-enemy elemental identity. Every enemy previously shared one of two
+ * tables, so eleven elements resolved to a single decision the player could
+ * never learn or exploit. Positive values resist, negative values are
+ * weaknesses.
+ *
+ * This is also where `ice` earns its place in the element union: WORLD_BIBLE
+ * names frost among the practiced forms and Pale Canopy is an entire frost
+ * region, but no skill or resistance referenced the element, leaving it
+ * declared in two type files and used nowhere.
+ */
+const ENEMY_ELEMENTS: Readonly<Record<string, Partial<Record<Element, number>>>> = {
+  // Verdant Reach: rain-soaked and root-bound. Fire clears them, nature does not.
+  "enemy.briar-wolf": { nature: 0.3, fire: -0.35 },
+  "enemy.root-gnawer": { nature: 0.35, fire: -0.3 },
+  "enemy.mireling": { water: 0.35, lightning: -0.4 },
+  "enemy.mire-antler": { nature: 0.3, fire: -0.25, ice: -0.2 },
+  // Cinder March: kiln-born. Fire is their medium; water and ice undo them.
+  "enemy.ash-mote": { fire: 0.45, water: -0.4 },
+  "enemy.cinder-hound": { fire: 0.4, ice: -0.35 },
+  "enemy.cinder-wraith": { fire: 0.35, shadow: 0.2, radiant: -0.4 },
+  "enemy.brass-sentinel": { physical: 0.3, lightning: -0.35 },
+  "enemy.kiln-heart": { fire: 0.4, water: -0.3, ice: -0.25 },
+  // Pale Canopy: frost and starlight. Ice runs off them; fire answers.
+  "enemy.rime-stag": { ice: 0.45, fire: -0.4 },
+  "enemy.frost-moth": { ice: 0.4, wind: 0.2, fire: -0.45 },
+  "enemy.star-echo": { aether: 0.4, shadow: -0.35 },
+  "enemy.pale-custodian": { ice: 0.3, aether: 0.25, physical: -0.2 },
+  "enemy.varn-rootless": { aether: 0.35, ice: 0.2, radiant: -0.3 }
+};
+
+/**
  * Chosen once at character creation and fixed for the life of the
  * chronicle (see newGame). Scales enemy HP/offense and battle rewards
  * without touching combat.ts's formulas, keeping the deterministic engine
@@ -597,7 +631,7 @@ function enemyCombatant(
     hp: maxHp,
     mp: 0,
     skills: [...(ENEMY_SKILLS[id] ?? [])],
-    elements: boss ? { nature: 0.2, fire: -0.2 } : { nature: -0.1 },
+    elements: ENEMY_ELEMENTS[id] ?? (boss ? { nature: 0.2, fire: -0.2 } : { nature: -0.1 }),
     statuses: [],
     // Bosses resist turn denial. Without this, a party alternating two 40%
     // stuns silences a boss for most of its own fight and the authored phase
@@ -1258,6 +1292,7 @@ export class EngineGameBridge implements GameBridge {
       active.state = resolution.state;
       active.events.push(...resolution.events);
       active.log.push(...resolution.events.map((event) => this.describeEvent(event, active.state)));
+      this.recordObservedElements(resolution.events);
       this.applyBossPhaseTransitions(active);
     }
 
@@ -1288,6 +1323,46 @@ export class EngineGameBridge implements GameBridge {
     if (active.state.outcome === "victory") await this.resolveVictory(active);
     if (active.state.outcome === "defeat") active.phase = "defeat";
     this.emit();
+  }
+
+  /**
+   * Records which elements the player has actually landed on each enemy
+   * species, so weaknesses become learnable through play rather than being
+   * numbers the player can never see. Stored as world flags, which already
+   * carry the per-species defeat counts, so this needs no schema change.
+   */
+  private recordObservedElements(events: readonly CombatEvent[]): void {
+    const state = this.#state;
+    const battle = this.#battle;
+    if (!state || !battle) return;
+    let flags = state.world.flags;
+    let changed = false;
+    for (const event of events) {
+      if (event.type !== "damage") continue;
+      // Only the player's own hits teach anything; an enemy hitting an ally
+      // says nothing about that enemy's own resistances.
+      const target = battle.state.enemies.find(({ id }) => id === event.targetId);
+      if (!target) continue;
+      const key = `progress.element.${enemyContentId(target.id)}.${event.element}`;
+      if (flags[key] === true) continue;
+      flags = { ...flags, [key]: true };
+      changed = true;
+    }
+    if (changed) this.#state = { ...state, world: { ...state.world, flags } };
+  }
+
+  /** Elements the player has already landed on this species, split by sign. */
+  private knownElementsFor(contentId: string): { weaknesses: Element[]; resistances: Element[] } {
+    const flags = this.#state?.world.flags ?? {};
+    const table = ENEMY_ELEMENTS[contentId] ?? {};
+    const weaknesses: Element[] = [];
+    const resistances: Element[] = [];
+    for (const [element, value] of Object.entries(table) as Array<[Element, number]>) {
+      if (flags[`progress.element.${contentId}.${element}`] !== true) continue;
+      if (value < 0) weaknesses.push(element);
+      else if (value > 0) resistances.push(element);
+    }
+    return { weaknesses, resistances };
   }
 
   /**
@@ -2158,12 +2233,23 @@ export class EngineGameBridge implements GameBridge {
           return {
             ...shared,
             isParty: true,
+            knownWeaknesses: [],
+            knownResistances: [],
             spriteKey: member ? spriteKeyForJob(member.jobId) : "sprite.player",
             tint: member ? ANCESTRY_TINTS[member.raceId] ?? 0xffffff : 0xffffff
           };
         }
-        const { spriteKey, tint } = spriteForEnemyId(enemyContentId(actor.id));
-        return { ...shared, isParty: false, spriteKey, tint };
+        const contentId = enemyContentId(actor.id);
+        const { spriteKey, tint } = spriteForEnemyId(contentId);
+        const known = this.knownElementsFor(contentId);
+        return {
+          ...shared,
+          isParty: false,
+          knownWeaknesses: known.weaknesses,
+          knownResistances: known.resistances,
+          spriteKey,
+          tint
+        };
       }),
       activeActorId: active.phase === "choosing" ? acting?.id : undefined,
       activeSkills: acting

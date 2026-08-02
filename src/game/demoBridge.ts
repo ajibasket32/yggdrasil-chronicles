@@ -162,6 +162,8 @@ export class DemoGameBridge implements GameBridge {
       statuses: [],
       alive: true,
       targetable: true,
+      knownWeaknesses: [],
+      knownResistances: [],
       isParty: false
     }));
     const actors = [
@@ -175,6 +177,8 @@ export class DemoGameBridge implements GameBridge {
         statuses: [],
         alive: member.hp > 0,
         targetable: member.hp > 0,
+        knownWeaknesses: [],
+        knownResistances: [],
         isParty: true
       })),
       ...enemies
