@@ -494,21 +494,25 @@ export const items: ItemDefinition[] = [
   { id: "item.calm-ember", name: "Calm Ember", kind: "key", description: "Glows without consuming its vessel.", value: 20 },
   { id: "item.ash-spice", name: "Ash Spice", kind: "consumable", description: "Smoky caravan seasoning with restorative warmth.", value: 22 },
   { id: "item.delver-token", name: "Delver Token", kind: "key", description: "A copper disk scratched with a safe-route oath.", value: 0 },
-  { id: "item.dream-resin", name: "Dream Resin", kind: "accessory", description: "A cloudy bead that hums during sleep.", value: 180 },
+  { id: "item.dream-resin", name: "Dream Resin", kind: "accessory", description: "A cloudy bead that hums during sleep.", value: 180, modifiers: { maxMp: 8, wisdom: 2 }, allowedBands: ["caster"] },
   { id: "item.yarrow-seal", name: "Yarrow's Seal", kind: "key", description: "Proof that a forgotten kiln-worker once lived.", value: 0 },
   { id: "item.cold-ember", name: "Cold Ember", kind: "consumable", description: "A blue coal that tastes faintly of mint.", value: 75 },
-  { id: "item.wayfarer-blade", name: "Wayfarer Blade", kind: "weapon", description: "A balanced road sword made for uncertain fights.", value: 120 },
-  { id: "item.resin-vest", name: "Resin Vest", kind: "armor", description: "Layered cloth hardened with flexible resin.", value: 110 },
+  { id: "item.wayfarer-blade", name: "Wayfarer Blade", kind: "weapon", description: "A balanced road sword made for uncertain fights.", value: 120, modifiers: { strength: 3, dexterity: 2 }, allowedBands: ["martial"] },
+  { id: "item.resin-vest", name: "Resin Vest", kind: "armor", description: "Layered cloth hardened with flexible resin.", value: 110, modifiers: { maxHp: 14, vitality: 3 } },
   // Regional gear progression: named bosses drop the next equipment tier, so
   // the starting weapon/armor/accessory are not the only gear across a full
   // campaign. Mire Antler (Verdant Reach) drops tier 2; Kiln Heart (Cinder
   // March) drops tier 2/3; Varn (Pale Canopy, final boss) drops tier 3.
-  { id: "item.hearthsteel-blade", name: "Hearthsteel Blade", kind: "weapon", description: "A Cinder March forge-blade tempered against root-frost.", value: 240 },
-  { id: "item.kilnforge-plate", name: "Kilnforge Plate", kind: "armor", description: "Basalt-fired plate that shrugs off blunt harm.", value: 220 },
-  { id: "item.emberglass-charm", name: "Emberglass Charm", kind: "accessory", description: "A kiln-glass bead that keeps a coal-warm focus.", value: 260 },
-  { id: "item.rootbound-edge", name: "Rootbound Edge", kind: "weapon", description: "A pale-canopy blade grown rather than forged.", value: 420 },
-  { id: "item.canopy-ward", name: "Canopy Ward", kind: "armor", description: "White-bough lamellar that turns aside starlit harm.", value: 400 },
-  { id: "item.starlit-signet", name: "Starlit Signet", kind: "accessory", description: "A ring cut from a star absent from every chart.", value: 460 }
+  //
+  // Stat modifiers live here rather than in the integration layer, so a
+  // designer rebalancing gear edits one record instead of changing the price
+  // in content and silently nothing else.
+  { id: "item.hearthsteel-blade", name: "Hearthsteel Blade", kind: "weapon", description: "A Cinder March forge-blade tempered against root-frost.", value: 240, requiredLevel: 7, modifiers: { strength: 6, dexterity: 3 }, allowedBands: ["martial"] },
+  { id: "item.kilnforge-plate", name: "Kilnforge Plate", kind: "armor", description: "Basalt-fired plate that shrugs off blunt harm.", value: 220, requiredLevel: 7, modifiers: { maxHp: 28, vitality: 5, agility: -1 } },
+  { id: "item.emberglass-charm", name: "Emberglass Charm", kind: "accessory", description: "A kiln-glass bead that keeps a coal-warm focus.", value: 260, requiredLevel: 7, modifiers: { maxMp: 14, intellect: 3 }, allowedBands: ["caster"] },
+  { id: "item.rootbound-edge", name: "Rootbound Edge", kind: "weapon", description: "A pale-canopy blade grown rather than forged.", value: 420, requiredLevel: 14, modifiers: { strength: 10, dexterity: 5, agility: 2 }, allowedBands: ["martial"] },
+  { id: "item.canopy-ward", name: "Canopy Ward", kind: "armor", description: "White-bough lamellar that turns aside starlit harm.", value: 400, requiredLevel: 14, modifiers: { maxHp: 44, vitality: 7, wisdom: 2 } },
+  { id: "item.starlit-signet", name: "Starlit Signet", kind: "accessory", description: "A ring cut from a star absent from every chart.", value: 460, requiredLevel: 14, modifiers: { maxMp: 22, intellect: 4, wisdom: 4 }, allowedBands: ["caster"] }
 ];
 
 export const coreCampaign: ContentPack = {

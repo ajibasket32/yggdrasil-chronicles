@@ -63,6 +63,7 @@ import type {
 import { SaveRepository, type SaveSlot } from "../save";
 import type {
   Combatant,
+  EquipmentBand,
   GameState,
   NarrativeContext,
   PlayerCharacter,
@@ -232,89 +233,45 @@ function reviseStatsForJobChange(character: PlayerCharacter, nextJobId: string):
   };
 }
 
-const EQUIPMENT = createEquipmentCatalog([
-  {
-    id: "item.wayfarer-blade",
-    name: "Wayfarer Blade",
-    kind: "weapon",
-    description: "A balanced road sword made for uncertain fights.",
-    value: 120,
-    statModifiers: { strength: 3, dexterity: 2 }
-  },
-  {
-    id: "item.resin-vest",
-    name: "Resin Vest",
-    kind: "armor",
-    description: "Layered cloth hardened with flexible resin.",
-    value: 110,
-    statModifiers: { maxHp: 14, vitality: 3 }
-  },
-  {
-    id: "item.dream-resin",
-    name: "Dream Resin",
-    kind: "accessory",
-    description: "A cloudy bead that hums during sleep.",
-    value: 180,
-    statModifiers: { maxMp: 8, wisdom: 2 }
-  },
-  // Regional gear progression, dropped by named bosses (see encounterFinds).
-  // Minimum levels match each dropping region's recommendedLevel floor so
-  // a lucky early drop cannot be worn before its region is reached.
-  {
-    id: "item.hearthsteel-blade",
-    name: "Hearthsteel Blade",
-    kind: "weapon",
-    description: "A Cinder March forge-blade tempered against root-frost.",
-    value: 240,
-    minimumLevel: 7,
-    statModifiers: { strength: 6, dexterity: 3 }
-  },
-  {
-    id: "item.kilnforge-plate",
-    name: "Kilnforge Plate",
-    kind: "armor",
-    description: "Basalt-fired plate that shrugs off blunt harm.",
-    value: 220,
-    minimumLevel: 7,
-    statModifiers: { maxHp: 28, vitality: 5, agility: -1 }
-  },
-  {
-    id: "item.emberglass-charm",
-    name: "Emberglass Charm",
-    kind: "accessory",
-    description: "A kiln-glass bead that keeps a coal-warm focus.",
-    value: 260,
-    minimumLevel: 7,
-    statModifiers: { maxMp: 14, intellect: 3 }
-  },
-  {
-    id: "item.rootbound-edge",
-    name: "Rootbound Edge",
-    kind: "weapon",
-    description: "A pale-canopy blade grown rather than forged.",
-    value: 420,
-    minimumLevel: 14,
-    statModifiers: { strength: 10, dexterity: 5, agility: 2 }
-  },
-  {
-    id: "item.canopy-ward",
-    name: "Canopy Ward",
-    kind: "armor",
-    description: "White-bough lamellar that turns aside starlit harm.",
-    value: 400,
-    minimumLevel: 14,
-    statModifiers: { maxHp: 44, vitality: 7, wisdom: 2 }
-  },
-  {
-    id: "item.starlit-signet",
-    name: "Starlit Signet",
-    kind: "accessory",
-    description: "A ring cut from a star absent from every chart.",
-    value: 460,
-    minimumLevel: 14,
-    statModifiers: { maxMp: 22, intellect: 4, wisdom: 4 }
-  }
-]);
+/**
+ * Two bands only. Per-job restriction on a catalog this size would make half
+ * of it unwearable by any given character; martial/caster expresses the
+ * identity difference the gear is actually authored around. Branch ids resolve
+ * to their base job, so this never needs to enumerate the twelve branches.
+ */
+const BAND_BASE_JOB_IDS: Readonly<Record<EquipmentBand, readonly string[]>> = {
+  martial: ["vanguard", "ranger"],
+  caster: ["mender", "shaper", "trickster", "warden"]
+};
+
+function jobIdsForBands(bands: readonly EquipmentBand[]): string[] {
+  const baseIds = new Set(bands.flatMap((band) => BAND_BASE_JOB_IDS[band]));
+  // Branch ids must be listed explicitly: the engine compares against the
+  // character's current jobId, which is the branch once one is chosen.
+  return [
+    ...baseIds,
+    ...advancedJobs.filter((job) => baseIds.has(job.baseJobId)).map((job) => job.id)
+  ];
+}
+
+/**
+ * Built from the authored item catalog rather than re-declared here. The
+ * previous shape duplicated nine items: name, description and price lived in
+ * content while stats lived in this file, so rebalancing gear in content
+ * changed its price and silently nothing else.
+ */
+const EQUIPMENT = createEquipmentCatalog(
+  items.flatMap((item) => {
+    if (item.kind !== "weapon" && item.kind !== "armor" && item.kind !== "accessory") return [];
+    return [{
+      ...item,
+      kind: item.kind,
+      statModifiers: item.modifiers ?? {},
+      minimumLevel: item.requiredLevel,
+      allowedJobIds: item.allowedBands === undefined ? undefined : jobIdsForBands(item.allowedBands)
+    }];
+  })
+);
 
 const ANCESTRY_STATS: Readonly<Record<string, Partial<Stats>>> = {
   hearthborn: { maxHp: 4, charisma: 2 },
