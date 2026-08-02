@@ -536,6 +536,10 @@ export const encounterFinds: Readonly<Record<string, readonly ContentFind[]>> = 
 
 export const items: ItemDefinition[] = [
   { id: "item.vesleaf", name: "Vesleaf", kind: "consumable", description: "A bitter medicinal leaf that closes small wounds.", value: 18 },
+  // Consumed to camp outside a settlement. Deliberately cheap and stocked
+  // everywhere: it is the floor that stops a party stranding itself deep in a
+  // dungeon with no focus and no coin.
+  { id: "item.trail-rations", name: "Trail Rations", kind: "consumable", description: "Hard bread, smoked root, and enough tea for one night's camp.", value: 24 },
   { id: "item.root-tonic", name: "Root Tonic", kind: "consumable", description: "Restores a modest amount of vitality.", value: 45 },
   { id: "item.aether-drop", name: "Aether Drop", kind: "consumable", description: "Restores focus used by practiced forms.", value: 60 },
   { id: "item.lantern-wick", name: "Resin Lantern Wick", kind: "key", description: "A rainproof wick used along the old road.", value: 8 },
@@ -743,21 +747,21 @@ export const vendorProfiles: readonly VendorProfile[] = [
     id: "vendor.joryn-hale",
     npcId: "npc.joryn-hale",
     shopName: "Joryn's Rainy Hearth",
-    catalogItemIds: ["item.vesleaf", "item.root-tonic", "item.aether-drop", "item.wayfarer-blade", "item.resin-vest"],
+    catalogItemIds: ["item.vesleaf", "item.root-tonic", "item.trail-rations", "item.aether-drop", "item.wayfarer-blade", "item.resin-vest"],
     sellRate: 0.4
   },
   {
     id: "vendor.hett-copper",
     npcId: "npc.hett-copper",
     shopName: "Hett's Resin-Glass Forge",
-    catalogItemIds: ["item.root-tonic", "item.cold-ember", "item.hearthsteel-blade", "item.kilnforge-plate", "item.emberglass-charm"],
+    catalogItemIds: ["item.root-tonic", "item.trail-rations", "item.cold-ember", "item.hearthsteel-blade", "item.kilnforge-plate", "item.emberglass-charm"],
     sellRate: 0.4
   },
   {
     id: "vendor.thyme-vale",
     npcId: "npc.thyme-vale",
     shopName: "Thyme's Frost Apothecary",
-    catalogItemIds: ["item.frost-resin", "item.cold-ember", "item.aether-drop", "item.ash-spice"],
+    catalogItemIds: ["item.frost-resin", "item.trail-rations", "item.cold-ember", "item.aether-drop", "item.ash-spice"],
     sellRate: 0.4
   }
 ];

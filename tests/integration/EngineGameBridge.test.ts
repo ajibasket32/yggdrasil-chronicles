@@ -394,6 +394,8 @@ describe("EngineGameBridge campaign persistence", () => {
     await startChronicle(bridge);
     const initial = await saves.load("autosave");
     if (!initial) throw new Error("Expected an initial autosave");
+    // Lodging is paid, so the fixture must be able to afford it. The chronicle
+    // opens in Hearthcross, which is a settlement.
     await saves.save("autosave", {
       ...initial,
       party: initial.party.map((member) => ({
@@ -401,18 +403,63 @@ describe("EngineGameBridge campaign persistence", () => {
         hp: 1,
         mp: 0,
         statuses: [{ id: "poison", remainingTurns: 2, potency: 3 }]
-      }))
+      })),
+      world: { ...initial.world, flags: { ...initial.world.flags, currency: 200 } }
     });
     await bridge.continueGame();
 
-    await bridge.rest();
+    const result = await bridge.rest();
+    expect(result.success, result.message).toBe(true);
 
     const rested = await saves.load("autosave");
     expect(rested?.world.worldMinutes).toBe(initial.world.worldMinutes + 480);
     expect(rested?.party.every((member) =>
       member.hp === member.stats.maxHp && member.mp === member.stats.maxMp && member.statuses.length === 0
     )).toBe(true);
-    expect(rested?.world.chronicle.at(-1)?.title).toBe("A Quiet Rest");
+    expect(rested?.world.chronicle.at(-1)?.title).toBe("A Room for the Night");
+    // Paid for, not free: that is what gives consumables and marks a purpose.
+    expect(Number(rested?.world.flags.currency ?? 0)).toBeLessThan(200);
+  });
+
+  it("refuses lodging the party cannot afford, and camps on a supply instead", async () => {
+    const { bridge, saves } = createBridge();
+    await startChronicle(bridge);
+    const initial = await saves.load("autosave");
+    if (!initial) throw new Error("Expected an initial autosave");
+
+    await saves.save("autosave", {
+      ...initial,
+      party: initial.party.map((member) => ({ ...member, hp: 1, mp: 0 })),
+      world: { ...initial.world, flags: { ...initial.world.flags, currency: 0 } }
+    });
+    await bridge.continueGame();
+
+    const before = bridge.getSnapshot().party[0]?.hp ?? 0;
+    const broke = await bridge.rest();
+    expect(broke.success).toBe(false);
+    expect(broke.message).toMatch(/marks/i);
+    // Refused, so nothing was restored. Compared against the loaded value
+    // rather than the fixture's, since loading pays out completed quests.
+    expect(bridge.getSnapshot().party[0]?.hp).toBe(before);
+
+    // In the field, a camp supply stands in for coin — the floor that stops a
+    // party stranding itself with no focus and no money.
+    await bridge.travel("location.mossroad");
+    const camped = await saves.load("autosave");
+    if (!camped) throw new Error("Expected an autosave");
+    await saves.save("autosave", {
+      ...camped,
+      party: camped.party.map((member) => ({ ...member, hp: 1, mp: 0 })),
+      inventory: [...camped.inventory, { itemId: "item.trail-rations", quantity: 1 }]
+    });
+    await bridge.continueGame();
+
+    const woundedHp = bridge.getSnapshot().party[0]?.hp ?? 0;
+    const camp = await bridge.rest();
+    expect(camp.success, camp.message).toBe(true);
+    expect(bridge.getSnapshot().party[0]?.hp).toBeGreaterThan(woundedHp);
+    // Spent, not free.
+    expect(bridge.getSnapshot().inventory.some(({ itemId }) => itemId === "item.trail-rations")).toBe(false);
   });
 
   it("claims location discoveries once and refuses a defeated boss encounter", async () => {
@@ -762,7 +809,17 @@ describe("EngineGameBridge runtime party management", () => {
     expect(afterUses?.inventory.some(({ itemId }) => itemId === "item.frost-resin")).toBe(false);
     expect(afterUses?.inventory.some(({ itemId }) => itemId === "item.cold-ember")).toBe(false);
 
-    await bridge.rest();
+    // Lodging is paid now, so fund it before relying on a full restore.
+    const beforeRest = await saves.load("autosave");
+    if (!beforeRest) throw new Error("Expected an autosave");
+    await saves.save("autosave", {
+      ...beforeRest,
+      world: { ...beforeRest.world, flags: { ...beforeRest.world.flags, currency: 500 } }
+    });
+    await bridge.continueGame();
+    const restResult = await bridge.rest();
+    expect(restResult.success, restResult.message).toBe(true);
+
     const fullItemCount = bridge.getSnapshot().inventory.find(({ itemId }) => itemId === "item.root-tonic")?.quantity;
     const noEffect = await bridge.useInventoryItem("item.root-tonic", protagonist.id);
     expect(noEffect.success).toBe(false);

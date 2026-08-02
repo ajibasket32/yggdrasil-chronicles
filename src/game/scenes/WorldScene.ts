@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { codexSections, locations, npcs } from "../../content";
+import { codexSections, locations, npcs, vendorProfiles } from "../../content";
 import { gameSettingsStore } from "../../settings";
 import type {
   GameBridge,
@@ -376,12 +376,16 @@ export class WorldScene extends Phaser.Scene {
       if (!point) return;
       const sprite = this.add.image(point.x * TILE + 16, point.y * TILE + 16, "sprite.npc").setDepth(8);
       const isObjective = guidance?.local && guidance.targetEntityId === npc.id;
-      sprite.setTint(isObjective ? 0xffdf78 : index % 2 === 0 ? 0xffffff : 0xe8d4a8);
+      const isVendor = vendorProfiles.some((vendor) => vendor.npcId === npc.id);
+      // Vendors were indistinguishable from villagers, so a player had to talk
+      // to everyone to discover a shop existed. A tint plus a mark is enough,
+      // and it never overrides the objective marker.
+      sprite.setTint(isObjective ? 0xffdf78 : isVendor ? 0x9fd3c7 : index % 2 === 0 ? 0xffffff : 0xe8d4a8);
       this.npcSprites.push({ id: npc.id, point, sprite });
-      if (isObjective) {
-        this.add.text(point.x * TILE + 16, point.y * TILE - 31, "◆", {
+      if (isObjective || isVendor) {
+        this.add.text(point.x * TILE + 16, point.y * TILE - 31, isObjective ? "◆" : "⌂", {
           ...TEXT.small,
-          color: COLORS.gold
+          color: isObjective ? COLORS.gold : "#9fd3c7"
         }).setOrigin(0.5).setDepth(10);
       }
       this.add.text(point.x * TILE + 16, point.y * TILE - 15, npc.name.split(" ")[0] ?? npc.name, {
@@ -419,7 +423,9 @@ export class WorldScene extends Phaser.Scene {
     const panel = this.add.rectangle(HUD_X, 0, 960 - HUD_X, 540, COLORS.panel).setOrigin(0);
     const children: Phaser.GameObjects.GameObject[] = [panel];
     children.push(this.add.text(HUD_X + 18, 20, snapshot.locationName.toUpperCase(), { ...TEXT.heading, fontSize: "17px", wordWrap: { width: 188 } }));
-    children.push(this.add.text(HUD_X + 18, 66, this.formatTime(snapshot.worldMinutes), TEXT.small));
+    // Marks belong on the HUD, not only inside a shop: a player deciding
+    // whether to walk to a vendor needs to know what they can afford first.
+    children.push(this.add.text(HUD_X + 18, 66, `${this.formatTime(snapshot.worldMinutes)}    ${snapshot.currency} marks`, TEXT.small));
     children.push(this.add.rectangle(HUD_X + 18, 90, 188, 1, COLORS.panelLight).setOrigin(0));
     children.push(this.add.text(HUD_X + 18, 105, "PARTY", { ...TEXT.small, color: COLORS.gold }));
     snapshot.party.slice(0, 4).forEach((member, index) => {
@@ -872,7 +878,7 @@ export class WorldScene extends Phaser.Scene {
       `Reduced Motion: ${gameSettingsStore.get().reducedMotion ? "ON" : "OFF"}`,
       `Sound: ${gameSettingsStore.get().soundEnabled ? "ON" : "OFF"}`,
       `Sound Volume: ${Math.round(gameSettingsStore.get().soundVolume * 100)}%`,
-      "Rest for eight hours",
+      "Rest — lodging or camp",
       // Reachable here as well as by key, so a gamepad player can read the
       // codex without a keyboard.
       "Help & Codex",
@@ -1256,9 +1262,11 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     if (this.systemIndex === 9) {
-      await this.bridge.rest();
-      this.closeOverlay();
-      this.showToast("The party rests. HP and MP restored.");
+      // Report what actually happened: resting can now be refused for want of
+      // coin or camp supplies, and the two forms restore different things.
+      const result = await this.bridge.rest();
+      if (result.success) this.closeOverlay();
+      this.showToast(result.message);
       return;
     }
     if (this.systemIndex === 10) {

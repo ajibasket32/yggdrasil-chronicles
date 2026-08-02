@@ -315,7 +315,8 @@ export interface GameBridge {
    */
   chooseBattleAction(action: BattleAction, skillOrItemId?: string, targetId?: string): void | Promise<void>;
   leaveBattle(): void | Promise<void>;
-  rest(): void | Promise<void>;
+  /** Resting has a cost: paid lodging in a settlement, or a camp supply in the field. */
+  rest(): GameCommandResult | Promise<GameCommandResult>;
   save(slot: GameSaveSlot): void | Promise<void>;
   useInventoryItem(itemId: string, memberId: string): GameCommandResult | Promise<GameCommandResult>;
   setEquipment(

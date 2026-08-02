@@ -85,6 +85,10 @@ import type {
 const STARTING_LOCATION = "location.hearthcross";
 /** Matches the save schema's `party` max; anyone beyond this waits in reserve. */
 const ACTIVE_PARTY_LIMIT = 4;
+/** Lodging in a settlement. Small enough to stay affordable, large enough to be a decision. */
+const REST_PRICE = 30;
+/** Consumed to camp outside a settlement; the anti-softlock floor for a stranded party. */
+const CAMP_SUPPLY_ITEM = "item.trail-rations";
 const CORE_PACK_VERSION = "0.1.0";
 const FIRST_QUEST = "quest.first-silence";
 const CONCORD_QUEST = "quest.a-new-concord";
@@ -520,9 +524,19 @@ function playerFromDraft(draft: CharacterCreationDraft): PlayerCharacter {
   });
 }
 
-function recruitCharacter(profile: RecruitProfile): PlayerCharacter {
+/**
+ * `joinLevel` brings a companion in at the party's own standing rather than at
+ * level 1. A recruit who joined a level-9 party arrived nine levels behind,
+ * could not survive the content they were recruited into, and diluted the
+ * party's experience share — so recruiting was a penalty.
+ *
+ * Levels are granted through `grantExperience` so stats grow with them:
+ * writing `level` directly leaves level-1 numbers behind, because `growStats`
+ * only runs on levels actually gained.
+ */
+function recruitCharacter(profile: RecruitProfile, joinLevel = 1): PlayerCharacter {
   const npc = npcs.find(({ id }) => id === profile.npcId);
-  return createPartyCharacter({
+  const base = createPartyCharacter({
     id: profile.id.replace("recruit.", "party."),
     name: npc?.name.split(" ")[0] ?? profile.id,
     ancestryId: profile.ancestryId,
@@ -530,6 +544,12 @@ function recruitCharacter(profile: RecruitProfile): PlayerCharacter {
     skills: profile.startingSkills,
     startingItems: profile.startingItems
   });
+  if (joinLevel <= 1) return base;
+
+  const grown = grantExperience(base, totalExperienceForLevel(joinLevel)).character;
+  const taught = levelUpSkillsFor(baseJobIdFor(grown.jobId), grown.level)
+    .filter((skillId) => SKILLS[skillId] && !grown.skills.includes(skillId));
+  return taught.length > 0 ? { ...grown, skills: [...grown.skills, ...taught] } : grown;
 }
 
 /** Boss-exclusive forms matching each boss's own authored phase theme (see bossPhases in campaign.ts). */
@@ -1131,7 +1151,11 @@ export class EngineGameBridge implements GameBridge {
       const partyId = profile.id.replace("recruit.", "party.");
       const alreadyKnown = [...this.#state.party, ...this.#state.reserve].some(({ id }) => id === partyId);
       if (completed && !alreadyKnown) {
-        const recruited = recruitCharacter(profile);
+        // Join at the party's own standing, so a companion recruited late is
+        // immediately useful rather than nine levels behind.
+        const roster = [...this.#state.party, ...this.#state.reserve];
+        const joinLevel = roster.length > 0 ? Math.max(...roster.map(({ level }) => level)) : 1;
+        const recruited = recruitCharacter(profile, joinLevel);
         // A full active party sends the newcomer to the reserve rather than
         // turning them away. `reserve` was threaded through the types, the
         // engine and the save schema and never written to, so a fifth
@@ -1637,31 +1661,67 @@ export class EngineGameBridge implements GameBridge {
     await this.persist("autosave");
   }
 
-  async rest(): Promise<void> {
+  /**
+   * Resting is no longer a free, unlimited full heal. A paid stay in a
+   * settlement restores everything including statuses; camping in the field
+   * spends a camp supply and restores vitality and focus but not conditions,
+   * which is precisely what makes Ash Spice worth carrying.
+   *
+   * The field option is also the anti-softlock floor: town-only rest risks a
+   * party stranded deep in a dungeon with no MP and no coin.
+   */
+  async rest(): Promise<GameCommandResult> {
     const state = this.requireState();
-    if (this.#battle) return;
+    if (this.#battle) return commandFailure("The party cannot rest during a battle.");
+
+    const inSettlement = locations.find(({ id }) => id === state.world.currentLocationId)?.kind === "town";
+    const currency = Number(state.world.flags.currency ?? 0);
+    const price = REST_PRICE;
+    const hasSupply = inventoryQuantity(state.inventory, CAMP_SUPPLY_ITEM) > 0;
+
+    if (inSettlement && currency < price) {
+      return commandFailure(`Lodging costs ${price} marks; the party carries ${currency}.`);
+    }
+    if (!inSettlement && !hasSupply) {
+      const supplyName = items.find(({ id }) => id === CAMP_SUPPLY_ITEM)?.name ?? "camp supplies";
+      return commandFailure(`Camping on the road needs ${supplyName}.`);
+    }
+
+    const clearsStatuses = inSettlement;
     this.#state = {
       ...state,
       party: state.party.map((member) => ({
         ...member,
         hp: member.stats.maxHp,
         mp: member.stats.maxMp,
-        statuses: []
+        statuses: clearsStatuses ? [] : member.statuses
       })),
+      inventory: inSettlement ? state.inventory : removeItem(state.inventory, CAMP_SUPPLY_ITEM),
       world: {
         ...state.world,
+        flags: inSettlement
+          ? { ...state.world.flags, currency: currency - price }
+          : state.world.flags,
         worldMinutes: state.world.worldMinutes + 480,
         chronicle: [...state.world.chronicle, {
           id: crypto.randomUUID(),
           worldMinute: state.world.worldMinutes + 480,
-          title: "A Quiet Rest",
-          body: "The party made camp, tended its wounds, and listened to the rootways.",
+          title: inSettlement ? "A Room for the Night" : "A Quiet Camp",
+          body: inSettlement
+            ? "The party took a room, ate at a table, and woke without aches."
+            : "The party made camp, tended its wounds, and listened to the rootways.",
           tags: ["rest", state.world.currentLocationId]
         }]
       }
     };
     await this.persist("autosave");
     this.enqueueNarrativeCheckpoint("world_event", "The party rested and gave the world time to answer.");
+    return {
+      success: true,
+      message: inSettlement
+        ? `The party rests for ${price} marks. Vitality, focus and conditions restored.`
+        : "The party camps. Vitality and focus restored; lingering conditions remain."
+    };
   }
 
   async save(slot: SaveSlot): Promise<void> {
