@@ -254,6 +254,8 @@ export interface GameSnapshot {
       fear: number;
     }>;
   };
+  /** Companions who have joined but are waiting outside the active party. */
+  reserve?: PartyMemberView[];
   saveSlots?: GameSaveSlot[];
   /** Per-slot detail the repository already computes, so the load menu can show more than AVAILABLE/EMPTY. */
   saveSummaries?: SaveSlotSummaryView[];
@@ -314,6 +316,11 @@ export interface GameBridge {
     itemId?: string
   ): GameCommandResult | Promise<GameCommandResult>;
   selectJob(memberId: string, jobId: string): GameCommandResult | Promise<GameCommandResult>;
+  /**
+   * Swaps a reserve character into the active party. Passing only a reserve id
+   * fills an empty slot; passing both benches the active member.
+   */
+  swapPartyMember(reserveMemberId: string, activeMemberId?: string): GameCommandResult | Promise<GameCommandResult>;
   buyItem(itemId: string): GameCommandResult | Promise<GameCommandResult>;
   sellItem(itemId: string): GameCommandResult | Promise<GameCommandResult>;
   leaveShop(): void | Promise<void>;

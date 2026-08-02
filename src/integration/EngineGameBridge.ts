@@ -77,6 +77,8 @@ import type {
 } from "../shared/types";
 
 const STARTING_LOCATION = "location.hearthcross";
+/** Matches the save schema's `party` max; anyone beyond this waits in reserve. */
+const ACTIVE_PARTY_LIMIT = 4;
 const CORE_PACK_VERSION = "0.1.0";
 const FIRST_QUEST = "quest.first-silence";
 const CONCORD_QUEST = "quest.a-new-concord";
@@ -787,6 +789,7 @@ export class EngineGameBridge implements GameBridge {
       currency: Number(this.#state.world.flags.currency ?? 0),
       difficulty: difficultyOf(this.#state),
       party: party.map((member, index) => this.toPartyView(member, index)),
+      reserve: this.#state.reserve.map((member, index) => this.toPartyView(member, party.length + index)),
       inventory: this.#state.inventory.flatMap((stack) => {
         const definition = items.find(({ id }) => id === stack.itemId);
         const equippedBy = party
@@ -1026,17 +1029,25 @@ export class EngineGameBridge implements GameBridge {
     this.applyCompletedQuestRewards();
     let recruitedMember: PartyMemberView | undefined;
     const profile = recruitProfiles.find((candidate) => candidate.npcId === npcId);
-    if (profile && this.#state.party.length < 4) {
+    if (profile) {
       const completed = this.#state.quests.some(
         ({ questId, state: questState }) => questId === profile.recruitmentQuestId && questState === "completed"
       );
       const partyId = profile.id.replace("recruit.", "party.");
-      if (completed && !this.#state.party.some(({ id }) => id === partyId)) {
+      const alreadyKnown = [...this.#state.party, ...this.#state.reserve].some(({ id }) => id === partyId);
+      if (completed && !alreadyKnown) {
         const recruited = recruitCharacter(profile);
-        const party = [...this.#state.party, recruited];
+        // A full active party sends the newcomer to the reserve rather than
+        // turning them away. `reserve` was threaded through the types, the
+        // engine and the save schema and never written to, so a fifth
+        // companion was simply discarded.
+        const joinsActiveParty = this.#state.party.length < ACTIVE_PARTY_LIMIT;
+        const party = joinsActiveParty ? [...this.#state.party, recruited] : this.#state.party;
+        const reserve = joinsActiveParty ? this.#state.reserve : [...this.#state.reserve, recruited];
         this.#state = {
           ...this.#state,
           party,
+          reserve,
           inventory: profile.startingItems.reduce(
             (inventory, itemId) => isEquipmentItem(itemId)
               ? inventory
@@ -1044,7 +1055,7 @@ export class EngineGameBridge implements GameBridge {
             this.#state.inventory
           )
         };
-        recruitedMember = this.toPartyView(recruited, party.length - 1);
+        recruitedMember = this.toPartyView(recruited, Math.max(0, party.length - 1));
       }
     }
     const vendor = vendorProfiles.find((candidate) => candidate.npcId === npcId);
@@ -1409,6 +1420,49 @@ export class EngineGameBridge implements GameBridge {
       ? living.find(({ id }) => id === active.lastTargetId)
       : undefined;
     return remembered?.id ?? defaultEnemyId;
+  }
+
+  /**
+   * Moves a reserve companion into the active party. Refused mid-battle, since
+   * the combat state is built from the party roster at encounter start.
+   */
+  async swapPartyMember(reserveMemberId: string, activeMemberId?: string): Promise<GameCommandResult> {
+    const state = this.requireState();
+    if (this.#battle) {
+      return { success: false, message: "The party cannot be reordered during a battle." };
+    }
+    const incoming = state.reserve.find(({ id }) => id === reserveMemberId);
+    if (!incoming) {
+      return { success: false, message: "That companion is not waiting in reserve." };
+    }
+    if (state.party.length >= ACTIVE_PARTY_LIMIT && !activeMemberId) {
+      return { success: false, message: "The active party is full. Choose who steps aside." };
+    }
+    const outgoing = activeMemberId
+      ? state.party.find(({ id }) => id === activeMemberId)
+      : undefined;
+    if (activeMemberId && !outgoing) {
+      return { success: false, message: "That companion is not in the active party." };
+    }
+    if (outgoing && state.party.length <= 1) {
+      return { success: false, message: "Someone must remain in the active party." };
+    }
+
+    const party = outgoing
+      ? state.party.map((member) => member.id === outgoing.id ? incoming : member)
+      : [...state.party, incoming];
+    const reserve = outgoing
+      ? state.reserve.map((member) => member.id === incoming.id ? outgoing : member)
+      : state.reserve.filter(({ id }) => id !== incoming.id);
+
+    this.#state = { ...state, party, reserve };
+    await this.persist("autosave");
+    return {
+      success: true,
+      message: outgoing
+        ? `${incoming.name} takes ${outgoing.name}'s place.`
+        : `${incoming.name} joins the active party.`
+    };
   }
 
   async leaveBattle(): Promise<void> {

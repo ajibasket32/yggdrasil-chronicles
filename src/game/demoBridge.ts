@@ -297,6 +297,10 @@ export class DemoGameBridge implements GameBridge {
     return { success: false, message: "Job actions are unavailable in the demo bridge." };
   }
 
+  swapPartyMember(_reserveMemberId: string, _activeMemberId?: string): GameCommandResult {
+    return { success: false, message: "The demo road travels with a fixed company." };
+  }
+
   buyItem(_itemId: string): GameCommandResult {
     return { success: false, message: "Shops are unavailable in the demo bridge." };
   }
