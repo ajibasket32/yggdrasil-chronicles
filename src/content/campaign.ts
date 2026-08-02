@@ -204,6 +204,13 @@ const step = (
   count = 1
 ): QuestDefinition["steps"][number] => ({ kind, targetId, count });
 
+/** A `deliver` step names both the item carried and the NPC it is handed to. */
+const deliver = (
+  itemId: string,
+  recipientId: string,
+  count = 1
+): QuestDefinition["steps"][number] => ({ kind: "deliver", targetId: itemId, count, recipientId });
+
 type QuestSeed = {
   id: string;
   title: string;
@@ -346,15 +353,17 @@ const mainQuestSeeds: QuestSeed[] = [
 ];
 
 const regionalQuestSeeds: QuestSeed[] = [
-  { id: "medicine-in-the-mud", title: "Medicine in the Mud", summary: "Recover vesleaf for Hearthcross's clinic.", steps: [step("collect", "item.vesleaf", 5), step("talk", "npc.veska-reed")] },
+  { id: "medicine-in-the-mud", title: "Medicine in the Mud", summary: "Recover vesleaf for Hearthcross's clinic.", steps: [step("collect", "item.vesleaf", 5), deliver("item.vesleaf", "npc.veska-reed", 5)] },
   { id: "storytellers-toll", title: "The Storyteller's Toll", summary: "Find the ending Pella lost on the flooded road.", steps: [step("travel", "location.mossroad"), step("talk", "npc.pella-wren")] },
-  { id: "ferriers-lantern", title: "Ferrier's Lantern", summary: "Relight Fen's route markers before nightfall.", steps: [step("collect", "item.lantern-wick", 3), step("talk", "npc.fen-til")] },
+  { id: "ferriers-lantern", title: "Ferrier's Lantern", summary: "Relight Fen's route markers before nightfall.", steps: [step("collect", "item.lantern-wick", 3), deliver("item.lantern-wick", "npc.fen-til", 3)] },
   { id: "salvagers-debt", title: "A Salvager's Debt", summary: "Choose whether a recovered memory belongs to its family or finder.", steps: [step("talk", "npc.ilas-morn"), step("talk", "npc.senna-brook")], rewardTier: "standard" },
   { id: "tovins-company", title: "Tovin's Company", summary: "Help Tovin face the route where their company vanished.", prerequisites: ["quest.marks-in-rain"], steps: [step("defeat", "enemy.briar-wolf", 3), step("talk", "npc.tovin-ash")], rewardTier: "major" },
   { id: "glass-and-bread", title: "Glass and Bread", summary: "Settle a refinery ration dispute before it becomes a riot.", steps: [step("talk", "npc.hett-copper"), step("talk", "npc.brannic-quill")] },
-  { id: "keepers-coals", title: "The Keeper's Coals", summary: "Gather calm embers for Nema's spirit braziers.", steps: [step("collect", "item.calm-ember", 4), step("talk", "npc.nema-slate")] },
-  { id: "cookfire-compact", title: "Cookfire Compact", summary: "Trade trail spices among three wary caravans.", steps: [step("collect", "item.ash-spice", 3), step("talk", "npc.cask-ember")] },
-  { id: "adras-line", title: "Adra's Line", summary: "Protect striking workers from an ash-spirit surge.", prerequisites: ["quest.foundry-accord"], steps: [step("defeat", "enemy.ash-mote", 6), step("talk", "npc.adra-flint")], rewardTier: "major" },
+  { id: "keepers-coals", title: "The Keeper's Coals", summary: "Gather calm embers for Nema's spirit braziers.", steps: [step("collect", "item.calm-ember", 4), deliver("item.calm-ember", "npc.nema-slate", 4)] },
+  { id: "cookfire-compact", title: "Cookfire Compact", summary: "Trade trail spices among three wary caravans.", steps: [step("collect", "item.ash-spice", 3), deliver("item.ash-spice", "npc.cask-ember", 3)] },
+  // Holding a line is enduring, not hunting: `survive` asks the party to last
+  // the surge rather than to chase a kill count across the region.
+  { id: "adras-line", title: "Adra's Line", summary: "Protect striking workers from an ash-spirit surge.", prerequisites: ["quest.foundry-accord"], steps: [step("survive", "encounter.ashfall-motes", 3), step("talk", "npc.adra-flint")], rewardTier: "major" },
   { id: "kevas-last-descent", title: "Keva's Last Descent", summary: "Return a delver's token to the Silent Kiln.", prerequisites: ["quest.ash-remembers"], steps: [step("travel", "location.silent-kiln"), step("collect", "item.delver-token"), step("talk", "npc.keva-dross")] },
   { id: "frost-for-thyme", title: "Frost for Thyme", summary: "Collect resin crystals before they thaw.", steps: [step("collect", "item.frost-resin", 4), step("talk", "npc.thyme-vale")] },
   { id: "rooks-high-road", title: "Rook's High Road", summary: "Chart a safer climb through Whitebough.", steps: [step("travel", "location.whitebough"), step("talk", "npc.rook-silva")] },

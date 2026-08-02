@@ -1021,6 +1021,7 @@ export class EngineGameBridge implements GameBridge {
       }
     };
     this.applyInventoryObjectives();
+    this.applyDeliveryObjectives(npcId);
     this.advanceCampaign();
     this.applyCompletedQuestRewards();
     let recruitedMember: PartyMemberView | undefined;
@@ -1722,6 +1723,15 @@ export class EngineGameBridge implements GameBridge {
       flags = { ...flags, [countFlag]: lifetimeCount };
       progress = this.applyObjectiveToActiveQuests(progress, "defeat", enemyId, lifetimeCount);
     }
+    // A `survive` step is satisfied by lasting the authored number of rounds in
+    // a named encounter, so an objective can ask the player to endure rather
+    // than to kill.
+    progress = this.applyObjectiveToActiveQuests(
+      progress,
+      "survive",
+      active.encounterId,
+      active.state.round
+    );
     // Ordinary encounters are explicitly repeatable gameplay abstractions.
     // Bosses cannot be started again once defeated, so their drops remain
     // naturally one-time without suppressing the materials needed by quests.
@@ -1868,6 +1878,41 @@ export class EngineGameBridge implements GameBridge {
       );
     }
     this.#state = { ...this.#state, quests: progress };
+  }
+
+  /**
+   * A `deliver` step completes when the player brings the named item to the
+   * named recipient, and consumes what was handed over. This is what separates
+   * it from `collect`, which the objective vocabulary was 76% composed of:
+   * delivery gives the item a destination and takes it back out of the pack.
+   */
+  private applyDeliveryObjectives(npcId: string): void {
+    const state = this.#state;
+    if (!state) return;
+    let progress = state.quests;
+    let inventory = state.inventory;
+    let changed = false;
+
+    for (const definition of quests) {
+      const entry = progress.find(({ questId }) => questId === definition.id);
+      if (entry?.state !== "active") continue;
+      const step = definition.steps[entry.currentStep];
+      if (step?.kind !== "deliver" || step.recipientId !== npcId) continue;
+      const required = Math.max(1, step.count);
+      if (inventoryQuantity(inventory, step.targetId) < required) continue;
+
+      for (let taken = 0; taken < required; taken += 1) {
+        inventory = removeItem(inventory, step.targetId);
+      }
+      progress = applyQuestObjective(progress, definition, {
+        kind: "deliver",
+        targetId: step.targetId,
+        count: required
+      });
+      changed = true;
+    }
+
+    if (changed) this.#state = { ...state, quests: progress, inventory };
   }
 
   private applyInventoryObjectives(): void {

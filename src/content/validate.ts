@@ -269,6 +269,24 @@ export function auditCampaignReadiness(
         npcInteractions += 1;
       } else if (objective.kind === "travel") {
         travelTo(new Set([objective.targetId]), objective.targetId);
+      } else if (objective.kind === "survive") {
+        // Enduring an encounter needs that encounter to be reachable and
+        // fightable; rounds survived are a battle-time property, not a
+        // reachability one.
+        const placements = encounterLocations(objective.targetId);
+        const reachable = placements.some((candidateLocationId) =>
+          canFight(objective.targetId) && findRoute(sources.routes, locationId, new Set([candidateLocationId]))
+        );
+        if (!reachable) {
+          errors.push(`${quest.id} has no reachable encounter for its survive objective ${objective.targetId}`);
+          continue;
+        }
+        const placement = placements.find((candidateLocationId) =>
+          findRoute(sources.routes, locationId, new Set([candidateLocationId]))
+        );
+        if (placement && travelTo(new Set([placement]), objective.targetId)) {
+          resolveEncounter(objective.targetId);
+        }
       } else if (objective.kind === "defeat") {
         const candidates = pack.encounters.filter(({ enemyIds }) => enemyIds.includes(objective.targetId));
         const placedCandidates = candidates.flatMap(({ id }) => encounterLocations(id).map((candidateLocationId) => ({
@@ -286,8 +304,29 @@ export function auditCampaignReadiness(
           resolveEncounter(source.encounterId);
         }
       } else {
+        // collect and deliver share their sourcing rules — both need the item
+        // in hand. deliver additionally needs its recipient to be reachable,
+        // and consumes the stack when it resolves.
+        if (objective.kind === "deliver") {
+          const recipientId = objective.recipientId;
+          const recipient = recipientId ? npcById.get(recipientId) : undefined;
+          if (!recipient) {
+            errors.push(`${quest.id} has a deliver objective with no reachable recipient ${recipientId ?? "(unset)"}`);
+            continue;
+          }
+        }
         const owned = itemQuantities.get(objective.targetId) ?? 0;
-        if (owned >= objective.count) continue;
+        if (owned >= objective.count) {
+          if (objective.kind === "deliver") {
+            itemQuantities.set(objective.targetId, owned - objective.count);
+            const recipientId = objective.recipientId;
+            const recipient = recipientId ? npcById.get(recipientId) : undefined;
+            if (recipient && travelTo(new Set([recipient.locationId]), recipientId ?? objective.targetId)) {
+              npcInteractions += 1;
+            }
+          }
+          continue;
+        }
         const direct = Object.entries(sources.locationFinds).flatMap(([candidateLocationId, finds]) =>
           sumFinds(finds, objective.targetId) > 0 ? [{
             kind: "location" as const,
@@ -400,6 +439,7 @@ export function validateContentPack(pack: ContentPack): ContentValidationResult 
   const factionIds = new Set(pack.npcs.map(({ factionId }) => factionId));
   const questIds = new Set(pack.quests.map(({ id }) => id));
   const encounterEnemyIds = new Set(pack.encounters.flatMap(({ enemyIds }) => enemyIds));
+  const encounterIds = new Set(pack.encounters.map(({ id }) => id));
   const itemIds = new Set(pack.items.map(({ id }) => id));
 
   for (const location of pack.locations) {
@@ -427,8 +467,14 @@ export function validateContentPack(pack: ContentPack): ContentValidationResult 
         (questStep.kind === "talk" && npcIds.has(questStep.targetId)) ||
         (questStep.kind === "travel" && locationIds.has(questStep.targetId)) ||
         (questStep.kind === "collect" && itemIds.has(questStep.targetId)) ||
+        // deliver names the item carried; its recipient is checked separately.
+        (questStep.kind === "deliver" && itemIds.has(questStep.targetId)) ||
+        (questStep.kind === "survive" && encounterIds.has(questStep.targetId)) ||
         (questStep.kind === "defeat" && encounterEnemyIds.has(questStep.targetId));
       if (!targetExists) errors.push(`${quest.id} has unknown ${questStep.kind} target ${questStep.targetId}`);
+      if (questStep.kind === "deliver" && !npcIds.has(questStep.recipientId ?? "")) {
+        errors.push(`${quest.id} delivers to unknown recipient ${questStep.recipientId ?? "(unset)"}`);
+      }
       if (questStep.count < 1) errors.push(`${quest.id} has a non-positive objective count`);
     }
     if (quest.consequences.length === 0) warnings.push(`${quest.id} has no persistent world consequence`);
