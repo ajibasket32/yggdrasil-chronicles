@@ -29,8 +29,22 @@ const statsSchema = z.object({
   charisma: z.number().int().nonnegative()
 }).strict();
 
+const statusIdSchema = z.enum([
+  "guard",
+  "poison",
+  "burn",
+  "bleed",
+  "stun",
+  "sleep",
+  "freeze",
+  "weaken",
+  "fortify",
+  "haste",
+  "slow"
+]);
+
 const statusSchema = z.object({
-  id: z.enum(["guard", "poison", "burn", "bleed", "stun", "sleep", "freeze"]),
+  id: statusIdSchema,
   remainingTurns: z.number().int().positive(),
   potency: z.number().nonnegative()
 }).strict();
@@ -45,6 +59,9 @@ const playerCharacterSchema = z.object({
   skills: z.array(z.string()),
   elements: z.partialRecord(elementSchema, z.number().min(-1).max(1)),
   statuses: z.array(statusSchema),
+  // Optional to match the contract: characters created before Wave 2, and every
+  // character the game authors today, simply have no resistances.
+  statusResistance: z.partialRecord(statusIdSchema, z.number().min(0).max(1)).optional(),
   isPlayerControlled: z.boolean(),
   raceId: z.string().min(1),
   jobId: z.string().min(1),
@@ -124,11 +141,12 @@ function isRecord(input: unknown): input is Record<string, unknown> {
   return typeof input === "object" && input !== null && !Array.isArray(input);
 }
 
+/** Pre-versioned saves: backfill the fields v1 assumes exist. */
 function migrateVersionZero(input: Record<string, unknown>): Record<string, unknown> {
   const world = isRecord(input.world) ? input.world : {};
   return {
     ...input,
-    schemaVersion: CURRENT_GAME_SCHEMA_VERSION,
+    schemaVersion: 1,
     contentPackVersions: isRecord(input.contentPackVersions) ? input.contentPackVersions : {},
     generatedPatches: Array.isArray(input.generatedPatches) ? input.generatedPatches : [],
     pendingTriggers: Array.isArray(input.pendingTriggers) ? input.pendingTriggers : [],
@@ -144,15 +162,60 @@ function migrateVersionZero(input: Record<string, unknown>): Record<string, unkn
   };
 }
 
+/**
+ * v1 to v2. Adds the combat surface Wave 2 introduces: per-combatant status
+ * resistance, and the four buff/debuff statuses. Existing combatants get an
+ * empty resistance map, which is the documented "author enemies only" default,
+ * so a v1 save keeps playing with identical numbers.
+ */
+function migrateVersionOne(input: Record<string, unknown>): Record<string, unknown> {
+  const withResistance = (value: unknown): unknown => {
+    if (!isRecord(value)) return value;
+    return { ...value, statusResistance: isRecord(value.statusResistance) ? value.statusResistance : {} };
+  };
+  return {
+    ...input,
+    schemaVersion: 2,
+    party: Array.isArray(input.party) ? input.party.map(withResistance) : input.party,
+    reserve: Array.isArray(input.reserve) ? input.reserve.map(withResistance) : input.reserve
+  };
+}
+
+/**
+ * One entry per version transition, keyed by the version being migrated FROM.
+ * The ladder is walked one rung at a time, so adding a schema version means
+ * adding exactly one function here.
+ *
+ * The previous shape hardcoded a single 0-to-current step, which meant the
+ * first ordinary version bump would have invalidated every save on disk: a v1
+ * record was passed through untouched and then failed the `z.literal(2)` check.
+ */
+const MIGRATIONS: Readonly<Record<number, (input: Record<string, unknown>) => Record<string, unknown>>> = {
+  0: migrateVersionZero,
+  1: migrateVersionOne
+};
+
 export function migrateGameState(input: unknown): GameState {
   if (!isRecord(input)) {
     throw new Error("Save state must be an object");
   }
-  const version = typeof input.schemaVersion === "number" ? input.schemaVersion : 0;
+  let version = typeof input.schemaVersion === "number" ? input.schemaVersion : 0;
   if (version > CURRENT_GAME_SCHEMA_VERSION) {
     throw new Error(`Save schema version ${version} is newer than supported version ${CURRENT_GAME_SCHEMA_VERSION}`);
   }
-  const migrated = version === 0 ? migrateVersionZero(input) : input;
+  let migrated: Record<string, unknown> = input;
+  while (version < CURRENT_GAME_SCHEMA_VERSION) {
+    const step = MIGRATIONS[version];
+    if (!step) {
+      throw new Error(`No migration path from save schema version ${version} to ${CURRENT_GAME_SCHEMA_VERSION}`);
+    }
+    migrated = step(migrated);
+    const next = typeof migrated.schemaVersion === "number" ? migrated.schemaVersion : version + 1;
+    if (next <= version) {
+      throw new Error(`Migration from version ${version} did not advance the schema version`);
+    }
+    version = next;
+  }
   return gameStateSchema.parse(migrated) as GameState;
 }
 

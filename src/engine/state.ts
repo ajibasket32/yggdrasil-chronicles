@@ -6,7 +6,12 @@ import type {
 } from "../shared/types";
 import { createQuestProgress } from "./quests";
 
-export const CURRENT_GAME_SCHEMA_VERSION = 1;
+/**
+ * Bumped to 2 in Wave 2: `Combatant.statusResistance` and the buff/debuff
+ * status ids. Every shared-contract change in that wave lands in this single
+ * step — see MIGRATIONS in src/save/schema.ts.
+ */
+export const CURRENT_GAME_SCHEMA_VERSION = 2;
 
 export interface InitialGameStateOptions {
   readonly seed: string;

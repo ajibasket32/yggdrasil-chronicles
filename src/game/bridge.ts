@@ -1,4 +1,4 @@
-import type { QuestState } from "../shared/types";
+import type { QuestState, QuestStepKind } from "../shared/types";
 
 export type Direction = "up" | "down" | "left" | "right";
 export type OverlayKind = "journal" | "inventory" | "party" | "system" | "shop" | "ending";
@@ -54,8 +54,18 @@ export interface QuestView {
   summary: string;
   state: QuestState;
   objective: string;
-  objectiveKind?: "talk" | "travel" | "collect" | "defeat";
+  objectiveKind?: QuestStepKind;
   objectiveTargetId?: string;
+  /** True once the player has reached a step the quest marks as irreversible. */
+  atPointOfNoReturn?: boolean;
+  /** Present when the current step offers a branch the player must choose. */
+  decision?: QuestDecisionView;
+}
+
+export interface QuestDecisionView {
+  id: string;
+  prompt: string;
+  options: Array<{ id: string; label: string; description: string }>;
 }
 
 export interface InventoryView {

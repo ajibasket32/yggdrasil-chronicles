@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createInitialGameState } from "../../src/engine/state";
+import { createInitialGameState, CURRENT_GAME_SCHEMA_VERSION } from "../../src/engine/state";
 import { MemorySaveStorage } from "../../src/save/memory-storage";
 import { SaveRepository } from "../../src/save/repository";
 import { migrateGameState, validateGameState } from "../../src/save/schema";
@@ -70,9 +70,31 @@ describe("save schema and migrations", () => {
     delete legacy.generatedPatches;
     delete legacy.pendingTriggers;
     const migrated = migrateGameState(legacy);
-    expect(migrated.schemaVersion).toBe(1);
+    // Asserted against the constant, not a literal: a pre-versioned save must
+    // walk the whole ladder, however many rungs it grows.
+    expect(migrated.schemaVersion).toBe(CURRENT_GAME_SCHEMA_VERSION);
     expect(migrated.generatedPatches).toEqual([]);
     expect(migrated.pendingTriggers).toEqual([]);
+  });
+
+  it("walks a v1 save up to the current version without changing its numbers", () => {
+    const current = makeState("ladder");
+    const v1: Record<string, unknown> = structuredClone(current) as unknown as Record<string, unknown>;
+    v1.schemaVersion = 1;
+    for (const character of v1.party as Array<Record<string, unknown>>) {
+      delete character.statusResistance;
+    }
+    const migrated = migrateGameState(v1);
+    expect(migrated.schemaVersion).toBe(CURRENT_GAME_SCHEMA_VERSION);
+    expect(migrated.party[0]?.hp).toBe(current.party[0]?.hp);
+    expect(migrated.party[0]?.statusResistance).toEqual({});
+    expect(migrated.seed).toBe("ladder");
+  });
+
+  it("refuses a save from a future schema version instead of misreading it", () => {
+    const state = makeState();
+    const future = { ...state, schemaVersion: CURRENT_GAME_SCHEMA_VERSION + 1 };
+    expect(() => migrateGameState(future)).toThrow(/newer than supported/);
   });
 
   it("rejects impossible character health and duplicate inventory stacks", () => {
