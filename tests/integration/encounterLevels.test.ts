@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encounters, regions, locations, locationEncounters } from "../../src/content";
+import { encounters, regions, locations, locationEncounters, postgameEncounterIds } from "../../src/content";
 import { grantExperience, totalExperienceForLevel } from "../../src/engine/progression";
 import { EngineGameBridge } from "../../src/integration/EngineGameBridge";
 import { MemorySaveStorage } from "../../src/save/memory-storage";
@@ -35,7 +35,7 @@ describe("encounter levels are authored, not derived from the party", () => {
     }
   });
 
-  it("keeps each encounter inside its region's recommended band", () => {
+  it("keeps each campaign encounter inside its region's recommended band", () => {
     const regionById = new Map(regions.map((region) => [region.id, region]));
     const locationById = new Map(locations.map((location) => [location.id, location]));
 
@@ -45,6 +45,9 @@ describe("encounter levels are authored, not derived from the party", () => {
       if (!region) continue;
       const [floor, ceiling] = region.recommendedLevel;
       for (const encounterId of encounterIds) {
+        // Post-game content sits deliberately above its region's band: it is
+        // the challenge for a finished party, not part of the campaign curve.
+        if (postgameEncounterIds.includes(encounterId)) continue;
         const encounter = encounters.find(({ id }) => id === encounterId);
         if (!encounter?.level) continue;
         checked += 1;
@@ -53,7 +56,16 @@ describe("encounter levels are authored, not derived from the party", () => {
       }
     }
     // Guard against the loop covering nothing.
-    expect(checked).toBeGreaterThanOrEqual(encounters.length - 1);
+    expect(checked).toBeGreaterThanOrEqual(encounters.length - postgameEncounterIds.length - 1);
+  });
+
+  it("pitches the post-game encounter above the campaign's final band", () => {
+    const finalBand = regions.at(-1)?.recommendedLevel[1] ?? 0;
+    expect(postgameEncounterIds.length).toBeGreaterThan(0);
+    for (const encounterId of postgameEncounterIds) {
+      const encounter = encounters.find(({ id }) => id === encounterId);
+      expect(encounter?.level ?? 0, encounterId).toBeGreaterThan(finalBand);
+    }
   });
 
   it("does not change enemy strength when the party levels up", async () => {

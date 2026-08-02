@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encounters, jobs, recruitProfiles, startingBuildLoadouts } from "../../src/content";
+import { encounters, jobs, postgameEncounterIds, quests, recruitProfiles, startingBuildLoadouts } from "../../src/content";
 import { grantExperience, totalExperienceForLevel } from "../../src/engine/progression";
 import { EngineGameBridge } from "../../src/integration/EngineGameBridge";
 import { MemorySaveStorage } from "../../src/save/memory-storage";
@@ -124,11 +124,26 @@ describe("EngineGameBridge party combat", () => {
 
   it("gives every authored enemy and starting job a distinct battle portrait, not a shared generic sprite", async () => {
     for (const encounter of encounters) {
-      const { bridge } = createBridge();
+      const { bridge, saves } = createBridge();
       await startChronicle(bridge);
+      // Post-game encounters are sealed until the campaign is finished, so the
+      // sweep must finish it to keep covering every authored enemy.
+      if (postgameEncounterIds.includes(encounter.id)) {
+        const state = await saves.load("autosave");
+        if (!state) throw new Error("expected an autosave");
+        const mainQuestIds = new Set(quests.filter(({ mainStory }) => mainStory).map(({ id }) => id));
+        await saves.save("autosave", {
+          ...state,
+          quests: state.quests.map((quest) =>
+            mainQuestIds.has(quest.questId)
+              ? { ...quest, state: "completed" as const, currentStep: 9 }
+              : quest)
+        });
+        await bridge.continueGame();
+      }
       bridge.startEncounter(encounter.id);
       const enemyActors = bridge.getSnapshot().battle?.actors.filter(({ isParty }) => !isParty) ?? [];
-      expect(enemyActors.length).toBeGreaterThan(0);
+      expect(enemyActors.length, encounter.id).toBeGreaterThan(0);
       for (const enemy of enemyActors) {
         expect(enemy.spriteKey, `${encounter.id}: ${enemy.name}`).toMatch(/^sprite\.enemy\.(small|humanoid|boss)$/);
         expect(enemy.tint, `${encounter.id}: ${enemy.name}`).toBeDefined();

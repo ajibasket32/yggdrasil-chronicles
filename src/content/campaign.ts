@@ -477,8 +477,15 @@ export const encounters: EncounterDefinition[] = [
   { id: "encounter.kiln-heart", name: "The Kiln Heart", enemyIds: ["enemy.kiln-heart"], rewardTier: "major", boss: true, level: 14 },
   { id: "encounter.whitebough-hunt", name: "Whitebough Hunt", enemyIds: ["enemy.rime-stag", "enemy.frost-moth"], rewardTier: "standard", boss: false, level: 16 },
   { id: "encounter.vault-echoes", name: "Vault Echoes", enemyIds: ["enemy.star-echo", "enemy.star-echo", "enemy.pale-custodian"], rewardTier: "major", boss: false, level: 19 },
-  { id: "encounter.varn-rootless", name: "Varn, Architect of Severance", enemyIds: ["enemy.varn-rootless"], rewardTier: "boss", boss: true, level: 21 }
+  { id: "encounter.varn-rootless", name: "Varn, Architect of Severance", enemyIds: ["enemy.varn-rootless"], rewardTier: "boss", boss: true, level: 21 },
+  // Post-game superboss. Deliberately `boss: false` so it is repeatable and so
+  // the three-named-boss campaign shape is unchanged; it is gated on campaign
+  // completion by the bridge, not by the boss flag.
+  { id: "encounter.varn-echo", name: "The Echo of Severance", enemyIds: ["enemy.varn-echo"], rewardTier: "boss", boss: false, level: 26 }
 ];
+
+/** Encounters that only appear once the main story is finished. */
+export const postgameEncounterIds: readonly string[] = ["encounter.varn-echo"];
 
 export const locationEncounters: Readonly<Record<string, readonly string[]>> = {
   "location.mossroad": ["encounter.mossroad-foragers", "encounter.flooded-grove"],
@@ -486,7 +493,7 @@ export const locationEncounters: Readonly<Record<string, readonly string[]>> = {
   "location.ashfall-trail": ["encounter.ashfall-motes"],
   "location.silent-kiln": ["encounter.kiln-watch", "encounter.kiln-heart"],
   "location.whitebough": ["encounter.whitebough-hunt"],
-  "location.starless-vault": ["encounter.vault-echoes", "encounter.varn-rootless"]
+  "location.starless-vault": ["encounter.vault-echoes", "encounter.varn-rootless", "encounter.varn-echo"]
 };
 
 /** Ordinary fights may be selected again; named bosses permanently change the world when defeated. */
@@ -499,7 +506,10 @@ export const encounterAvailability: Readonly<Record<string, "repeatable" | "once
   "encounter.kiln-heart": "once",
   "encounter.whitebough-hunt": "repeatable",
   "encounter.vault-echoes": "repeatable",
-  "encounter.varn-rootless": "once"
+  "encounter.varn-rootless": "once",
+  // Repeatable on purpose: the post-game superboss is the terminal challenge
+  // players return to, not a one-time story beat.
+  "encounter.varn-echo": "repeatable"
 };
 
 export type ContentFind = readonly [itemId: string, quantity: number];

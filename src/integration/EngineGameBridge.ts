@@ -19,6 +19,7 @@ import {
   removeItem,
   resolveCombatAction,
   startQuest,
+  totalExperienceForLevel,
   type CombatEvent,
   type CombatSkill,
   type CombatState
@@ -36,6 +37,7 @@ import {
   locationFinds,
   locations,
   npcs,
+  postgameEncounterIds,
   quests,
   recruitProfiles,
   startingBuildLoadouts,
@@ -375,7 +377,8 @@ const ENEMY_SPRITE_KEYS: Readonly<Record<string, string>> = {
   "enemy.pale-custodian": "sprite.enemy.humanoid",
   "enemy.mire-antler": "sprite.enemy.boss",
   "enemy.kiln-heart": "sprite.enemy.boss",
-  "enemy.varn-rootless": "sprite.enemy.boss"
+  "enemy.varn-rootless": "sprite.enemy.boss",
+  "enemy.varn-echo": "sprite.enemy.boss"
 };
 
 const ENEMY_TINTS: Readonly<Record<string, number>> = {
@@ -392,7 +395,8 @@ const ENEMY_TINTS: Readonly<Record<string, number>> = {
   "enemy.pale-custodian": 0x9fb0c2,
   "enemy.mire-antler": 0x6f8f5a,
   "enemy.kiln-heart": 0xd9762f,
-  "enemy.varn-rootless": 0x8c3a46
+  "enemy.varn-rootless": 0x8c3a46,
+  "enemy.varn-echo": 0x6f4a86
 };
 
 function spriteForEnemyId(enemyId: string): { spriteKey: string; tint: number } {
@@ -524,7 +528,10 @@ function recruitCharacter(profile: RecruitProfile): PlayerCharacter {
 const ENEMY_SKILLS: Readonly<Record<string, readonly string[]>> = {
   "enemy.mire-antler": ["skill.antler-charge"],
   "enemy.kiln-heart": ["skill.crucible-flare"],
-  "enemy.varn-rootless": ["skill.severance-cut"]
+  "enemy.varn-rootless": ["skill.severance-cut"],
+  // The echo keeps Varn's signature and adds turn denial, so the postgame
+  // fight demands the status tools the campaign taught.
+  "enemy.varn-echo": ["skill.severance-cut", "skill.deep-resonance"]
 };
 
 /**
@@ -555,7 +562,8 @@ const ENEMY_ELEMENTS: Readonly<Record<string, Partial<Record<Element, number>>>>
   "enemy.frost-moth": { ice: 0.4, wind: 0.2, fire: -0.45 },
   "enemy.star-echo": { aether: 0.4, shadow: -0.35 },
   "enemy.pale-custodian": { ice: 0.3, aether: 0.25, physical: -0.2 },
-  "enemy.varn-rootless": { aether: 0.35, ice: 0.2, radiant: -0.3 }
+  "enemy.varn-rootless": { aether: 0.35, ice: 0.2, radiant: -0.3 },
+  "enemy.varn-echo": { aether: 0.5, ice: 0.35, shadow: 0.2, radiant: -0.25 }
 };
 
 /**
@@ -605,6 +613,14 @@ function actionEconomyScale(enemyCount: number, partySize: number): number {
   return Math.sqrt(Math.max(1, partySize) / enemyCount);
 }
 
+/**
+ * Enemies that use the boss stat curve without being campaign bosses. The
+ * post-game superboss is authored `boss: false` so it stays repeatable and so
+ * the three-named-boss campaign shape is unchanged, but it must not fight like
+ * a trash mob.
+ */
+const BOSS_TIER_ENEMY_IDS = new Set(["enemy.varn-echo"]);
+
 function enemyCombatant(
   id: string,
   index: number,
@@ -615,7 +631,8 @@ function enemyCombatant(
 ): Combatant {
   const scale = DIFFICULTY_ENEMY_MULTIPLIER[difficulty];
   const offenceScale = scale * economyScale;
-  const maxHp = Math.max(1, Math.round((boss ? 150 + level * 12 : 38 + level * 9) * scale));
+  const bossTier = boss || BOSS_TIER_ENEMY_IDS.has(id);
+  const maxHp = Math.max(1, Math.round((bossTier ? 150 + level * 12 : 38 + level * 9) * scale));
   return {
     id: `${id}.${index}`,
     name: id.replace("enemy.", "").replaceAll("-", " "),
@@ -640,7 +657,7 @@ function enemyCombatant(
     // stuns silences a boss for most of its own fight and the authored phase
     // choreography never plays. Halving the chance keeps a status build
     // worthwhile without letting it replace the fight.
-    statusResistance: boss ? { stun: 0.5, sleep: 0.5, freeze: 0.5 } : undefined,
+    statusResistance: bossTier ? { stun: 0.5, sleep: 0.5, freeze: 0.5 } : undefined,
     isPlayerControlled: false
   };
 }
@@ -896,6 +913,68 @@ export class EngineGameBridge implements GameBridge {
     this.#state = state;
     this.#battle = undefined;
     await this.persist("autosave");
+  }
+
+  /**
+   * Starts a fresh chronicle carrying the finished run's growth forward:
+   * levels, equipment and currency. Quests, world flags and location reset, so
+   * the story is genuinely replayed rather than resumed.
+   *
+   * The snapshot is taken from the CURRENT state before newGame overwrites it,
+   * which is why this reads `this.#state` first and only then delegates.
+   */
+  async newGamePlus(draft: CharacterCreationDraft): Promise<GameCommandResult> {
+    const previous = this.#state;
+    if (!previous) {
+      return { success: false, message: "There is no finished chronicle to carry forward." };
+    }
+    if (!this.isCampaignComplete(previous)) {
+      return { success: false, message: "New Game+ opens once the chronicle is finished." };
+    }
+
+    // Read everything worth carrying before the state is replaced.
+    const carriedLevel = Math.max(1, ...previous.party.map(({ level }) => level));
+    const carriedCurrency = Number(previous.world.flags.currency ?? 0);
+    const carriedEquipment = previous.party
+      .flatMap((member) => Object.values(member.equipment))
+      .filter((itemId): itemId is string => typeof itemId === "string");
+    const completedRuns = Number(previous.world.flags["progress.completed-runs"] ?? 0) + 1;
+
+    await this.newGame(draft);
+    const fresh = this.requireState();
+
+    // Level restore runs through the real progression path so stats grow with
+    // the level rather than the number being written on its own.
+    const party = fresh.party.map((member) =>
+      grantExperience(member, totalExperienceForLevel(carriedLevel)).character);
+    let inventory = fresh.inventory;
+    for (const itemId of carriedEquipment) {
+      inventory = this.addWithinStackLimit(inventory, itemId, 1);
+    }
+
+    this.#state = {
+      ...fresh,
+      party,
+      inventory,
+      world: {
+        ...fresh.world,
+        flags: {
+          ...fresh.world.flags,
+          currency: Number.isFinite(carriedCurrency) ? Math.max(0, carriedCurrency) : 0,
+          "progress.completed-runs": completedRuns,
+          "progress.new-game-plus": true
+        },
+        chronicle: [{
+          id: crypto.randomUUID(),
+          worldMinute: 0,
+          title: "The Road Begins Again",
+          body: `${draft.name || "Rowan"} walks a familiar road carrying what the last chronicle taught.`,
+          tags: ["new-game-plus", "hearthcross"]
+        }]
+      }
+    };
+    await this.persist("autosave");
+    return { success: true, message: `A new chronicle begins at level ${carriedLevel}.` };
   }
 
   async continueGame(): Promise<GameCommandResult> {
@@ -1186,6 +1265,15 @@ export class EngineGameBridge implements GameBridge {
     return `memory.${npcId}.conversations`;
   }
 
+  /** True once every main-story quest is complete. */
+  private isCampaignComplete(state: GameState): boolean {
+    const mainQuestIds = new Set(quests.filter(({ mainStory }) => mainStory).map(({ id }) => id));
+    if (mainQuestIds.size === 0) return false;
+    const completed = state.quests.filter(({ questId, state: questState }) =>
+      mainQuestIds.has(questId) && questState === "completed").length;
+    return completed === mainQuestIds.size;
+  }
+
   /**
    * Authored level wins. Falling back to the party average is only for
    * encounters not yet authored with one — and it is deliberately NOT a floor
@@ -1204,6 +1292,9 @@ export class EngineGameBridge implements GameBridge {
     const encounter = encounters.find(({ id }) => id === encounterId);
     if (!encounter) throw new Error(`Unknown encounter '${encounterId}'`);
     if (encounter.boss && state.world.defeatedBossIds.includes(encounterId)) return;
+    // Post-game content stays sealed until the main story is finished, so the
+    // ending overlay's promise that "unfinished threads still wait" is true.
+    if (postgameEncounterIds.includes(encounterId) && !this.isCampaignComplete(state)) return;
     // Fail safe rather than throwing out of an awaited scene call: createCombatState
     // rejects an all-incapacitated party, and that rejection would strand the caller
     // mid-transition with its input gate still closed.

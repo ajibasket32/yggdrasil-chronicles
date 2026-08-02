@@ -289,6 +289,11 @@ export interface GameBridge {
   subscribe(listener: SnapshotListener): () => void;
   newGame(draft: CharacterCreationDraft): void | Promise<void>;
   /**
+   * Starts a fresh chronicle carrying the finished run's levels, equipment and
+   * currency forward. Refused until the campaign is complete.
+   */
+  newGamePlus(draft: CharacterCreationDraft): GameCommandResult | Promise<GameCommandResult>;
+  /**
    * Loading can fail on a corrupt or unreadable slot. Both report the failure
    * rather than throwing so the title screen can show it and stay usable.
    */

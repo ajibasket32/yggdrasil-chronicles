@@ -297,6 +297,10 @@ export class DemoGameBridge implements GameBridge {
     return { success: false, message: "Job actions are unavailable in the demo bridge." };
   }
 
+  newGamePlus(_draft: CharacterCreationDraft): GameCommandResult {
+    return { success: false, message: "The demo road has no finished chronicle to carry." };
+  }
+
   swapPartyMember(_reserveMemberId: string, _activeMemberId?: string): GameCommandResult {
     return { success: false, message: "The demo road travels with a fixed company." };
   }
