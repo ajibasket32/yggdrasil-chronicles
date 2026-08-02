@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { encounters, regions, locations, locationEncounters, postgameEncounterIds } from "../../src/content";
+import { enemyMaxHealth } from "../../src/engine/combat";
 import { grantExperience, totalExperienceForLevel } from "../../src/engine/progression";
 import { EngineGameBridge } from "../../src/integration/EngineGameBridge";
 import { MemorySaveStorage } from "../../src/save/memory-storage";
@@ -147,10 +148,41 @@ describe("action economy keeps multi-enemy encounters fair", () => {
     await startAtLevel(bridge, saves, 9, "normal");
     bridge.startEncounter("encounter.mire-antler");
     const enemies = bridge.getSnapshot().battle?.actors.filter((actor) => !actor.isParty) ?? [];
-    // A single enemy never outnumbers the party, so no economy scaling applies
+    // A single enemy never outnumbers the party, so no offence scaling applies
     // and the authored boss numbers reach the player intact. (Read on normal,
     // where the difficulty multiplier is 1 and the authored figure is visible.)
+    // Asserted against the shared curve rather than a literal: the curve is the
+    // contract, and a literal here would only restate whatever it happens to be.
     expect(enemies.length).toBe(1);
-    expect(enemies[0]?.maxHp).toBe(150 + 7 * 12);
+    expect(enemies[0]?.maxHp).toBe(enemyMaxHealth(7, true, 1));
+  });
+
+  it("scales a boss's health with the number of characters hitting it", async () => {
+    const solo = await (async (): Promise<number> => {
+      const { bridge, saves } = createBridge();
+      await startAtLevel(bridge, saves, 9, "normal");
+      bridge.startEncounter("encounter.mire-antler");
+      return bridge.getSnapshot().battle?.actors.find((actor) => !actor.isParty)?.maxHp ?? 0;
+    })();
+
+    const { bridge, saves } = createBridge();
+    await startAtLevel(bridge, saves, 9, "normal");
+    const state = await saves.load("autosave");
+    if (!state) throw new Error("expected an autosave");
+    const hero = state.party[0];
+    if (!hero) throw new Error("expected a protagonist");
+    await saves.save("autosave", {
+      ...state,
+      party: [hero, { ...hero, id: "party.ally", name: "Ally" }]
+    });
+    await bridge.continueGame();
+    bridge.startEncounter("encounter.mire-antler");
+    const paired = bridge.getSnapshot().battle?.actors.find((actor) => !actor.isParty)?.maxHp ?? 0;
+
+    // Twice the attackers, twice the health: the fight lasts a comparable
+    // number of rounds instead of collapsing as the party grows, which is what
+    // let bosses skip their authored phase thresholds.
+    expect(solo).toBeGreaterThan(0);
+    expect(paired).toBe(solo * 2);
   });
 });

@@ -451,6 +451,39 @@ const REWARD_MULTIPLIERS: Record<RewardTier, number> = {
   boss: 3.5
 };
 
+/**
+ * Enemy vitality by level, shared by the integration layer and the offline
+ * campaign simulation so a balance change cannot land in one and not the other.
+ * The simulation previously carried its own copy of the boss curve.
+ *
+ * Boss numbers are set so a party of four at the boss's own level needs roughly
+ * eight to twelve rounds. At the previous 150 + 12/level a boss died in about
+ * two rounds, which meant the authored multi-phase choreography — thresholds at
+ * 60%, 50%, 45% and 25% health — was almost never reached.
+ */
+export const ENEMY_HEALTH_CURVE = {
+  trash: { base: 30, perLevel: 7 },
+  /** Per attacker, so a boss lasts a comparable number of rounds at any party size. */
+  boss: { base: 150, perLevel: 26 }
+} as const;
+
+/**
+ * `attackers` scales a boss's health with the number of characters hitting it.
+ * A lone hero and a party of four otherwise experience completely different
+ * fights: the same health pool falls four times faster, which is why a boss
+ * facing a full party died in about two rounds and skipped straight past its
+ * authored phase thresholds.
+ *
+ * This is the mirror of the action-economy scaling applied to enemy groups —
+ * there, many enemies each hit softer; here, one enemy absorbs proportionally
+ * more. Trash health is untouched, since a group already scales by count.
+ */
+export function enemyMaxHealth(level: number, bossTier: boolean, attackers = 1): number {
+  const curve = bossTier ? ENEMY_HEALTH_CURVE.boss : ENEMY_HEALTH_CURVE.trash;
+  const scale = bossTier ? Math.max(1, attackers) : 1;
+  return Math.max(1, Math.round((curve.base + Math.max(1, level) * curve.perLevel) * scale));
+}
+
 export function calculateBattleReward(tier: RewardTier, averageEnemyLevel: number, seed: string): BattleReward {
   const level = Math.max(1, Math.floor(averageEnemyLevel));
   const multiplier = REWARD_MULTIPLIERS[tier];

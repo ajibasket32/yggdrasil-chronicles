@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { encounters, postgameEncounterIds, quests } from "../../src/content";
+import { enemyMaxHealth } from "../../src/engine/combat";
 import { grantExperience, totalExperienceForLevel } from "../../src/engine/progression";
 import { EngineGameBridge } from "../../src/integration/EngineGameBridge";
 import { MemorySaveStorage } from "../../src/save/memory-storage";
@@ -79,8 +80,11 @@ describe("the post-game superboss", () => {
 
     bridge.startEncounter(target);
     const enemy = bridge.getSnapshot().battle?.actors.find((actor) => !actor.isParty);
-    // Boss curve is 150 + level * 12; the trash curve would be 38 + level * 9.
-    expect(enemy?.maxHp).toBe(150 + encounter.level * 12);
+    const attackers = bridge.getSnapshot().party.filter((member) => member.hp > 0).length;
+    // Asserted against the shared curve at this fixture's party size, and shown
+    // to be well above what the trash curve would give at the same level.
+    expect(enemy?.maxHp).toBe(enemyMaxHealth(encounter.level, true, attackers));
+    expect(enemy?.maxHp ?? 0).toBeGreaterThan(enemyMaxHealth(encounter.level, false, attackers));
   });
 });
 

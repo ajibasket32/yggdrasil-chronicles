@@ -14,6 +14,7 @@ import {
   advanceCombatRound,
   chooseEnemyAction,
   createCombatState,
+  enemyMaxHealth,
   resolveCombatAction,
   type CombatAction,
   type CombatSkill,
@@ -55,17 +56,17 @@ const STAT_GROWTH: Stats = {
 };
 
 const SKILLS: Readonly<Record<string, CombatSkill>> = {
-  "skill.guard-line": { id: "skill.guard-line", name: "Guard Line", element: "physical", power: 14, accuracy: 0.98, mpCost: 3, target: "enemy", status: { id: "stun", chance: 0.2, turns: 1, potency: 0 } },
-  "skill.shield-bash": { id: "skill.shield-bash", name: "Shield Bash", element: "physical", power: 20, accuracy: 0.88, mpCost: 5, target: "enemy", status: { id: "stun", chance: 0.3, turns: 1, potency: 0 } },
-  "skill.aimed-shot": { id: "skill.aimed-shot", name: "Aimed Shot", element: "physical", power: 22, accuracy: 0.96, mpCost: 4, target: "enemy" },
-  "skill.quickstep": { id: "skill.quickstep", name: "Quickstep Cut", element: "wind", power: 17, accuracy: 0.98, mpCost: 3, target: "enemy", status: { id: "bleed", chance: 0.25, turns: 2, potency: 3 } },
+  "skill.guard-line": { id: "skill.guard-line", name: "Guard Line", element: "physical", power: 28, accuracy: 0.98, mpCost: 3, target: "enemy", status: { id: "stun", chance: 0.2, turns: 1, potency: 0 } },
+  "skill.shield-bash": { id: "skill.shield-bash", name: "Shield Bash", element: "physical", power: 40, accuracy: 0.88, mpCost: 5, target: "enemy", status: { id: "stun", chance: 0.3, turns: 1, potency: 0 } },
+  "skill.aimed-shot": { id: "skill.aimed-shot", name: "Aimed Shot", element: "physical", power: 44, accuracy: 0.96, mpCost: 4, target: "enemy" },
+  "skill.quickstep": { id: "skill.quickstep", name: "Quickstep Cut", element: "wind", power: 34, accuracy: 0.98, mpCost: 3, target: "enemy", status: { id: "bleed", chance: 0.25, turns: 2, potency: 3 } },
   "skill.mend": { id: "skill.mend", name: "Mending Light", element: "radiant", power: 18, accuracy: 1, mpCost: 4, target: "self", healing: true },
-  "skill.ward-thread": { id: "skill.ward-thread", name: "Ward Thread", element: "aether", power: 15, accuracy: 1, mpCost: 3, target: "enemy", status: { id: "sleep", chance: 0.2, turns: 1, potency: 0 } },
-  "skill.ember-spark": { id: "skill.ember-spark", name: "Ember Spark", element: "fire", power: 24, accuracy: 0.9, mpCost: 6, target: "enemy", status: { id: "burn", chance: 0.35, turns: 2, potency: 4 } },
-  "skill.tide-pulse": { id: "skill.tide-pulse", name: "Tide Pulse", element: "water", power: 20, accuracy: 0.94, mpCost: 5, target: "enemy" },
-  "skill.marked-quarry": { id: "skill.marked-quarry", name: "Marked Quarry", element: "wind", power: 21, accuracy: 0.95, mpCost: 5, target: "enemy", status: { id: "freeze", chance: 0.3, turns: 1, potency: 0 } },
+  "skill.ward-thread": { id: "skill.ward-thread", name: "Ward Thread", element: "aether", power: 30, accuracy: 1, mpCost: 3, target: "enemy", status: { id: "sleep", chance: 0.2, turns: 1, potency: 0 } },
+  "skill.ember-spark": { id: "skill.ember-spark", name: "Ember Spark", element: "fire", power: 48, accuracy: 0.9, mpCost: 6, target: "enemy", status: { id: "burn", chance: 0.35, turns: 2, potency: 4 } },
+  "skill.tide-pulse": { id: "skill.tide-pulse", name: "Tide Pulse", element: "water", power: 40, accuracy: 0.94, mpCost: 5, target: "enemy" },
+  "skill.marked-quarry": { id: "skill.marked-quarry", name: "Marked Quarry", element: "wind", power: 42, accuracy: 0.95, mpCost: 5, target: "enemy", status: { id: "freeze", chance: 0.3, turns: 1, potency: 0 } },
   "skill.delvers-grit": { id: "skill.delvers-grit", name: "Delver's Grit", element: "earth", power: 24, accuracy: 1, mpCost: 5, target: "self", healing: true },
-  "skill.bridgekeepers-warding": { id: "skill.bridgekeepers-warding", name: "Bridgekeeper's Warding", element: "nature", power: 19, accuracy: 0.94, mpCost: 5, target: "enemy", status: { id: "poison", chance: 0.4, turns: 2, potency: 4 } },
+  "skill.bridgekeepers-warding": { id: "skill.bridgekeepers-warding", name: "Bridgekeeper's Warding", element: "nature", power: 38, accuracy: 0.94, mpCost: 5, target: "enemy", status: { id: "poison", chance: 0.4, turns: 2, potency: 4 } },
   "skill.antler-charge": { id: "skill.antler-charge", name: "Antler Charge", element: "water", power: 18, accuracy: 0.9, mpCost: 0, target: "enemy", status: { id: "bleed", chance: 0.3, turns: 2, potency: 4 } },
   "skill.crucible-flare": { id: "skill.crucible-flare", name: "Crucible Flare", element: "fire", power: 20, accuracy: 0.88, mpCost: 0, target: "enemy", status: { id: "burn", chance: 0.35, turns: 2, potency: 5 } },
   "skill.severance-cut": { id: "skill.severance-cut", name: "Severance Cut", element: "shadow", power: 22, accuracy: 0.9, mpCost: 0, target: "enemy", status: { id: "bleed", chance: 0.3, turns: 2, potency: 5 } }
@@ -107,30 +108,34 @@ interface BossScenario {
  */
 const BOSS_SCENARIOS: readonly BossScenario[] = [
   {
+    // Levels track the encounter's own authored level rather than an arbitrary
+    // figure. Encounters no longer scale to the party, so a scenario written
+    // below its encounter's level is testing an under-levelled party, which is
+    // a difficulty the player is meant to answer by going elsewhere first.
     encounterId: "encounter.mire-antler",
-    description: "Level 4 Sylvan Shaper with recruited Wayfarer Ranger",
+    description: "Level 7 Sylvan Shaper with recruited Wayfarer Ranger",
     party: [
-      { id: "party.protagonist", name: "Rowan", level: 4, stats: { maxMp: 22, intellect: 6, wisdom: 1 }, skills: ["skill.ember-spark", "skill.tide-pulse"], elements: { nature: -0.2, fire: 0.15 } },
-      { id: "party.tovin-ash", name: "Tovin", level: 4, stats: { dexterity: 5, agility: 5, vitality: -1, strength: 3 }, skills: ["skill.aimed-shot", "skill.quickstep", "skill.marked-quarry"], elements: { wind: -0.1 } }
+      { id: "party.protagonist", name: "Rowan", level: 7, stats: { maxMp: 22, intellect: 6, wisdom: 1 }, skills: ["skill.ember-spark", "skill.tide-pulse"], elements: { nature: -0.2, fire: 0.15 } },
+      { id: "party.tovin-ash", name: "Tovin", level: 7, stats: { dexterity: 5, agility: 5, vitality: -1, strength: 3 }, skills: ["skill.aimed-shot", "skill.quickstep", "skill.marked-quarry"], elements: { wind: -0.1 } }
     ]
   },
   {
     encounterId: "encounter.kiln-heart",
-    description: "Level 7 Shaper, Ranger, and Vanguard expedition",
+    description: "Level 14 Shaper, Ranger, and Vanguard expedition",
     party: [
-      { id: "party.protagonist", name: "Rowan", level: 7, stats: { maxMp: 22, intellect: 6, wisdom: 1 }, skills: ["skill.ember-spark", "skill.tide-pulse"], elements: { nature: -0.2, fire: 0.15 } },
-      { id: "party.tovin-ash", name: "Tovin", level: 7, stats: { dexterity: 5, agility: 5, vitality: -1, strength: 3 }, skills: ["skill.aimed-shot", "skill.quickstep", "skill.marked-quarry"], elements: { wind: -0.1 } },
-      { id: "party.keva-dross", name: "Keva", level: 7, stats: { maxHp: 24, vitality: 6, agility: -2, strength: 2 }, skills: ["skill.guard-line", "skill.shield-bash", "skill.delvers-grit"], elements: { earth: -0.2, lightning: 0.1 } }
+      { id: "party.protagonist", name: "Rowan", level: 14, stats: { maxMp: 22, intellect: 6, wisdom: 1 }, skills: ["skill.ember-spark", "skill.tide-pulse"], elements: { nature: -0.2, fire: 0.15 } },
+      { id: "party.tovin-ash", name: "Tovin", level: 14, stats: { dexterity: 5, agility: 5, vitality: -1, strength: 3 }, skills: ["skill.aimed-shot", "skill.quickstep", "skill.marked-quarry"], elements: { wind: -0.1 } },
+      { id: "party.keva-dross", name: "Keva", level: 14, stats: { maxHp: 24, vitality: 6, agility: -2, strength: 2 }, skills: ["skill.guard-line", "skill.shield-bash", "skill.delvers-grit"], elements: { earth: -0.2, lightning: 0.1 } }
     ]
   },
   {
     encounterId: "encounter.varn-rootless",
-    description: "Level 8 full party after optional companion recruitment",
+    description: "Level 21 full party after optional companion recruitment",
     party: [
-      { id: "party.protagonist", name: "Rowan", level: 8, stats: { maxMp: 22, intellect: 6, wisdom: 1 }, skills: ["skill.ember-spark", "skill.tide-pulse"], elements: { nature: -0.2, fire: 0.15 } },
-      { id: "party.tovin-ash", name: "Tovin", level: 8, stats: { dexterity: 5, agility: 5, vitality: -1, strength: 3 }, skills: ["skill.aimed-shot", "skill.quickstep", "skill.marked-quarry"], elements: { wind: -0.1 } },
-      { id: "party.keva-dross", name: "Keva", level: 8, stats: { maxHp: 24, vitality: 6, agility: -2, strength: 2 }, skills: ["skill.guard-line", "skill.shield-bash", "skill.delvers-grit"], elements: { earth: -0.2, lightning: 0.1 } },
-      { id: "party.eira-lune", name: "Eira", level: 8, stats: { maxMp: 18, intellect: 3, wisdom: 5 }, skills: ["skill.mend", "skill.ward-thread", "skill.bridgekeepers-warding"], elements: { nature: -0.2, fire: 0.15 } }
+      { id: "party.protagonist", name: "Rowan", level: 21, stats: { maxMp: 22, intellect: 6, wisdom: 1 }, skills: ["skill.ember-spark", "skill.tide-pulse"], elements: { nature: -0.2, fire: 0.15 } },
+      { id: "party.tovin-ash", name: "Tovin", level: 21, stats: { dexterity: 5, agility: 5, vitality: -1, strength: 3 }, skills: ["skill.aimed-shot", "skill.quickstep", "skill.marked-quarry"], elements: { wind: -0.1 } },
+      { id: "party.keva-dross", name: "Keva", level: 21, stats: { maxHp: 24, vitality: 6, agility: -2, strength: 2 }, skills: ["skill.guard-line", "skill.shield-bash", "skill.delvers-grit"], elements: { earth: -0.2, lightning: 0.1 } },
+      { id: "party.eira-lune", name: "Eira", level: 21, stats: { maxMp: 18, intellect: 3, wisdom: 5 }, skills: ["skill.mend", "skill.ward-thread", "skill.bridgekeepers-warding"], elements: { nature: -0.2, fire: 0.15 } }
     ]
   }
 ];
@@ -187,8 +192,10 @@ const ENEMY_SKILLS: Readonly<Record<string, readonly string[]>> = {
   "enemy.varn-rootless": ["skill.severance-cut"]
 };
 
-function createBossCombatant(enemyId: string, level: number): Combatant {
-  const maxHp = 150 + level * 12;
+function createBossCombatant(enemyId: string, level: number, attackers: number): Combatant {
+  // Shared with the integration layer so a balance change cannot land in one
+  // and not the other; this file previously carried its own copy of the curve.
+  const maxHp = enemyMaxHealth(level, true, attackers);
   return {
     id: `${enemyId}.0`,
     name: enemyId.replace("enemy.", "").replaceAll("-", " "),
@@ -293,7 +300,7 @@ function simulateBossAttempt(scenario: BossScenario, seed: string): { outcome: "
   }
   const party = scenario.party.map(createPartyCombatant);
   const averageLevel = Math.max(1, Math.round(party.reduce((total, member) => total + member.level, 0) / party.length));
-  let state = createCombatState(party, [createBossCombatant(encounter.enemyIds[0]!, averageLevel)], seed);
+  let state = createCombatState(party, [createBossCombatant(encounter.enemyIds[0]!, averageLevel, party.length)], seed);
   const activated: string[] = [];
   state = applyBossPhases(scenario.encounterId, state, activated);
 
