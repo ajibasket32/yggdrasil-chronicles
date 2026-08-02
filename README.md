@@ -15,16 +15,18 @@ Open `http://127.0.0.1:5173`. The game remains playable without an AI key.
 
 ## Controls
 
-- Move: Arrow keys or WASD
+- Move: Arrow keys
 - Interact/confirm: Enter or E
 - Cancel/menu: Escape
 - Journal: J
 - Inventory/use/equip: I
 - Party: P
+- Help/codex: H
 - Quick encounter: B (engages a nearby field encounter without walking into it)
-- Quick save: F5
+- Quick save: F9 — writes to its own slot, so it never overwrites a manual save
+- Quick load: F8
 - System menu/manual saves: Escape, then choose a slot
-- Gamepad: D-pad/left stick to move, A to confirm, B to cancel
+- Gamepad: D-pad to move, A to confirm, B to cancel
 
 All of the above keys are rebindable from the title screen's Settings menu.
 
@@ -50,8 +52,10 @@ reduced-motion, sound on/off, and sound-volume controls. Sound effects use the
 committed CC0 Kenney RPG Audio pack and never require a network connection.
 The title settings screen also supports persistent keyboard rebinding for
 movement, confirmation, menus, interaction, journal, inventory, party,
-encounters, and quick save. Assigning a key already in use swaps the two actions
-so no command becomes unreachable.
+encounters, the codex, and quick save/load. Assigning a key already in use swaps
+the two actions so no command becomes unreachable, and keys the browser owns
+(F5, Ctrl/Cmd combinations) are refused so a binding can never navigate the tab
+away mid-save.
 The game also exposes concise scene and settings changes through a screen-reader
 live region, while keeping gameplay inside the canvas.
 

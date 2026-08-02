@@ -2,6 +2,47 @@
 
 ## Unreleased
 
+- Stopped four defects that destroyed player data. Quick Save was bound to F5
+  with no `preventDefault`, so the browser's reload key raced the IndexedDB
+  write; it now defaults to F9, writes to its own slot instead of overwriting
+  Manual Slot 1, and has a matching Quick Load. Persisted bindings that still
+  hold a browser-owned key are healed on read. A party wipe no longer autosaves
+  over the pre-battle state, so losing is recoverable. Both scenes now destroy
+  their render output rather than orphaning a canvas and texture per repaint.
+  NEW CHRONICLE over an existing save asks twice.
+- Made save failure legible instead of fatal. `load` and `continueGame` report
+  a failure rather than throwing, a corrupt slot no longer freezes the whole
+  title screen, and blocked storage (private browsing, quota) boots into an
+  explicit no-persistence mode instead of a blank page.
+- Landed every persisted-shape change as one migration (schemaVersion 1 to 2)
+  behind a proper migration ladder. The previous single hardcoded step would
+  have invalidated every save on the first ordinary version bump.
+- Added battle targeting. The player may aim at any living enemy, the choice is
+  remembered until that enemy falls, the four healing forms moved from
+  self-target to ally-target so the healer can heal the party, and restoratives
+  can be handed to a companion. MP, the full status list, typed combat events
+  and turn order now reach the battle view.
+- Authored an encounter level per encounter instead of deriving it from the
+  party average, which had made levelling up narrow the party's margin. Added
+  action-economy scaling so a group's total offence tracks the party's, which
+  is what made a three-enemy encounter winnable at its own authored level.
+- Moved equipment stat modifiers into content. Nine items had their price in
+  `campaign.ts` and their stats in the integration layer.
+- Made quest failure reachable: `failQuest`/`resetFailedQuest` had no caller,
+  so the persisted `failed` state could never be written. Quests can now be
+  gated on world flags, fail on an authored condition, and open a recovery
+  branch. Added `deliver` and `survive` objectives.
+- Implemented the reserve roster. A fifth companion was previously turned away
+  by a party-size guard; they now wait in reserve and can be swapped in.
+- Added New Game+ and a post-game superboss. Carry-over brings levels,
+  equipment and currency into a fresh chronicle; the superboss is sealed until
+  the campaign is finished, making the ending overlay's promise of unfinished
+  threads true.
+- Added an in-game codex. The game previously explained no mechanic anywhere.
+- Windowed the inventory and shop overlays so the cursor cannot walk off the
+  panel, and routed advanced-job unlocks through the engine's unlock API
+  instead of a duplicate level check in the bridge.
+
 - Added difficulty options (Easy/Normal/Hard), chosen once at character
   creation alongside name/ancestry/calling and fixed for the life of the
   chronicle, matching standard JRPG convention. Easy softens enemy HP/
