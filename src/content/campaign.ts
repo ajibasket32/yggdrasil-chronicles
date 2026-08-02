@@ -570,7 +570,7 @@ export interface AdvancedJobDefinition {
 export const advancedJobs: readonly AdvancedJobDefinition[] = [
   { id: "bulwark", name: "Bulwark", baseJobId: "vanguard", minimumLevel: 4, signatureSkillId: "skill.guard-line", bonusSkillId: "skill.bastion-slam" },
   { id: "banneret", name: "Banneret", baseJobId: "vanguard", minimumLevel: 4, signatureSkillId: "skill.shield-bash", bonusSkillId: "skill.rallying-strike" },
-  { id: "pathfinder", name: "Pathfinder", baseJobId: "ranger", minimumLevel: 4, signatureSkillId: "skill.quickstep", bonusSkillId: "skill.piercing-arrow" },
+  { id: "pathfinder", name: "Pathfinder", baseJobId: "ranger", minimumLevel: 4, signatureSkillId: "skill.quickstep", bonusSkillId: "skill.pathfinders-stride" },
   { id: "beastwarden", name: "Beastwarden", baseJobId: "ranger", minimumLevel: 4, signatureSkillId: "skill.aimed-shot", bonusSkillId: "skill.hunting-mark" },
   { id: "lifebinder", name: "Lifebinder", baseJobId: "mender", minimumLevel: 4, signatureSkillId: "skill.mend", bonusSkillId: "skill.greater-mend" },
   { id: "dawnkeeper", name: "Dawnkeeper", baseJobId: "mender", minimumLevel: 4, signatureSkillId: "skill.ward-thread", bonusSkillId: "skill.dawnfire-lance" },

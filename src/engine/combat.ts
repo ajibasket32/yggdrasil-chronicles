@@ -124,17 +124,53 @@ function clampResistance(value: number | undefined): number {
   return Math.max(-1, Math.min(0.9, value ?? 0));
 }
 
+function statusPotency(combatant: Combatant, id: StatusInstance["id"]): number | undefined {
+  return combatant.statuses.find((status) => status.id === id)?.potency;
+}
+
+/**
+ * Buff and debuff multipliers. `weaken` cuts what the actor deals, `fortify`
+ * cuts what the target takes; both read the instance's own potency so a
+ * stronger application is expressible without new status ids.
+ */
+function offenceMultiplier(actor: Combatant): number {
+  const weaken = statusPotency(actor, "weaken");
+  return weaken === undefined ? 1 : Math.max(0.1, 1 - weaken);
+}
+
+function defenceMultiplier(target: Combatant): number {
+  const fortify = statusPotency(target, "fortify");
+  const guard = target.statuses.some((status) => status.id === "guard") ? 0.5 : 1;
+  const fortified = fortify === undefined ? 1 : Math.max(0.1, 1 - fortify);
+  return guard * fortified;
+}
+
 function calculateDamage(actor: Combatant, target: Combatant, skill: CombatSkill, variance: number, critical: boolean): number {
   const offense = skill.element === "physical" ? actor.stats.strength : actor.stats.intellect;
   const defense = skill.element === "physical" ? target.stats.vitality : target.stats.wisdom;
   const base = Math.max(1, skill.power + offense * 1.7 - defense * 0.85);
   const resistanceMultiplier = 1 - clampResistance(target.elements[skill.element]);
-  const guardMultiplier = target.statuses.some((status) => status.id === "guard") ? 0.5 : 1;
-  return Math.max(1, Math.round(base * variance * resistanceMultiplier * guardMultiplier * (critical ? 1.5 : 1)));
+  return Math.max(1, Math.round(
+    base
+    * variance
+    * resistanceMultiplier
+    * defenceMultiplier(target)
+    * offenceMultiplier(actor)
+    * (critical ? 1.5 : 1)
+  ));
 }
 
-function removeGuard(combatant: Combatant): Combatant {
-  return { ...combatant, statuses: combatant.statuses.filter((status) => status.id !== "guard") };
+/**
+ * Guard is spent by the hit it absorbs, and damage wakes a sleeping target —
+ * the standard genre rule, and what distinguishes sleep from stun and freeze.
+ * Without it, sleep is strictly the best turn-denial and the three are
+ * mechanically identical.
+ */
+function applyDamageStatusRules(combatant: Combatant): Combatant {
+  return {
+    ...combatant,
+    statuses: combatant.statuses.filter((status) => status.id !== "guard" && status.id !== "sleep")
+  };
 }
 
 function addOrRefreshStatus(combatant: Combatant, incoming: StatusInstance): Combatant {
@@ -186,10 +222,21 @@ export function createCombatState(party: Combatant[], enemies: Combatant[], seed
   };
 }
 
+/**
+ * Effective agility for ordering. haste and slow scale it by their own
+ * potency, which is what makes those two statuses worth casting at all —
+ * without an order they affect, they would be inert.
+ */
+function initiativeAgility(combatant: Combatant): number {
+  const haste = statusPotency(combatant, "haste") ?? 0;
+  const slow = statusPotency(combatant, "slow") ?? 0;
+  return combatant.stats.agility * (1 + haste) * Math.max(0.1, 1 - slow);
+}
+
 export function getInitiativeOrder(state: CombatState): EntityId[] {
   return [...state.party, ...state.enemies]
     .filter(isAlive)
-    .sort((left, right) => right.stats.agility - left.stats.agility || left.id.localeCompare(right.id))
+    .sort((left, right) => initiativeAgility(right) - initiativeAgility(left) || left.id.localeCompare(right.id))
     .map((combatant) => combatant.id);
 }
 
@@ -316,7 +363,7 @@ export function resolveCombatAction(
     };
   }
   const damage = calculateDamage(actorMatch.combatant, targetMatch.combatant, skill, 0.9 + varianceRoll.value * 0.2, criticalRoll.value);
-  let target = removeGuard({
+  let target = applyDamageStatusRules({
     ...targetMatch.combatant,
     hp: Math.max(0, targetMatch.combatant.hp - damage)
   });
@@ -330,7 +377,12 @@ export function resolveCombatAction(
   }];
 
   if (target.hp > 0 && skill.status) {
-    const statusRoll = randomChance(state.rng, skill.status.chance);
+    // Resistance reduces the chance, it does not gate it. A boss with 0.5 stun
+    // resistance is meaningfully harder to lock down without the player's
+    // status build becoming useless; 1 is full immunity.
+    const resistance = Math.max(0, Math.min(1, target.statusResistance?.[skill.status.id] ?? 0));
+    const effectiveChance = skill.status.chance * (1 - resistance);
+    const statusRoll = randomChance(state.rng, effectiveChance);
     state = { ...state, rng: statusRoll.rng };
     if (statusRoll.value) {
       target = addOrRefreshStatus(target, {

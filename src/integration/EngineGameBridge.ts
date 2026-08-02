@@ -144,15 +144,24 @@ const COMBAT_SKILLS: readonly CombatSkill[] = [
   { id: "skill.ward-thread", name: "Ward Thread", element: "aether", power: 15, accuracy: 1, mpCost: 3, target: "enemy", status: { id: "sleep", chance: 0.2, turns: 1, potency: 0 } },
   { id: "skill.ember-spark", name: "Ember Spark", element: "fire", power: 24, accuracy: 0.9, mpCost: 6, target: "enemy", status: { id: "burn", chance: 0.35, turns: 2, potency: 4 } },
   { id: "skill.tide-pulse", name: "Tide Pulse", element: "water", power: 20, accuracy: 0.94, mpCost: 5, target: "enemy" },
-  { id: "skill.feint", name: "Feint", element: "physical", power: 16, accuracy: 0.99, mpCost: 3, target: "enemy", status: { id: "bleed", chance: 0.3, turns: 2, potency: 3 } },
-  { id: "skill.slow-mark", name: "Slow Mark", element: "shadow", power: 15, accuracy: 0.96, mpCost: 4, target: "enemy", status: { id: "freeze", chance: 0.2, turns: 1, potency: 0 } },
+  // The Trickster is advertised as "Debuffs and turn control". Feint weakens
+  // what a foe deals; Slow Mark now actually applies `slow` rather than the
+  // freeze its name never described.
+  { id: "skill.feint", name: "Feint", element: "physical", power: 16, accuracy: 0.99, mpCost: 3, target: "enemy", status: { id: "weaken", chance: 0.45, turns: 3, potency: 0.3 } },
+  { id: "skill.slow-mark", name: "Slow Mark", element: "shadow", power: 15, accuracy: 0.96, mpCost: 4, target: "enemy", status: { id: "slow", chance: 0.5, turns: 3, potency: 0.35 } },
   { id: "skill.thorn-bind", name: "Thorn Bind", element: "nature", power: 20, accuracy: 0.93, mpCost: 5, target: "enemy", status: { id: "poison", chance: 0.4, turns: 2, potency: 4 } },
   { id: "skill.rootward", name: "Rootward", element: "earth", power: 17, accuracy: 0.97, mpCost: 4, target: "enemy" },
   // Advanced job branch forms: each is a permanently new skill granted the
   // first time its branch is selected, distinct in element, target, or
   // status from every starting and sibling-branch skill.
   { id: "skill.bastion-slam", name: "Bastion Slam", element: "physical", power: 26, accuracy: 0.85, mpCost: 6, target: "enemy", status: { id: "stun", chance: 0.4, turns: 1, potency: 0 } },
-  { id: "skill.rallying-strike", name: "Rallying Strike", element: "physical", power: 18, accuracy: 0.95, mpCost: 4, target: "enemy", status: { id: "bleed", chance: 0.3, turns: 2, potency: 4 } },
+  // The Banneret rallies rather than bleeds: a self-fortify that finally gives
+  // the buff half of the buff/debuff set a caster, and distinguishes this
+  // branch from the four other bleed-appliers.
+  { id: "skill.rallying-strike", name: "Rallying Strike", element: "physical", power: 0, accuracy: 1, mpCost: 4, target: "self", status: { id: "fortify", chance: 1, turns: 3, potency: 0.3 } },
+  // The Pathfinder's stride is the fourth buff/debuff caster: haste is the
+  // only way a player moves themselves up the initiative order.
+  { id: "skill.pathfinders-stride", name: "Pathfinder's Stride", element: "wind", power: 0, accuracy: 1, mpCost: 5, target: "self", status: { id: "haste", chance: 1, turns: 3, potency: 0.4 } },
   { id: "skill.piercing-arrow", name: "Piercing Arrow", element: "physical", power: 28, accuracy: 0.92, mpCost: 6, target: "enemy" },
   { id: "skill.hunting-mark", name: "Hunting Mark", element: "physical", power: 19, accuracy: 0.97, mpCost: 4, target: "enemy", status: { id: "bleed", chance: 0.5, turns: 3, potency: 4 } },
   { id: "skill.greater-mend", name: "Greater Mend", element: "radiant", power: 30, accuracy: 1, mpCost: 7, target: "ally", healing: true },
@@ -590,6 +599,11 @@ function enemyCombatant(
     skills: [...(ENEMY_SKILLS[id] ?? [])],
     elements: boss ? { nature: 0.2, fire: -0.2 } : { nature: -0.1 },
     statuses: [],
+    // Bosses resist turn denial. Without this, a party alternating two 40%
+    // stuns silences a boss for most of its own fight and the authored phase
+    // choreography never plays. Halving the chance keeps a status build
+    // worthwhile without letting it replace the fight.
+    statusResistance: boss ? { stun: 0.5, sleep: 0.5, freeze: 0.5 } : undefined,
     isPlayerControlled: false
   };
 }
