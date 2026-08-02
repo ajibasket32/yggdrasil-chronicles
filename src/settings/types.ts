@@ -13,7 +13,8 @@ export const REBINDABLE_ACTIONS = [
   "party",
   "encounter",
   "quickSave",
-  "quickLoad"
+  "quickLoad",
+  "codex"
 ] as const;
 
 export type KeyboardAction = (typeof REBINDABLE_ACTIONS)[number];
@@ -35,7 +36,8 @@ export const DEFAULT_KEYBOARD_BINDINGS: Readonly<KeyboardBindings> = {
   // destructive write: pressing it navigated away mid-IndexedDB-write, losing
   // the session the player was trying to protect.
   quickSave: "F9",
-  quickLoad: "F8"
+  quickLoad: "F8",
+  codex: "KeyH"
 };
 
 /**

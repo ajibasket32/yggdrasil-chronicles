@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { locations, npcs } from "../../content";
+import { codexSections, locations, npcs } from "../../content";
 import { gameSettingsStore } from "../../settings";
 import type {
   GameBridge,
@@ -26,7 +26,7 @@ const MAP_ROWS = 17;
 const HUD_X = MAP_COLUMNS * TILE;
 const EQUIPMENT_SLOTS = ["weapon", "armor", "accessory"] as const;
 /** Must match the length of the `commands` array built in overlayContent's "system" branch. */
-const SYSTEM_MENU_COMMAND_COUNT = 11;
+const SYSTEM_MENU_COMMAND_COUNT = 12;
 
 type Point = { x: number; y: number };
 type InteractiveOverlayMode = "browse" | "target" | "jobs" | "equipment";
@@ -50,6 +50,8 @@ export class WorldScene extends Phaser.Scene {
   private overlay?: Phaser.GameObjects.Container;
   private overlayKind?: OverlayKind;
   private systemIndex = 0;
+  /** Which codex section is open; the codex pages a section at a time. */
+  private codexIndex = 0;
   private inventoryIndex = 0;
   private partyIndex = 0;
   private partyJobIndex = 0;
@@ -129,6 +131,7 @@ export class WorldScene extends Phaser.Scene {
     else if (action === "encounter") void this.launchEncounter();
     else if (action === "quickSave") void this.quickSave();
     else if (action === "quickLoad") void this.quickLoad();
+    else if (action === "codex") this.toggleOverlay("codex");
   }
 
   private onGamepadButton(_pad: Phaser.Input.Gamepad.Gamepad, button: Phaser.Input.Gamepad.Button): void {
@@ -164,6 +167,10 @@ export class WorldScene extends Phaser.Scene {
     if (this.overlayKind === "system") {
       if (direction === "up" || direction === "left") this.moveSystem(-1);
       else this.moveSystem(1);
+      return;
+    }
+    if (this.overlayKind === "codex") {
+      this.moveCodex(direction === "up" || direction === "left" ? -1 : 1);
       return;
     }
     if (this.overlayKind === "inventory") {
@@ -788,11 +795,42 @@ export class WorldScene extends Phaser.Scene {
       wordWrap: { width: 570 },
       lineSpacing: 8
     });
-    const hint = this.add.text(88, 462, kind === "system" ? "Arrows / D-pad  Select     Enter / A  Confirm     Esc / B  Close" : "Esc / B  Close", TEXT.small);
+    const hint = this.add.text(
+      88,
+      462,
+      kind === "system"
+        ? "Arrows / D-pad  Select     Enter / A  Confirm     Esc / B  Close"
+        : kind === "codex"
+          ? "↑↓  Turn page     Esc / B  Close"
+          : "Esc / B  Close",
+      TEXT.small
+    );
     this.overlay = this.add.container(0, 0, [panel, title, rule, body, hint]).setDepth(50);
   }
 
+  /** Pages the codex a section at a time; wrapping keeps it reachable in both directions. */
+  private moveCodex(delta: number): void {
+    this.codexIndex = Phaser.Math.Wrap(this.codexIndex + delta, 0, codexSections.length);
+    this.overlay?.destroy();
+    this.overlay = undefined;
+    this.overlayKind = undefined;
+    this.locked = false;
+    this.toggleOverlay("codex");
+  }
+
   private overlayContent(kind: OverlayKind): string {
+    if (kind === "codex") {
+      const section = codexSections[this.codexIndex] ?? codexSections[0];
+      if (!section) return "The codex is empty.";
+      const entries = section.entries
+        .map(({ title, body }) => `◆ ${title}\n   ${body}`)
+        .join("\n\n");
+      return [
+        `${section.title}   (${this.codexIndex + 1} of ${codexSections.length})`,
+        "",
+        entries
+      ].join("\n");
+    }
     if (kind === "journal") {
       const active = this.snapshot.quests.filter(({ state }) => state === "active");
       const available = this.snapshot.quests.filter(({ state }) => state === "available");
@@ -831,6 +869,9 @@ export class WorldScene extends Phaser.Scene {
       `Sound: ${gameSettingsStore.get().soundEnabled ? "ON" : "OFF"}`,
       `Sound Volume: ${Math.round(gameSettingsStore.get().soundVolume * 100)}%`,
       "Rest for eight hours",
+      // Reachable here as well as by key, so a gamepad player can read the
+      // codex without a keyboard.
+      "Help & Codex",
       "Return to Title"
     ];
     return `${this.snapshot.chronicleHint}\n\n${commands.map((label, index) => `${index === this.systemIndex ? "›" : " "} ${label}`).join("\n")}`;
@@ -1185,6 +1226,12 @@ export class WorldScene extends Phaser.Scene {
       await this.bridge.rest();
       this.closeOverlay();
       this.showToast("The party rests. HP and MP restored.");
+      return;
+    }
+    if (this.systemIndex === 10) {
+      this.closeOverlay();
+      this.codexIndex = 0;
+      this.toggleOverlay("codex");
       return;
     }
     this.returnToTitle();

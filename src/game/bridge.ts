@@ -1,7 +1,7 @@
 import type { Element, QuestState, QuestStepKind, StatusId } from "../shared/types";
 
 export type Direction = "up" | "down" | "left" | "right";
-export type OverlayKind = "journal" | "inventory" | "party" | "system" | "shop" | "ending";
+export type OverlayKind = "journal" | "inventory" | "party" | "system" | "shop" | "ending" | "codex";
 export type BattleAction = "attack" | "skill" | "item" | "guard" | "escape";
 export type GameSaveSlot = "autosave" | "quick" | "manual-1" | "manual-2" | "manual-3";
 

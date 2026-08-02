@@ -18,7 +18,8 @@ const ACTION_LABELS: Readonly<Record<KeyboardAction, string>> = {
   party: "Party",
   encounter: "Quick Encounter",
   quickSave: "Quick Save",
-  quickLoad: "Quick Load"
+  quickLoad: "Quick Load",
+  codex: "Help / Codex"
 };
 
 /** True when the browser itself acts on this key, so the game must not claim it. */
