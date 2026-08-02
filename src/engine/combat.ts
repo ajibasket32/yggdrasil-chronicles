@@ -128,6 +128,25 @@ function statusPotency(combatant: Combatant, id: StatusInstance["id"]): number |
   return combatant.statuses.find((status) => status.id === id)?.potency;
 }
 
+/** Ceiling on a single damage-over-time tick, as a share of the target's maximum. */
+export const DAMAGE_OVER_TIME_CAP = 0.08;
+
+/**
+ * A tick is the larger of its authored potency and a small share of the
+ * target's maximum health, capped so it can never trivialise a long fight.
+ *
+ * A flat potency of 3-5 is meaningful against a 74-health forager and
+ * irrelevant against a boss, so poison, burn and bleed simply stopped
+ * mattering as the campaign went on. Scaling by the target keeps them a real
+ * pressure at every tier; the cap stops percentage damage from undoing the
+ * boss durability it sits alongside.
+ */
+export function damageOverTimeAmount(potency: number, targetMaxHp: number): number {
+  const proportional = targetMaxHp * 0.02;
+  const ceiling = targetMaxHp * DAMAGE_OVER_TIME_CAP;
+  return Math.max(1, Math.round(Math.min(ceiling, Math.max(potency, proportional))));
+}
+
 /**
  * Buff and debuff multipliers. `weaken` cuts what the actor deals, `fortify`
  * cuts what the target takes; both read the instance's own potency so a
@@ -258,17 +277,59 @@ export function chooseEnemyAction(
   if (!actor || actor.side !== "enemy" || !isAlive(actor.combatant)) {
     throw new Error(`Enemy actor '${actorId}' is unavailable`);
   }
-  const targets = state.party.filter(isAlive).sort((left, right) => left.hp - right.hp || left.id.localeCompare(right.id));
-  const target = targets[0];
-  if (!target) {
+  const living = state.party.filter(isAlive);
+  if (living.length === 0) {
     throw new Error("No living party target");
   }
+
+  const target = selectEnemyTarget(actor.combatant, living, state.round);
   const bloodied = actor.combatant.hp / actor.combatant.stats.maxHp <= 0.6;
   const knownSkillId = actor.combatant.skills.find((candidate) => skills[candidate]);
   if (bloodied && knownSkillId) {
     return { type: "skill", actorId, targetId: target.id, skillId: knownSkillId };
   }
   return { type: "attack", actorId, targetId: target.id };
+}
+
+/**
+ * Which party member an enemy goes after. Derived from the enemy's own profile
+ * and the round number, never from `state.rng`: consuming RNG here would change
+ * every existing seeded test and break simulation reproducibility, for a
+ * difference no player could perceive.
+ *
+ * Every enemy previously attacked the weakest living character, which made a
+ * fight against two enemies play exactly like a fight against one.
+ */
+function selectEnemyTarget(
+  enemy: Combatant,
+  living: readonly Combatant[],
+  round: number
+): Combatant {
+  const byHealth = [...living].sort((left, right) => left.hp - right.hp || left.id.localeCompare(right.id));
+  const byThreat = [...living].sort((left, right) =>
+    right.stats.strength + right.stats.intellect - (left.stats.strength + left.stats.intellect)
+    || left.id.localeCompare(right.id));
+
+  const profile = enemyTargetingProfile(enemy);
+  if (profile === "opportunist") return byHealth[0] ?? living[0]!;
+  if (profile === "hunter") return byThreat[0] ?? living[0]!;
+  // "shifting": spreads its attention so a single character cannot soak
+  // everything, using the round rather than a roll.
+  return living[round % living.length] ?? living[0]!;
+}
+
+export type EnemyTargetingProfile = "opportunist" | "hunter" | "shifting";
+
+/**
+ * Derived from the enemy's own stat shape rather than an authored field, so
+ * every enemy — including any added later — gets a coherent behaviour without
+ * a second content table to maintain.
+ */
+export function enemyTargetingProfile(enemy: Combatant): EnemyTargetingProfile {
+  const { strength, intellect, agility } = enemy.stats;
+  if (agility >= strength && agility >= intellect) return "opportunist";
+  if (intellect > strength) return "hunter";
+  return "shifting";
 }
 
 export function resolveCombatAction(
@@ -416,7 +477,7 @@ export function advanceCombatRound(currentState: CombatState): CombatResolution 
     const statuses: StatusInstance[] = [];
     for (const status of combatant.statuses) {
       if (status.id === "poison" || status.id === "burn" || status.id === "bleed") {
-        const amount = Math.max(1, Math.round(status.potency));
+        const amount = damageOverTimeAmount(status.potency, combatant.stats.maxHp);
         hp = Math.max(0, hp - amount);
         events.push({ type: "status_damage", targetId: combatant.id, status: status.id, amount });
       }
