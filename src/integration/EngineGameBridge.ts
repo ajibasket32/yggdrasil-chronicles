@@ -39,7 +39,9 @@ import {
   locationFinds,
   locations,
   npcs,
+  levelUpSkillsFor,
   postgameEncounterIds,
+  skillsLearnedBetween,
   quests,
   recruitProfiles,
   startingBuildLoadouts,
@@ -952,8 +954,15 @@ export class EngineGameBridge implements GameBridge {
 
     // Level restore runs through the real progression path so stats grow with
     // the level rather than the number being written on its own.
-    const party = fresh.party.map((member) =>
-      grantExperience(member, totalExperienceForLevel(carriedLevel)).character);
+    // Carried characters know the forms their level has already taught them;
+    // arriving at level 18 with only the two creation forms would be a silent
+    // downgrade from the run being carried.
+    const party = fresh.party.map((member) => {
+      const grown = grantExperience(member, totalExperienceForLevel(carriedLevel)).character;
+      const taught = levelUpSkillsFor(baseJobIdFor(grown.jobId), grown.level)
+        .filter((skillId) => SKILLS[skillId] && !grown.skills.includes(skillId));
+      return taught.length > 0 ? { ...grown, skills: [...grown.skills, ...taught] } : grown;
+    });
     let inventory = fresh.inventory;
     for (const itemId of carriedEquipment) {
       inventory = this.addWithinStackLimit(inventory, itemId, 1);
@@ -1270,6 +1279,23 @@ export class EngineGameBridge implements GameBridge {
 
   private npcConversationFlag(npcId: string): string {
     return `memory.${npcId}.conversations`;
+  }
+
+  /**
+   * Names the forms a character learns by reaching their new level, and returns
+   * the character with those forms known. Split from `withLearnedSkills` so the
+   * caller can announce what was learned without recomputing it.
+   */
+  private applyLevelUpSkills(character: PlayerCharacter, previousLevel: number): string[] {
+    const baseJobId = baseJobIdFor(character.jobId);
+    return skillsLearnedBetween(baseJobId, previousLevel, character.level)
+      .filter((skillId) => SKILLS[skillId] && !character.skills.includes(skillId));
+  }
+
+  private withLearnedSkills(character: PlayerCharacter, previousLevel: number): PlayerCharacter {
+    const learned = this.applyLevelUpSkills(character, previousLevel);
+    if (learned.length === 0) return character;
+    return { ...character, skills: [...character.skills, ...learned] };
   }
 
   /** True once every main-story quest is complete. */
@@ -1865,6 +1891,7 @@ export class EngineGameBridge implements GameBridge {
       experience: Math.round(baseReward.experience * rewardScale),
       currency: Math.round(baseReward.currency * rewardScale)
     };
+    const levelUps: Array<{ name: string; level: number; learned: string[] }> = [];
     const party = active.state.party.map((member) => {
       const original = state.party.find(({ id }) => id === member.id);
       if (!original) return member as PlayerCharacter;
@@ -1874,12 +1901,20 @@ export class EngineGameBridge implements GameBridge {
       // tick that kills both sides in the same round reports "victory" with a dead
       // party; without this floor that 0 HP persists and the next startEncounter
       // throws "Combat requires at least one living combatant on each side".
-      return grantExperience({
+      const result = grantExperience({
         ...original,
         hp: Math.max(1, original.stats.maxHp - missingHp),
         mp: Math.max(0, original.stats.maxMp - missingMp),
         statuses: member.statuses
-      }, reward.experience).character;
+      }, reward.experience);
+      if (result.levelsGained > 0) {
+        levelUps.push({
+          name: result.character.name,
+          level: result.character.level,
+          learned: this.applyLevelUpSkills(result.character, original.level)
+        });
+      }
+      return this.withLearnedSkills(result.character, original.level);
     });
     let inventory = state.inventory;
     if (reward.itemRoll < 350) inventory = this.addWithinStackLimit(inventory, "item.root-tonic", 1);
@@ -1936,6 +1971,14 @@ export class EngineGameBridge implements GameBridge {
     this.applyCompletedQuestRewards();
     active.phase = "victory";
     active.log.push(`Victory. The party earns ${reward.experience} experience and ${reward.currency} marks.`);
+    // Levelling was completely silent: `levelsGained` was computed and dropped
+    // at both call sites, so twenty levels of growth never announced itself.
+    for (const levelUp of levelUps) {
+      active.log.push(`${levelUp.name} reaches level ${levelUp.level}.`);
+      for (const skillId of levelUp.learned) {
+        active.log.push(`${levelUp.name} learns ${SKILLS[skillId]?.name ?? skillId}.`);
+      }
+    }
     await this.persist("autosave");
   }
 
@@ -2421,6 +2464,12 @@ export class EngineGameBridge implements GameBridge {
       ancestry: ancestryName,
       job: jobName,
       level: member.level,
+      // Progress toward the next level, which the game never showed anywhere.
+      experienceIntoLevel: Math.max(0, member.experience - totalExperienceForLevel(member.level)),
+      experienceForNextLevel: Math.max(
+        1,
+        totalExperienceForLevel(member.level + 1) - totalExperienceForLevel(member.level)
+      ),
       hp: displayHp,
       maxHp: displayStats.maxHp,
       mp: displayMp,

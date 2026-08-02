@@ -26,6 +26,8 @@ const starterMember = (draft: CharacterCreationDraft): PartyMemberView => ({
   mp: 24,
   maxMp: 24,
   portraitTint: 0x72d6a1,
+  experienceIntoLevel: 0,
+  experienceForNextLevel: 100,
   stats: DEMO_STATS
 });
 
@@ -125,6 +127,8 @@ export class DemoGameBridge implements GameBridge {
         mp: 30,
         maxMp: 30,
         portraitTint: 0xe8a95a,
+        experienceIntoLevel: 0,
+        experienceForNextLevel: 100,
         stats: DEMO_STATS
       };
       this.state = {

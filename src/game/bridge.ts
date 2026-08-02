@@ -35,6 +35,9 @@ export interface PartyMemberView {
   mp: number;
   maxMp: number;
   portraitTint: number;
+  /** Experience earned into the current level, and what the next one costs. */
+  experienceIntoLevel: number;
+  experienceForNextLevel: number;
   /** Post-equipment combat stats, excluding maxHp/maxMp (already shown above). */
   stats: PartyMemberStatsView;
   equipment?: Partial<Record<"weapon" | "armor" | "accessory", { itemId: string; name: string }>>;
