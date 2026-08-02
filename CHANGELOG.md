@@ -42,6 +42,33 @@
 - Windowed the inventory and shop overlays so the cursor cannot walk off the
   panel, and routed advanced-job unlocks through the engine's unlock API
   instead of a duplicate level check in the bridge.
+- Made bosses last long enough to play their authored phases. A boss died in
+  about two rounds against a party at its own level, so thresholds written at
+  60%, 50%, 45% and 25% health were skipped: Varn's mid-fight heal had never
+  fired in practice. Boss health now scales with the number of attackers,
+  offensive forms roughly doubled in power (a form previously beat a free
+  attack by 3-18%), and trash health eased so every starting build can clear a
+  three-enemy encounter at its authored level. The health curve moved into the
+  engine and is shared with the offline simulation, which had been validating a
+  copy of the old numbers.
+- Grew experience rewards with the level curve. The curve is quadratic and the
+  reward was linear, so a completionist finished around level 16 against an
+  authored final band of 14-22; the same run now ends at 20.
+- Levelling teaches new forms and says so. Three per calling across the
+  campaign's three regional bands, drawn from skills that already existed;
+  level-ups were previously silent and a character learned nothing after
+  creation unless they took a branch. Experience progress is shown in the party
+  overlay.
+- Gave battles damage numbers, hit reaction, MP bars and status tokens, all
+  driven by the typed combat events added in the contract pass. Motion respects
+  the Reduced Motion setting.
+- Enemies no longer all behave identically: each picks targets by a profile
+  derived from its own stats — finishing the wounded, hunting the biggest
+  threat, or spreading its attention. Damage over time scales with the target
+  so poison, burn and bleed stay relevant past the opening region.
+- Agility decides turn order. `getInitiativeOrder` had been dead code, then
+  display-only; the party now acts in initiative order and it is recomputed
+  each round, which is what gives haste and slow meaning.
 
 - Added difficulty options (Easy/Normal/Hard), chosen once at character
   creation alongside name/ancestry/calling and fixed for the life of the
