@@ -32,6 +32,7 @@ describe("release asset audit", () => {
     expect(result.valid, result.issues.map((issue) => issue.message).join("\n")).toBe(true);
     expect(result.catalog).toHaveLength(4);
     expect(result.runtimeAssetReferences).toEqual([
+      "/assets/vendor/everrogue-tileset.png",
       "/assets/vendor/kenney-rpg-audio/Audio/bookFlip1.ogg",
       "/assets/vendor/kenney-rpg-audio/Audio/bookPlace1.ogg",
       "/assets/vendor/kenney-rpg-audio/Audio/cloth1.ogg",
@@ -52,7 +53,8 @@ describe("release asset audit", () => {
       "/assets/vendor/puny-characters/Puny-Characters/Soldier-Red.png",
       "/assets/vendor/puny-characters/Puny-Characters/Soldier-Yellow.png",
       "/assets/vendor/puny-characters/Puny-Characters/Warrior-Blue.png",
-      "/assets/vendor/puny-characters/Puny-Characters/Warrior-Red.png"
+      "/assets/vendor/puny-characters/Puny-Characters/Warrior-Red.png",
+      "/assets/vendor/punyworld-overworld.png"
     ]);
   });
 

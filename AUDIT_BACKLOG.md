@@ -376,6 +376,27 @@ Answer these before implementation starts. Recommendations are mine; the reasoni
 
 ---
 
+## Follow-on work opened by Wave 5
+
+Not deferred, not out of scope — found while landing the wave, and scheduled.
+
+### #223 — Draw town buildings from the tileset, not from `graphics.fillRect`
+
+#119 converted the ground: towns, wilderness and dungeons now draw from
+`punyworld-overworld.png` and `everrogue-tileset.png`, with a real orchard, a
+real dirt road, water that looks like water, and a stone-framed cavern. The
+settlement halls in `paintLandmarks` are still filled rectangles and triangles.
+
+The tileset does carry buildings, at rows 25-32, but they are **fragments** —
+separate roof-peak, roof-body, wall and door-wall tiles meant to be assembled
+into a multi-tile structure. Verified by decoding the sheet and inspecting the
+tiles: there is no complete one-tile house to drop in. Doing this properly means
+a small building-assembly helper (a 3x4 footprint composed of named parts), which
+is its own change and should not be smuggled into the terrain commit.
+
+Until then the halls are geometric, which reads as deliberate architecture beside
+real terrain rather than as missing art — but it is not finished.
+
 ## Explicitly deferred
 
 Only items with a genuine external blocker. Nothing is here for being large — #16, #101, #108, #133 and #147 are all large and all scheduled.

@@ -210,6 +210,10 @@ export interface PendingSceneView {
 
 export interface InteractionView {
   speaker: string;
+  /** The speaker's standing in the world, shown under their name. */
+  speakerRole?: string;
+  /** The speaker's `assetTag`, resolved to a face by `portraitAppearance`. */
+  portraitTag?: string;
   lines: readonly string[];
   choices?: InteractionChoiceView[];
   recruitedMember?: PartyMemberView;

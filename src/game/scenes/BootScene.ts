@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { COLORS } from "../runtime";
+import { DUNGEON_SHEET, OVERWORLD_SHEET, SOURCE_TILE } from "../tileset";
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -7,6 +8,16 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
+    // Terrain. Both sheets have been committed with verified CC0 provenance
+    // since the asset catalog was written and were referenced by nothing.
+    this.load.spritesheet(OVERWORLD_SHEET, "/assets/vendor/punyworld-overworld.png", {
+      frameWidth: SOURCE_TILE,
+      frameHeight: SOURCE_TILE
+    });
+    this.load.spritesheet(DUNGEON_SHEET, "/assets/vendor/everrogue-tileset.png", {
+      frameWidth: SOURCE_TILE,
+      frameHeight: SOURCE_TILE
+    });
     const base = "/assets/vendor/puny-characters/Puny-Characters";
     this.load.spritesheet("sprite.player", `${base}/Warrior-Blue.png`, {
       frameWidth: 32,

@@ -19,6 +19,8 @@ const runtimeAssetPaths = [
   "/assets/vendor/kenney-rpg-audio/Audio/handleSmallLeather.ogg",
   "/assets/vendor/kenney-rpg-audio/Audio/knifeSlice.ogg",
   "/assets/vendor/kenney-rpg-audio/Audio/metalLatch.ogg",
+  "/assets/vendor/everrogue-tileset.png",
+  "/assets/vendor/punyworld-overworld.png",
   "/assets/vendor/puny-characters/Puny-Characters/Archer-Green.png",
   "/assets/vendor/puny-characters/Puny-Characters/Archer-Purple.png",
   "/assets/vendor/puny-characters/Puny-Characters/Character-Base.png",

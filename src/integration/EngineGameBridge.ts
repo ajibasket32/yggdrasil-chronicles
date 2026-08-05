@@ -114,6 +114,8 @@ const RUNNING_CONTENT_PACKS: Readonly<Record<string, string>> = {
 const FIRST_QUEST = "quest.first-silence";
 const CONCORD_QUEST = "quest.a-new-concord";
 const CONCORD_FINAL_NPC = "npc.sable-voss";
+/** The astronomer speaks for the campaign's last decision, outside the ordinary NPC path. */
+const SABLE_VOSS = npcs.find(({ id }) => id === CONCORD_FINAL_NPC);
 
 /**
  * Each ending has a genuine trade-off, not just a single faction gain: the
@@ -1433,7 +1435,11 @@ export class EngineGameBridge implements GameBridge {
     const vendor = vendorProfiles.find((candidate) => candidate.npcId === npcId);
     if (vendor) this.#openVendorId = vendor.id;
     await this.persist("autosave");
-    const npc = npcId.replace("npc.", "").split("-").map((word) =>
+    // Prefer the authored record over a name reconstructed from the id: it
+    // carries the role and the portrait tag, both of which the dialogue panel
+    // shows and neither of which an id can supply.
+    const definition = npcs.find(({ id }) => id === npcId);
+    const npc = definition?.name ?? npcId.replace("npc.", "").split("-").map((word) =>
       `${word[0]?.toUpperCase() ?? ""}${word.slice(1)}`
     ).join(" ");
     const baseLines = awaitsConcordChoice
@@ -1444,6 +1450,8 @@ export class EngineGameBridge implements GameBridge {
       : this.responsiveDialogue(npcId);
     return {
       speaker: npc,
+      speakerRole: definition?.role,
+      portraitTag: definition?.assetTag,
       // A companion joining is one of the moments a JRPG is built around, so
       // it gets its authored line in the conversation rather than a toast.
       lines: recruitmentMoment
@@ -1479,6 +1487,8 @@ export class EngineGameBridge implements GameBridge {
     if (!choice || !this.isAwaitingConcordChoice(state.quests, CONCORD_FINAL_NPC)) {
       return {
         speaker: "Sable Voss",
+        speakerRole: SABLE_VOSS?.role,
+        portraitTag: SABLE_VOSS?.assetTag,
         lines: ["That decision is no longer available to this chronicle."]
       };
     }
@@ -1525,6 +1535,8 @@ export class EngineGameBridge implements GameBridge {
     await this.persist("autosave");
     return {
       speaker: "Sable Voss",
+      speakerRole: SABLE_VOSS?.role,
+      portraitTag: SABLE_VOSS?.assetTag,
       lines: [
         choice.resolution,
         "Then let every witness remember that this future was chosen, not inherited."

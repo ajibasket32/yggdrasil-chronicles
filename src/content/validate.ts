@@ -1,4 +1,6 @@
 import type { ContentPack, QuestDefinition } from "../shared/types";
+import { knownPortraitTags } from "./portraits";
+import { scenes } from "./scenes";
 
 export interface ContentValidationResult {
   valid: boolean;
@@ -453,8 +455,19 @@ export function validateContentPack(pack: ContentPack): ContentValidationResult 
     }
   }
 
+  const portraitTags = new Set(knownPortraitTags());
   for (const npc of pack.npcs) {
     if (!locationIds.has(npc.locationId)) errors.push(`${npc.id} references unknown location ${npc.locationId}`);
+    // Every authored assetTag went unread for the whole project. Now that they
+    // reach the dialogue panel, an unmapped one means a speaker with no face.
+    if (!portraitTags.has(npc.assetTag)) errors.push(`${npc.id} has no portrait for ${npc.assetTag}`);
+  }
+  for (const scene of scenes) {
+    for (const line of scene.lines) {
+      if (line.portraitTag && !portraitTags.has(line.portraitTag)) {
+        errors.push(`${scene.id} names an unknown portrait ${line.portraitTag}`);
+      }
+    }
   }
 
   for (const quest of pack.quests) {

@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { codexSections, locations, npcs, vendorProfiles } from "../../content";
+import { codexSections, locations, npcs, portraitAppearance, vendorProfiles } from "../../content";
 import { gameSettingsStore } from "../../settings";
 import type {
   BackupView,
@@ -14,6 +14,7 @@ import type {
 import { gamepadButtonAction, pollStickDirection, type StickRepeatState } from "../gamepadControls";
 import { keyboardActionForCode, keyboardCodeLabel } from "../keyboardControls";
 import { windowAround, windowFooter, type OverlayWindow } from "../overlayWindow";
+import { groundTile, tileVariant, treeAt, TREE_TILES } from "../tileset";
 import { getNpcSpawnPoints } from "../npcPlacement";
 import { announceGameStatus, announceScene, COLORS, getBridge, motionDuration, playSound, setSceneFlag, TEXT } from "../runtime";
 import {
@@ -212,6 +213,41 @@ export class WorldScene extends Phaser.Scene {
     this.drawSceneLine();
   }
 
+  /**
+   * A name plate with the speaker's face, drawn above a dialogue panel.
+   *
+   * The thirty authored `assetTag`s reached no code at all, so every speaker in
+   * the game arrived as the same gold label. Portrait art is not in the
+   * repository and ASSETS.md forbids fetching any, so the face comes from the
+   * committed CC0 character sheets: a specific sheet and tint per speaker.
+   * Returns the objects to add; callers own the container.
+   */
+  private buildNamePlate(
+    x: number,
+    y: number,
+    speaker: string,
+    role: string | undefined,
+    portraitTag: string | undefined
+  ): Phaser.GameObjects.GameObject[] {
+    const parts: Phaser.GameObjects.GameObject[] = [];
+    const portrait = portraitAppearance(portraitTag);
+    const hasFace = portrait !== undefined && this.textures.exists(portrait.spriteKey);
+    if (hasFace) {
+      parts.push(this.add.rectangle(x, y - 4, 52, 52, COLORS.ink, 0.95).setOrigin(0).setStrokeStyle(2, 0x8aa394));
+      const face = this.add.image(x + 26, y + 22, portrait.spriteKey, portrait.frame)
+        .setOrigin(0.5)
+        .setScale(1.5)
+        .setTint(portrait.tint);
+      parts.push(face);
+    }
+    const textX = hasFace ? x + 64 : x;
+    parts.push(this.add.text(textX, y, speaker.toUpperCase(), { ...TEXT.small, color: COLORS.gold }));
+    if (role) {
+      parts.push(this.add.text(textX, y + 17, role, { ...TEXT.small, color: COLORS.muted }));
+    }
+    return parts;
+  }
+
   private drawSceneLine(): void {
     const scene = this.snapshot.pendingScene;
     const active = this.activeScene;
@@ -230,14 +266,15 @@ export class WorldScene extends Phaser.Scene {
     // Narration has no speaker; style it apart from spoken lines so the two
     // never read as the same voice.
     if (line.speaker) {
-      children.push(this.add.text(40, 364, line.speaker.toUpperCase(), { ...TEXT.small, color: COLORS.gold }));
+      children.push(...this.buildNamePlate(40, 362, line.speaker, undefined, line.portraitTag));
     }
-    const body = this.add.text(40, line.speaker ? 392 : 380, "", {
+    const speakerInset = line.speaker && portraitAppearance(line.portraitTag) ? 104 : 40;
+    const body = this.add.text(speakerInset, line.speaker ? 396 : 380, "", {
       ...TEXT.body,
       fontSize: line.speaker ? "15px" : "14px",
       color: line.speaker ? COLORS.cream : COLORS.muted,
       fontStyle: line.speaker ? "normal" : "italic",
-      wordWrap: { width: 870 },
+      wordWrap: { width: 910 - speakerInset },
       lineSpacing: 8
     });
     children.push(body);
@@ -428,15 +465,22 @@ export class WorldScene extends Phaser.Scene {
 
     const kind = location.kind;
     const regionId = location.regionId;
-    const backgroundKey = kind === "town" ? "tile.grass" : kind === "wilderness" ? "tile.stone" : "tile.dungeon";
+    const wash = this.regionWash(kind, regionId);
     for (let row = 0; row < MAP_ROWS; row += 1) {
       for (let column = 0; column < MAP_COLUMNS; column += 1) {
-        let texture = backgroundKey;
-        if (kind === "town" && (column === 0 || row === 0 || column === MAP_COLUMNS - 1 || row === MAP_ROWS - 1)) {
-          texture = "tile.water";
+        const ground = groundTile(kind, column, row, MAP_COLUMNS, MAP_ROWS);
+        this.add.image(column * TILE, row * TILE, ground.sheet, ground.frame)
+          .setOrigin(0)
+          .setDisplaySize(TILE, TILE)
+          .setTint(wash);
+        const tree = treeAt(kind, column, row, MAP_COLUMNS, MAP_ROWS);
+        if (tree) {
+          this.add.image(column * TILE, row * TILE, tree.sheet, tree.frame)
+            .setOrigin(0)
+            .setDisplaySize(TILE, TILE)
+            .setDepth(1)
+            .setTint(wash);
         }
-        const tile = this.add.image(column * TILE, row * TILE, texture).setOrigin(0).setDisplaySize(TILE, TILE);
-        tile.setTint(this.tileTint(column, row, kind, regionId));
       }
     }
     this.paintLandmarks(kind, regionId);
@@ -463,21 +507,23 @@ export class WorldScene extends Phaser.Scene {
    * the tile map instead of every region rendering identically by tile kind
    * alone.
    */
-  private tileTint(column: number, row: number, kind: string, regionId: string): number {
-    const variation = (column * 13 + row * 7) % 4;
+  /**
+   * A gentle regional wash over real terrain art.
+   *
+   * The old per-tile recolour existed to make four flat squares look like three
+   * different regions. Applied to actual tiles it would bury them, so this is a
+   * light multiply: the Cinder March runs warm, the Pale Canopy cold, and the
+   * Verdant Reach is left alone.
+   */
+  private regionWash(kind: "town" | "wilderness" | "dungeon", regionId: string): number {
     if (kind === "dungeon") {
-      if (regionId === "region.cinder-march") return [0x8a6a5c, 0x7d5c50, 0x94756a, 0x876356][variation] ?? 0xffffff;
-      if (regionId === "region.pale-canopy") return [0x8f96a8, 0x838aa0, 0x9aa0b2, 0x8791a4][variation] ?? 0xffffff;
-      return [0x78808c, 0x6e7782, 0x828a96, 0x747d88][variation] ?? 0xffffff;
+      if (regionId === "region.cinder-march") return 0xd8b8a4;
+      if (regionId === "region.pale-canopy") return 0xc8d4e4;
+      return 0xffffff;
     }
-    if (kind === "wilderness") {
-      if (regionId === "region.cinder-march") return [0x9c7a5e, 0x8c6a51, 0xa6866a, 0x957256][variation] ?? 0xffffff;
-      if (regionId === "region.pale-canopy") return [0xc7d0d6, 0xb9c4cc, 0xd0d8dc, 0xaebac2][variation] ?? 0xffffff;
-      return [0xa8b095, 0x98a187, 0xb0b69c, 0x929b83][variation] ?? 0xffffff;
-    }
-    if (regionId === "region.cinder-march") return [0xb08a68, 0xa47c5c, 0xba9674, 0x9c7758][variation] ?? 0xffffff;
-    if (regionId === "region.pale-canopy") return [0xcfd8dc, 0xc2ccd2, 0xd8e0e2, 0xb6c0c8][variation] ?? 0xffffff;
-    return [0xb3c49d, 0xaac093, 0xc0cb9f, 0xa0b88c][variation] ?? 0xffffff;
+    if (regionId === "region.cinder-march") return 0xe8c8a8;
+    if (regionId === "region.pale-canopy") return 0xd8e6f0;
+    return 0xffffff;
   }
 
   private paintLandmarks(kind: "town" | "wilderness" | "dungeon", regionId: string): void {
@@ -500,19 +546,13 @@ export class WorldScene extends Phaser.Scene {
         graphics.fillStyle(0xf2ecd6).fillRect(5.5 * TILE, 5 * TILE, TILE, 2 * TILE);
         graphics.fillStyle(0x8c98a2).fillRect(13 * TILE, 5 * TILE, 6 * TILE, TILE);
         graphics.fillCircle(9 * TILE, 3 * TILE, 9);
-        for (let tree = 0; tree < 6; tree += 1) {
-          graphics.fillStyle(0xd6dee0).fillCircle((3 + tree * 3) * TILE, 13 * TILE, 20);
-          graphics.fillStyle(0xb0bcc4).fillRect((3 + tree * 3) * TILE - 3, 13 * TILE, 6, 30);
-        }
+        this.paintOrchard(0xd8e6f0);
       } else {
         graphics.fillStyle(0x58463d).fillRect(3 * TILE, 3 * TILE, 6 * TILE, 4 * TILE);
         graphics.fillStyle(0x8e5f4b).fillTriangle(2.5 * TILE, 3 * TILE, 9.5 * TILE, 3 * TILE, 6 * TILE, TILE);
         graphics.fillStyle(0xcda86f).fillRect(5.5 * TILE, 5 * TILE, TILE, 2 * TILE);
         graphics.fillStyle(0x735b47).fillRect(13 * TILE, 5 * TILE, 6 * TILE, TILE);
-        for (let tree = 0; tree < 6; tree += 1) {
-          graphics.fillStyle(0x315c45).fillCircle((3 + tree * 3) * TILE, 13 * TILE, 23);
-          graphics.fillStyle(0x594234).fillRect((3 + tree * 3) * TILE - 4, 13 * TILE, 8, 30);
-        }
+        this.paintOrchard(0xffffff);
       }
     } else if (kind === "wilderness") {
       if (regionId === "region.cinder-march") {
@@ -541,6 +581,24 @@ export class WorldScene extends Phaser.Scene {
         graphics.fillStyle(0x947252).fillCircle(4 * TILE, 4 * TILE, 7).fillCircle(19 * TILE, 12 * TILE, 7);
         graphics.lineStyle(4, 0xc58f55, 0.5).strokeCircle(4 * TILE, 4 * TILE, 17).strokeCircle(19 * TILE, 12 * TILE, 17);
       }
+    }
+  }
+
+  /**
+   * The settlement orchard, drawn from the tileset rather than as filled
+   * circles. Six trees on a row: the same planting the circles described, in
+   * art that matches the ground they stand on.
+   */
+  private paintOrchard(tint: number): void {
+    for (let tree = 0; tree < 6; tree += 1) {
+      const column = 3 + tree * 3;
+      const ref = TREE_TILES[tileVariant(column, 13, TREE_TILES.length)];
+      if (!ref) continue;
+      this.add.image(column * TILE, 12.5 * TILE, ref.sheet, ref.frame)
+        .setOrigin(0.5, 0)
+        .setDisplaySize(TILE * 1.6, TILE * 1.6)
+        .setDepth(2)
+        .setTint(tint);
     }
   }
 
@@ -927,22 +985,26 @@ export class WorldScene extends Phaser.Scene {
     this.publishUiState();
     this.overlay?.destroy();
     const choices = active.index >= active.view.lines.length - 1 ? active.view.choices : undefined;
-    const panelY = choices?.length ? 286 : 366;
-    const panelHeight = choices?.length ? 226 : 146;
+    const panelY = choices?.length ? 278 : 348;
+    const panelHeight = choices?.length ? 234 : 168;
     const panel = this.add.rectangle(28, panelY, 680, panelHeight, 0x101622, 0.96)
       .setOrigin(0)
       .setStrokeStyle(2, 0x8aa394);
-    const speaker = this.add.text(50, panelY + 19, active.view.speaker.toUpperCase(), {
-      ...TEXT.small,
-      color: COLORS.gold
-    });
-    const line = this.add.text(50, panelY + 48, "", {
+    const plate = this.buildNamePlate(
+      50,
+      panelY + 14,
+      active.view.speaker,
+      active.view.speakerRole,
+      active.view.portraitTag
+    );
+    const inset = portraitAppearance(active.view.portraitTag) ? 114 : 50;
+    const line = this.add.text(inset, panelY + 56, "", {
       ...TEXT.body,
-      wordWrap: { width: 622 },
+      wordWrap: { width: 672 - inset },
       lineSpacing: 5
     });
     this.startReveal(line, active.view.lines[active.index] ?? "");
-    const children: Phaser.GameObjects.GameObject[] = [panel, speaker, line];
+    const children: Phaser.GameObjects.GameObject[] = [panel, ...plate, line];
     if (choices?.length) {
       const selectedChoice = choices[active.choiceIndex];
       if (selectedChoice) {
