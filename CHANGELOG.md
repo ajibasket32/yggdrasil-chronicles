@@ -2,6 +2,57 @@
 
 ## Unreleased
 
+- Drew the world from its tilesets. `punyworld-overworld.png` and
+  `everrogue-tileset.png` had been committed with verified CC0 provenance since
+  the asset catalog was written and were referenced by no code; the world was
+  four generated colour squares tinted per region. Towns, roads and caverns now
+  render real terrain — nine grass variants, water that looks like water, a dirt
+  track the party walks on rather than a line painted over grass, pixel orchards
+  and a stone-framed cavern. Town buildings are still drawn geometry; the
+  tileset ships them as multi-tile fragments needing an assembly pass.
+- Gave speakers faces and names. Thirty authored `portrait.*` tags reached no
+  code, so every conversation in the game was delivered by one interchangeable
+  gold label. Dialogue and scripted scenes now carry a name plate with the
+  speaker, their role, and a distinct face per speaker drawn from the committed
+  character sheets. Content validation fails if an NPC or scene names a portrait
+  nothing answers for.
+- Let the player manage saves rather than only make them. Slots state their
+  level, place, real time played and timestamp instead of reading AVAILABLE.
+  Export, import and delete each open a slot picker rather than assuming the
+  autosave, and destroying an occupied slot takes two deliberate confirms.
+  Overwriting a manual slot keeps what it displaced; those backups — and the
+  ones imports had been silently archiving all along — are listed and
+  restorable, and restoring is itself undoable.
+- Split real play time from in-fiction time (schemaVersion 2 to 3). The save
+  list had been showing `worldMinutes` as "play time", so one night of camping
+  counted as eight hours played.
+- Made `contentPackVersions` mean something. It was validated only against a
+  copy of itself and so could never fail; a save is now reconciled against the
+  content the running build actually ships, and says which packs moved or are
+  missing.
+- Made High Contrast a real palette inside the canvas instead of a CSS filter
+  over it, and added a Text Size setting that scales every style including the
+  9px HP readouts. The HUD header flows from measured heights, so Large no
+  longer runs the clock line through the party list.
+- Delivered the phone breakpoint the stylesheet had always advertised. An
+  on-screen pad mounts on touch devices and drives the game by synthesising
+  keyboard events from the player's current bindings, so every scene works
+  through the path it already had and rebinding moves the pad with it.
+- Implemented WASD. Bindings are lists now (storage key bumped to `.v2`):
+  movement answers to arrows and WASD, confirm to Enter and Space. Rebinding an
+  action replaces its whole list.
+- Retracted the negotiation claim from GAME_DESIGN.md. There is no negotiation
+  system and none is planned; binding quest decisions carry the weight of choice.
+- Moved every ancestry's elemental identity out of the integration layer and
+  into authored content, and character creation now states what a build resists
+  and is weak to before the choice is committed — which is what
+  "without hidden formulas" has to mean to be true.
+- Gave dialogue a typewriter reveal with a two-stage confirm, six previously
+  silent events their sound, battle phase announcements for screen readers,
+  analog-stick support in every scene, a build preview at character creation,
+  reset-to-defaults for bindings, a credits screen, and companion voices when
+  their threads resolve.
+
 - Stopped four defects that destroyed player data. Quick Save was bound to F5
   with no `preventDefault`, so the browser's reload key raced the IndexedDB
   write; it now defaults to F9, writes to its own slot instead of overwriting
