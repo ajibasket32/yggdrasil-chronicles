@@ -879,10 +879,7 @@ export class EngineGameBridge implements GameBridge {
           equippedBy
         }] : [];
       }),
-      quests: this.#state.quests.flatMap((progress) => {
-        const definition = quests.find(({ id }) => id === progress.questId);
-        return definition ? [this.toQuestView(definition, progress.currentStep, progress.state)] : [];
-      }),
+      quests: this.orderedQuestViews(),
       battle: this.#battle ? this.toBattleView(this.#battle) : undefined,
       shop: this.#openVendorId ? this.toShopView(this.#openVendorId) : undefined,
       campaign: {
@@ -1187,6 +1184,46 @@ export class EngineGameBridge implements GameBridge {
         ? `Tucked away: ${marksRoll.value} marks and ${itemName}.`
         : `Tucked away: ${marksRoll.value} marks.`
     };
+  }
+
+  /**
+   * Chooses which active quest leads the list. The HUD, the compass and the
+   * objective marker all read the first active quest, so tracking is nothing
+   * more than ordering — one mechanism, three consumers.
+   */
+  async trackQuest(questId: string): Promise<GameCommandResult> {
+    const state = this.requireState();
+    const entry = state.quests.find((candidate) => candidate.questId === questId);
+    if (!entry) return commandFailure("No such thread is recorded.");
+    if (entry.state !== "active") return commandFailure("Only an active thread can be followed.");
+    this.#state = {
+      ...state,
+      world: { ...state.world, flags: { ...state.world.flags, "progress.tracked-quest": questId } }
+    };
+    await this.persist("autosave");
+    const title = quests.find(({ id }) => id === questId)?.title ?? questId;
+    return { success: true, message: `Now following: ${title}.` };
+  }
+
+  /** Quest views with the tracked quest first, then active, available, resolved. */
+  private orderedQuestViews(): QuestView[] {
+    const state = this.#state;
+    if (!state) return [];
+    const tracked = state.world.flags["progress.tracked-quest"];
+    const rank = (view: QuestView): number => {
+      if (view.state === "active") return view.id === tracked ? 0 : 1;
+      if (view.state === "available") return 2;
+      if (view.state === "completed") return 3;
+      return 4;
+    };
+    return state.quests
+      .flatMap((progress) => {
+        const definition = quests.find(({ id }) => id === progress.questId);
+        return definition ? [this.toQuestView(definition, progress.currentStep, progress.state)] : [];
+      })
+      .map((view, index) => ({ view, index }))
+      .sort((left, right) => rank(left.view) - rank(right.view) || left.index - right.index)
+      .map(({ view }) => view);
   }
 
   /** Every species the party has felled, with whatever has been learned of it. */

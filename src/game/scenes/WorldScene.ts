@@ -106,6 +106,8 @@ export class WorldScene extends Phaser.Scene {
   private entryDirection?: ExitDirection;
   /** Cursor for the world-map overlay. */
   private mapIndex = 0;
+  /** Cursor for the journal overlay. */
+  private journalIndex = 0;
   /** The searchable curio in this location, when it has not been claimed yet. */
   private curio?: { point: Point; sprite: Phaser.GameObjects.Text };
   /** Day/night wash over the map; updated when world time advances. */
@@ -291,6 +293,10 @@ export class WorldScene extends Phaser.Scene {
     }
     if (this.overlayKind === "map") {
       this.moveMap(direction === "up" || direction === "left" ? -1 : 1);
+      return;
+    }
+    if (this.overlayKind === "journal") {
+      this.moveJournal(direction === "up" || direction === "left" ? -1 : 1);
       return;
     }
     if (this.overlayKind === "inventory") {
@@ -790,6 +796,10 @@ export class WorldScene extends Phaser.Scene {
       await this.confirmMapTravel();
       return;
     }
+    if (this.overlayKind === "journal") {
+      await this.confirmJournalTrack();
+      return;
+    }
     if (this.overlay) return;
     const npc = this.nearestNpc();
     if (npc) {
@@ -1037,10 +1047,31 @@ export class WorldScene extends Phaser.Scene {
           ? "↑↓  Turn page     Esc / B  Close"
           : kind === "map"
             ? "↑↓  Select     Enter / A  Travel     Esc / B  Close"
-            : "Esc / B  Close",
+            : kind === "journal"
+              ? "↑↓  Select     Enter / A  Follow thread     Esc / B  Close"
+              : "Esc / B  Close",
       TEXT.small
     );
     this.overlay = this.add.container(0, 0, [panel, title, rule, body, hint]).setDepth(50);
+  }
+
+  private moveJournal(delta: number): void {
+    const count = this.snapshot.quests.length;
+    if (count === 0) return;
+    this.journalIndex = Phaser.Math.Wrap(this.journalIndex + delta, 0, count);
+    this.redrawStaticOverlay("journal");
+  }
+
+  /** Follows the selected thread, so the HUD and compass answer to the player. */
+  private async confirmJournalTrack(): Promise<void> {
+    const quest = this.snapshot.quests[this.journalIndex];
+    if (!quest) return;
+    const result = await this.bridge.trackQuest(quest.id);
+    this.showToast(result.message);
+    if (result.success) {
+      this.journalIndex = 0;
+      this.redrawStaticOverlay("journal");
+    }
   }
 
   private moveMap(delta: number): void {
@@ -1143,26 +1174,38 @@ export class WorldScene extends Phaser.Scene {
       ].filter(Boolean).join("\n");
     }
     if (kind === "journal") {
-      const active = this.snapshot.quests.filter(({ state }) => state === "active");
-      const available = this.snapshot.quests.filter(({ state }) => state === "available");
-      const completed = this.snapshot.quests.filter(({ state }) => state === "completed").length;
-      const threads = [
-        ...active.slice(0, 2).map((quest) => `◆ ${quest.title}\n   ${quest.objective}`),
-        ...available.slice(0, Math.max(0, 2 - active.length)).map((quest) => `◇ ${quest.title}\n   Available`)
-      ];
-      const factions = this.snapshot.reputation?.factions.slice(0, 4)
-        .map(({ name, standing }) => `${name.toUpperCase()}: ${standing > 0 ? "+" : ""}${standing}`)
-        ?? [];
-      const relationships = this.snapshot.reputation?.relationships.slice(0, 3)
-        .map(({ name, trust, respect, fear }) => `${name}: T ${trust} · R ${respect} · F ${fear}`)
-        ?? [];
+      // The full catalog, windowed and navigable. The journal previously
+      // showed two threads and a count; thirty-odd authored quests and every
+      // summary line were invisible.
+      const entries = this.snapshot.quests;
+      if (entries.length === 0) return "The journal is empty.";
+      const view = windowAround(entries, this.journalIndex, 5);
+      const marker = (state: string, first: boolean): string => {
+        if (state === "active") return first ? "▸" : "◆";
+        if (state === "available") return "◇";
+        if (state === "completed") return "✓";
+        if (state === "failed") return "✕";
+        return "·";
+      };
+      const rows = view.items.map((quest, index) => {
+        const cursor = index === view.cursor ? "›" : " ";
+        const firstActive = entries[0]?.id === quest.id && quest.state === "active";
+        const detail = quest.state === "active"
+          ? `${quest.summary}\n   Next: ${quest.objective}`
+          : quest.state === "failed"
+            ? `${quest.summary}\n   Lost — but another way forward has opened.`
+            : quest.summary;
+        return `${cursor} ${marker(quest.state, firstActive)} ${quest.title}  [${quest.state.toUpperCase()}]\n   ${detail}`;
+      });
+      const completed = entries.filter(({ state }) => state === "completed").length;
       return [
-        threads.length ? threads.join("\n\n") : "No active threads.",
-        `\nRESOLVED THREADS: ${completed}/${this.snapshot.quests.length}`,
-        factions.length || relationships.length
-          ? `\nWORLD REPUTATION\n${[...factions, ...relationships].join("\n")}`
-          : "\nWORLD REPUTATION\nNo faction or personal standing has changed yet."
-      ].join("\n");
+        `RESOLVED ${completed}/${entries.length}   ▸ marks the followed thread`,
+        "",
+        view.hasBefore ? "  ▲ more above" : "",
+        rows.join("\n\n"),
+        view.hasAfter ? "  ▼ more below" : "",
+        windowFooter(view)
+      ].filter(Boolean).join("\n");
     }
     if (kind === "inventory") {
       return this.snapshot.inventory.length

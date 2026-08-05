@@ -306,6 +306,10 @@ export class DemoGameBridge implements GameBridge {
     return { success: false, message: "The demo road hides nothing." };
   }
 
+  trackQuest(_questId: string): GameCommandResult {
+    return { success: false, message: "The demo journal follows a single thread." };
+  }
+
   swapPartyMember(_reserveMemberId: string, _activeMemberId?: string): GameCommandResult {
     return { success: false, message: "The demo road travels with a fixed company." };
   }

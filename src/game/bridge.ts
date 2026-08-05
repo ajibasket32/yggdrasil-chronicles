@@ -373,6 +373,8 @@ export interface GameBridge {
   fastTravel(locationId: string): GameCommandResult | Promise<GameCommandResult>;
   /** Claims the current location's once-per-chronicle curio. */
   searchLocation(): GameCommandResult | Promise<GameCommandResult>;
+  /** Chooses which active quest the HUD and compass follow. */
+  trackQuest(questId: string): GameCommandResult | Promise<GameCommandResult>;
   buyItem(itemId: string): GameCommandResult | Promise<GameCommandResult>;
   sellItem(itemId: string): GameCommandResult | Promise<GameCommandResult>;
   leaveShop(): void | Promise<void>;
