@@ -1,11 +1,12 @@
 import Phaser from "phaser";
 import { ancestries, jobs } from "../../content";
 import {
+  DEFAULT_KEYBOARD_BINDINGS,
   gameSettingsStore,
   REBINDABLE_ACTIONS
 } from "../../settings";
 import type { CharacterCreationDraft, Difficulty, GameBridge, GameCommandResult } from "../bridge";
-import { gamepadButtonAction } from "../gamepadControls";
+import { gamepadButtonAction, pollStickDirection, type StickRepeatState } from "../gamepadControls";
 import {
   keyboardActionForCode,
   keyboardActionLabel,
@@ -48,6 +49,7 @@ export class TitleScene extends Phaser.Scene {
   private controlsText?: Phaser.GameObjects.Text;
   private creationTexts: Phaser.GameObjects.Text[] = [];
   private loading = false;
+  private readonly stickState: StickRepeatState = { nextAt: 0 };
   /** Armed by the first NEW CHRONICLE press so overwriting an existing run takes two. */
   private confirmingNewGame = false;
   private settingsIndex = 0;
@@ -96,6 +98,14 @@ export class TitleScene extends Phaser.Scene {
       graphics.lineTo(520 + index * 31, 540);
       graphics.strokePath();
     }
+  }
+
+  override update(time: number): void {
+    const direction = pollStickDirection(this.input.gamepad?.getPad(0), this.stickState, time);
+    if (direction === "up") this.move(-1);
+    else if (direction === "down") this.move(1);
+    else if (direction === "left") this.adjust(-1);
+    else if (direction === "right") this.adjust(1);
   }
 
   private bindKeys(): void {
@@ -245,6 +255,13 @@ export class TitleScene extends Phaser.Scene {
         }
       );
     });
+    const resetSelected = this.bindingIndex === REBINDABLE_ACTIONS.length;
+    rows.push(this.add.text(
+      72,
+      226 + REBINDABLE_ACTIONS.length * 20 + 8,
+      `${resetSelected ? "›" : " "} Reset all bindings to defaults`,
+      { ...TEXT.body, fontSize: "12px", color: resetSelected ? COLORS.gold : COLORS.cream }
+    ));
     this.menuTexts = [heading, ...rows];
     this.detailText = this.add.text(
       72,
@@ -319,20 +336,36 @@ export class TitleScene extends Phaser.Scene {
       ["BEGIN", "Start in Hearthcross"]
     ] as const;
     this.creationTexts = values.map(([label, value], index) =>
-      this.add.text(72, 226 + index * 44, `${label.padEnd(12)}  ${value}`, {
+      // A cursor glyph as well as the colour change, so selection never rides
+      // on colour alone.
+      this.add.text(72, 226 + index * 44, `${index === this.creationRow ? "›" : " "} ${label.padEnd(12)}  ${value}`, {
         ...TEXT.heading,
         color: index === this.creationRow ? COLORS.gold : COLORS.cream
       })
     );
     const ancestry = ancestries[this.ancestryIndex];
     const job = jobs[this.jobIndex];
+    // The draft's actual numbers and its authored strengths — written for
+    // every loadout and previously displayed nowhere, so creation was blind.
+    const preview = this.bridge.previewBuild(ancestry?.id ?? "", job?.id ?? "");
+    const previewText = preview
+      ? [
+        `HP ${preview.maxHp}  MP ${preview.maxMp}`,
+        `STR ${preview.stats.strength}  DEX ${preview.stats.dexterity}  AGI ${preview.stats.agility}  VIT ${preview.stats.vitality}`,
+        `INT ${preview.stats.intellect}  WIS ${preview.stats.wisdom}  CHA ${preview.stats.charisma}`,
+        `Forms: ${preview.startingSkillNames.join(", ")}`,
+        "",
+        `Strong: ${preview.strengths.join("; ")}`,
+        `Watch for: ${preview.counters.join("; ")}`
+      ].join("\n")
+      : "";
     this.detailText = this.add.text(
       516,
-      268,
+      226,
       this.creationRow === 3
         ? (difficulty?.description ?? "")
-        : `${ancestry?.trait ?? ""}\n${ancestry?.description ?? ""}\n\n${job?.role ?? ""}\nBranches: ${job?.branches.join(" / ") ?? ""}`,
-      { ...TEXT.body, wordWrap: { width: 340 }, lineSpacing: 7, color: COLORS.muted }
+        : `${ancestry?.trait ?? ""}\n${job?.role ?? ""}  ·  Branches: ${job?.branches.join(" / ") ?? ""}\n\n${previewText}`,
+      { ...TEXT.body, fontSize: "12px", wordWrap: { width: 360 }, lineSpacing: 6, color: COLORS.muted }
     );
   }
 
@@ -351,7 +384,8 @@ export class TitleScene extends Phaser.Scene {
       this.drawSettings();
     } else if (this.mode === "bindings") {
       if (this.capturingBinding) return;
-      this.bindingIndex = Phaser.Math.Wrap(this.bindingIndex + delta, 0, REBINDABLE_ACTIONS.length);
+      // One extra row: Reset to defaults.
+      this.bindingIndex = Phaser.Math.Wrap(this.bindingIndex + delta, 0, REBINDABLE_ACTIONS.length + 1);
       this.drawBindings();
     } else {
       this.creationRow = Phaser.Math.Wrap(this.creationRow + delta, 0, CREATION_ROW_COUNT);
@@ -418,6 +452,14 @@ export class TitleScene extends Phaser.Scene {
       return;
     }
     if (this.mode === "bindings") {
+      // The last row restores the defaults rather than capturing a key —
+      // there was previously no way back from a bad set of bindings.
+      if (this.bindingIndex === REBINDABLE_ACTIONS.length) {
+        gameSettingsStore.update({ keyBindings: { ...DEFAULT_KEYBOARD_BINDINGS } });
+        playSound(this, "sfx.confirm");
+        this.drawBindings();
+        return;
+      }
       this.capturingBinding = true;
       this.drawBindings();
       return;

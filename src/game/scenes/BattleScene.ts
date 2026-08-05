@@ -1,9 +1,9 @@
 import Phaser from "phaser";
 import { gameSettingsStore } from "../../settings";
 import type { BattleAction, BattleView, GameBridge, GameSnapshot } from "../bridge";
-import { gamepadButtonAction } from "../gamepadControls";
+import { gamepadButtonAction, pollStickDirection, type StickRepeatState } from "../gamepadControls";
 import { keyboardActionForCode, keyboardCodeLabel } from "../keyboardControls";
-import { announceScene, COLORS, getBridge, motionDuration, playSound, TEXT } from "../runtime";
+import { announceGameStatus, announceScene, COLORS, getBridge, motionDuration, playSound, TEXT } from "../runtime";
 
 const ACTIONS: Array<{ id: BattleAction; label: string; hint: string }> = [
   { id: "attack", label: "ATTACK", hint: "A reliable physical strike." },
@@ -33,6 +33,7 @@ export class BattleScene extends Phaser.Scene {
   private readonly actorPositions = new Map<string, { x: number; y: number; sprite: Phaser.GameObjects.Image }>();
   private unsubscribe?: () => void;
   private resolving = false;
+  private readonly stickState: StickRepeatState = { nextAt: 0 };
 
   constructor() {
     super("battle");
@@ -49,14 +50,22 @@ export class BattleScene extends Phaser.Scene {
     this.render();
     this.bindKeys();
     this.unsubscribe = this.bridge.subscribe((snapshot) => {
+      const previousPhase = this.snapshot.battle?.phase;
       this.snapshot = snapshot;
       this.resolving = false;
       this.subMenu = "none";
       this.subMenuIndex = 0;
       this.render();
+      this.reactToPhase(previousPhase);
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unsubscribe?.());
     announceScene("battle");
+  }
+
+  override update(time: number): void {
+    const direction = pollStickDirection(this.input.gamepad?.getPad(0), this.stickState, time);
+    if (direction === "up" || direction === "left") this.move(-1);
+    else if (direction === "down" || direction === "right") this.move(1);
   }
 
   private bindKeys(): void {
@@ -113,6 +122,30 @@ export class BattleScene extends Phaser.Scene {
    */
   private clearDisplayList(): void {
     this.children.removeAll(true);
+  }
+
+  /**
+   * Sounds and announcements for the battle's turning points, and a running
+   * commentary for screen readers. The scene previously spoke once on entry
+   * and then went silent; victory, defeat and every exchange were unvoiced.
+   */
+  private reactToPhase(previousPhase?: string): void {
+    const battle = this.snapshot.battle;
+    if (!battle) return;
+    const latest = battle.log.at(-1);
+    if (latest) announceGameStatus(latest);
+    if (battle.phase === previousPhase) {
+      if (battle.events.some((event) => event.type === "miss")) playSound(this, "sfx.miss");
+      return;
+    }
+    if (battle.phase === "victory") {
+      playSound(this, "sfx.victory");
+      if (battle.log.some((line) => line.includes("reaches level"))) playSound(this, "sfx.levelup");
+      announceGameStatus("Victory.");
+    } else if (battle.phase === "defeat") {
+      playSound(this, "sfx.defeat");
+      announceGameStatus("The party falls.");
+    }
   }
 
   private render(): void {

@@ -10,3 +10,10 @@ output/
 *.tsbuildinfo
 .DS_Store
 Thumbs.db
+
+# Audit and session scratch: raw agent output kept for traceability during the
+# feature-completeness audit, not part of the shipped project.
+.recovered-critics.json
+.salvaged-adversarial.json
+.salvaged-softlocks.json
+.session-resume.md

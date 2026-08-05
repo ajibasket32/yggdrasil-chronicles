@@ -23,6 +23,8 @@ if (app) {
     app.dataset.factionStandingCount = String(snapshot.reputation?.factions.length ?? 0);
     app.dataset.relationshipCount = String(snapshot.reputation?.relationships.length ?? 0);
     app.dataset.endingId = snapshot.campaign?.ending?.id ?? "none";
+    app.dataset.pendingScene = snapshot.pendingScene?.id ?? "none";
+    app.dataset.activeQuest = snapshot.quests.find(({ state }) => state === "active")?.id ?? "none";
     app.dataset.inventoryTotalQuantity = String(
       snapshot.inventory.reduce((total, item) => total + item.quantity, 0),
     );

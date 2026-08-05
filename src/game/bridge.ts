@@ -85,6 +85,18 @@ export interface GameCommandResult {
   message: string;
 }
 
+/** What a creation draft would actually start as. */
+export interface BuildPreview {
+  maxHp: number;
+  maxMp: number;
+  stats: PartyMemberStatsView;
+  role: string;
+  startingSkillNames: string[];
+  /** The authored build notes — written for every loadout and never displayed. */
+  strengths: string[];
+  counters: string[];
+}
+
 export interface BattleStatusView {
   id: StatusId;
   remainingTurns: number;
@@ -375,6 +387,11 @@ export interface GameBridge {
   searchLocation(): GameCommandResult | Promise<GameCommandResult>;
   /** Chooses which active quest the HUD and compass follow. */
   trackQuest(questId: string): GameCommandResult | Promise<GameCommandResult>;
+  /**
+   * The numbers and authored strengths a draft would start with, so character
+   * creation is not made blind.
+   */
+  previewBuild(ancestryId: string, jobId: string): BuildPreview | undefined;
   buyItem(itemId: string): GameCommandResult | Promise<GameCommandResult>;
   sellItem(itemId: string): GameCommandResult | Promise<GameCommandResult>;
   leaveShop(): void | Promise<void>;

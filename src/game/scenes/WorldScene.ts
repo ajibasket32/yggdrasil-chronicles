@@ -9,11 +9,11 @@ import type {
   OverlayKind,
   PartyMemberView
 } from "../bridge";
-import { gamepadButtonAction } from "../gamepadControls";
+import { gamepadButtonAction, pollStickDirection, type StickRepeatState } from "../gamepadControls";
 import { keyboardActionForCode, keyboardCodeLabel } from "../keyboardControls";
 import { windowAround, windowFooter, type OverlayWindow } from "../overlayWindow";
 import { getNpcSpawnPoints } from "../npcPlacement";
-import { announceGameStatus, announceScene, COLORS, getBridge, motionDuration, playSound, TEXT } from "../runtime";
+import { announceGameStatus, announceScene, COLORS, getBridge, motionDuration, playSound, setSceneFlag, TEXT } from "../runtime";
 import {
   getLocationExits,
   getObjectiveGuidance,
@@ -110,9 +110,14 @@ export class WorldScene extends Phaser.Scene {
   private journalIndex = 0;
   /** The searchable curio in this location, when it has not been claimed yet. */
   private curio?: { point: Point; sprite: Phaser.GameObjects.Text };
+  /** Typewriter reveal in progress, if any. */
+  private revealTimer?: Phaser.Time.TimerEvent;
+  private revealTarget?: { target: Phaser.GameObjects.Text; full: string };
   /** Day/night wash over the map; updated when world time advances. */
   private dayTint?: Phaser.GameObjects.Rectangle;
   private endingShown = false;
+  /** Analog-stick repeat state; buttons arrive as events, the stick must be polled. */
+  private readonly stickState: StickRepeatState = { nextAt: 0 };
 
   constructor() {
     super("world");
@@ -144,6 +149,7 @@ export class WorldScene extends Phaser.Scene {
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unsubscribe?.());
     announceScene("world");
+    this.publishUiState();
     if (this.snapshot.pendingScene) {
       this.time.delayedCall(200, () => this.playPendingScene());
     } else if (this.snapshot.campaign?.complete) {
@@ -184,21 +190,63 @@ export class WorldScene extends Phaser.Scene {
     if (line.speaker) {
       children.push(this.add.text(40, 364, line.speaker.toUpperCase(), { ...TEXT.small, color: COLORS.gold }));
     }
-    children.push(this.add.text(40, line.speaker ? 392 : 380, line.text, {
+    const body = this.add.text(40, line.speaker ? 392 : 380, "", {
       ...TEXT.body,
       fontSize: line.speaker ? "15px" : "14px",
       color: line.speaker ? COLORS.cream : COLORS.muted,
       fontStyle: line.speaker ? "normal" : "italic",
       wordWrap: { width: 870 },
       lineSpacing: 8
-    }));
+    });
+    children.push(body);
+    this.startReveal(body, line.text);
     children.push(this.add.text(40, 500, `${active.index + 1} / ${scene.lines.length}   Enter  Continue`, TEXT.small));
 
     this.overlay = this.add.container(0, 0, children).setDepth(70);
     this.overlayKind = undefined;
   }
 
+  /**
+   * Two-stage confirm for revealed text: while the typewriter is running,
+   * confirm completes the line; only a second press advances it. Reduced
+   * Motion reveals instantly, so the first press always advances there.
+   */
+  private startReveal(target: Phaser.GameObjects.Text, full: string): void {
+    this.revealTimer?.remove();
+    this.revealTimer = undefined;
+    if (motionDuration(1) === 0 || full.length === 0) {
+      target.setText(full);
+      return;
+    }
+    let shown = 0;
+    this.revealTarget = { target, full };
+    this.revealTimer = this.time.addEvent({
+      delay: 14,
+      repeat: Math.ceil(full.length / 2),
+      callback: () => {
+        shown = Math.min(full.length, shown + 2);
+        if (target.active) target.setText(full.slice(0, shown));
+        if (shown >= full.length) {
+          this.revealTimer?.remove();
+          this.revealTimer = undefined;
+          this.revealTarget = undefined;
+        }
+      }
+    });
+  }
+
+  /** Finishes an in-progress reveal; true when there was one to finish. */
+  private completeReveal(): boolean {
+    if (!this.revealTimer || !this.revealTarget) return false;
+    this.revealTimer.remove();
+    this.revealTimer = undefined;
+    if (this.revealTarget.target.active) this.revealTarget.target.setText(this.revealTarget.full);
+    this.revealTarget = undefined;
+    return true;
+  }
+
   private async advanceScene(): Promise<void> {
+    if (this.completeReveal()) return;
     const scene = this.snapshot.pendingScene;
     const active = this.activeScene;
     if (!scene || !active) return;
@@ -219,6 +267,11 @@ export class WorldScene extends Phaser.Scene {
     if (active) await this.bridge.acknowledgeScene(active.id);
     this.refreshPrompt();
     if (this.snapshot.campaign?.complete) this.showCampaignEnding();
+  }
+
+  override update(time: number): void {
+    const direction = pollStickDirection(this.input.gamepad?.getPad(0), this.stickState, time);
+    if (direction) this.handleDirection(direction);
   }
 
   private bindKeys(): void {
@@ -559,7 +612,7 @@ export class WorldScene extends Phaser.Scene {
     children.push(this.add.text(HUD_X + 18, 20, snapshot.locationName.toUpperCase(), { ...TEXT.heading, fontSize: "17px", wordWrap: { width: 188 } }));
     // Marks belong on the HUD, not only inside a shop: a player deciding
     // whether to walk to a vendor needs to know what they can afford first.
-    children.push(this.add.text(HUD_X + 18, 66, `${this.formatTime(snapshot.worldMinutes)}    ${snapshot.currency} marks`, TEXT.small));
+    children.push(this.add.text(HUD_X + 18, 66, `${this.formatTime(snapshot.worldMinutes)}  ·  ${snapshot.difficulty.toUpperCase()}  ·  ${snapshot.currency} marks`, TEXT.small));
     children.push(this.add.rectangle(HUD_X + 18, 90, 188, 1, COLORS.panelLight).setOrigin(0));
     children.push(this.add.text(HUD_X + 18, 105, "PARTY", { ...TEXT.small, color: COLORS.gold }));
     snapshot.party.slice(0, 4).forEach((member, index) => {
@@ -729,6 +782,7 @@ export class WorldScene extends Phaser.Scene {
     const result = await this.bridge.searchLocation();
     this.showToast(result.message);
     if (result.success) {
+      playSound(this, "sfx.coin");
       this.curio.sprite.destroy();
       this.curio = undefined;
       this.refreshPrompt();
@@ -800,6 +854,10 @@ export class WorldScene extends Phaser.Scene {
       await this.confirmJournalTrack();
       return;
     }
+    if (this.overlayKind === "ending") {
+      this.drawCredits();
+      return;
+    }
     if (this.overlay) return;
     const npc = this.nearestNpc();
     if (npc) {
@@ -816,9 +874,15 @@ export class WorldScene extends Phaser.Scene {
     if (this.isNearCurio()) await this.searchCurio();
   }
 
+  private publishUiState(): void {
+    setSceneFlag("dialogue", this.activeInteraction ? "open" : "none");
+    setSceneFlag("overlay", this.overlayKind ?? (this.overlay ? "other" : "none"));
+  }
+
   private drawDialogue(): void {
     const active = this.activeInteraction;
     if (!active) return;
+    this.publishUiState();
     this.overlay?.destroy();
     const choices = active.index >= active.view.lines.length - 1 ? active.view.choices : undefined;
     const panelY = choices?.length ? 286 : 366;
@@ -830,11 +894,12 @@ export class WorldScene extends Phaser.Scene {
       ...TEXT.small,
       color: COLORS.gold
     });
-    const line = this.add.text(50, panelY + 48, active.view.lines[active.index] ?? "", {
+    const line = this.add.text(50, panelY + 48, "", {
       ...TEXT.body,
       wordWrap: { width: 622 },
       lineSpacing: 5
     });
+    this.startReveal(line, active.view.lines[active.index] ?? "");
     const children: Phaser.GameObjects.GameObject[] = [panel, speaker, line];
     if (choices?.length) {
       const selectedChoice = choices[active.choiceIndex];
@@ -888,6 +953,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private async advanceDialogue(): Promise<void> {
+    if (this.completeReveal()) return;
     const active = this.activeInteraction;
     if (!active) return;
     if (active.index < active.view.lines.length - 1) {
@@ -920,9 +986,11 @@ export class WorldScene extends Phaser.Scene {
       this.shopMode = "buy";
       this.overlayKind = "shop";
       this.drawInteractiveOverlay();
+      this.publishUiState();
       return;
     }
     this.locked = false;
+    this.publishUiState();
     if (recruited) this.showToast(`${recruited.name} joined the party.`);
     else if (startedQuestTitle) this.showToast(`New quest — ${startedQuestTitle}`);
     this.refreshObjectiveActors();
@@ -989,11 +1057,44 @@ export class WorldScene extends Phaser.Scene {
         color: COLORS.cream
       }
     ).setOrigin(0.5, 0));
-    children.push(this.add.text(480, 500, "Esc / B  Continue exploring", {
+    children.push(this.add.text(480, 500, "Enter  Credits     Esc / B  Continue exploring", {
       ...TEXT.small,
       color: COLORS.muted
     }).setOrigin(0.5));
     this.overlay = this.add.container(0, 0, children).setDepth(100);
+  }
+
+  /**
+   * A finished chronicle earns a credits roll. The game previously ended on a
+   * single overlay with no acknowledgement of what it was made from.
+   */
+  private drawCredits(): void {
+    this.overlay?.destroy();
+    const veil = this.add.rectangle(0, 0, 960, 540, 0x0b1119, 0.96).setOrigin(0);
+    const title = this.add.text(480, 84, "YGGDRASIL CHRONICLES", { ...TEXT.title, color: COLORS.gold }).setOrigin(0.5);
+    const body = this.add.text(480, 150, [
+      "The Severed Concord",
+      "",
+      "An original browser JRPG.",
+      "",
+      "ENGINE  ·  a deterministic pure-function core, Phaser 3 presentation",
+      "SOUND  ·  Kenney RPG Audio (CC0), unmodified",
+      "SPRITES  ·  Puny Characters pixel pack (CC0)",
+      "",
+      "Every road, name and covenant in this chronicle was authored for it.",
+      "The rootways remember the choices you made — and the ones you closed.",
+      "",
+      "Thank you for walking the roads."
+    ].join("\n"), {
+      ...TEXT.body,
+      fontSize: "14px",
+      align: "center",
+      lineSpacing: 8,
+      color: COLORS.cream
+    }).setOrigin(0.5, 0);
+    const hint = this.add.text(480, 500, "Esc / B  Return to the road", { ...TEXT.small, color: COLORS.muted }).setOrigin(0.5);
+    this.overlay = this.add.container(0, 0, [veil, title, body, hint]).setDepth(100);
+    this.overlayKind = "ending";
   }
 
   private refreshObjectiveActors(): void {
@@ -1003,6 +1104,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private toggleOverlay(kind: OverlayKind): void {
+    this.time.delayedCall(0, () => this.publishUiState());
     if (this.activeInteraction) return;
     if (this.overlay) {
       this.closeOverlay();
@@ -1056,6 +1158,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private moveJournal(delta: number): void {
+    playSound(this, "sfx.cursor");
     const count = this.snapshot.quests.length;
     if (count === 0) return;
     this.journalIndex = Phaser.Math.Wrap(this.journalIndex + delta, 0, count);
@@ -1075,6 +1178,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private moveMap(delta: number): void {
+    playSound(this, "sfx.cursor");
     const count = this.snapshot.discoveredLocations?.length ?? 0;
     if (count === 0) return;
     this.mapIndex = Phaser.Math.Wrap(this.mapIndex + delta, 0, count);
@@ -1122,6 +1226,7 @@ export class WorldScene extends Phaser.Scene {
 
   /** Pages the codex a section at a time; wrapping keeps it reachable in both directions. */
   private moveCodex(delta: number): void {
+    playSound(this, "sfx.cursor");
     this.codexIndex = Phaser.Math.Wrap(this.codexIndex + delta, 0, codexSections.length + 1);
     this.redrawStaticOverlay("codex");
   }
@@ -1380,6 +1485,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private moveInventory(delta: number): void {
+    playSound(this, "sfx.cursor");
     const count = this.interactiveMode === "target" ? this.snapshot.party.length : this.snapshot.inventory.length;
     if (!count) return;
     if (this.interactiveMode === "target") this.partyIndex = Phaser.Math.Wrap(this.partyIndex + delta, 0, count);
@@ -1488,6 +1594,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private moveShop(direction: ExitDirection): void {
+    playSound(this, "sfx.cursor");
     if (direction === "left" || direction === "right") {
       this.shopMode = this.shopMode === "buy" ? "sell" : "buy";
       this.shopIndex = 0;
@@ -1551,6 +1658,7 @@ export class WorldScene extends Phaser.Scene {
     this.overlayKind = undefined;
     this.activeInteraction = undefined;
     this.locked = false;
+    this.publishUiState();
     this.refreshPrompt();
   }
 
@@ -1581,6 +1689,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private moveSystem(delta: number): void {
+    playSound(this, "sfx.cursor");
     this.systemIndex = Phaser.Math.Wrap(this.systemIndex + delta, 0, SYSTEM_MENU_COMMAND_COUNT);
     this.drawSystemOverlay();
   }

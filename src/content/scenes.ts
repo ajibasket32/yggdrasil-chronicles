@@ -105,6 +105,41 @@ export const scenes: readonly SceneDefinition[] = [
       { speaker: "", text: "Larkspire is built in the branches of a white forest, above a city nobody living has walked." },
       { speaker: "", text: "The astronomers here keep charts of stars that the charts themselves insist do not exist." }
     ]
+  },
+
+  // Companions speaking in their own voice once their thread resolves — the
+  // road otherwise never hears from the people walking it.
+  {
+    id: "scene.tovin-joins-the-road",
+    trigger: { kind: "quest_completed", questId: "quest.tovins-company" },
+    lines: [
+      { speaker: "Tovin Ash", text: "So that is what became of them. I carried that question for two winters; it is lighter as an answer, even a hard one.", portraitTag: "portrait.scout" },
+      { speaker: "Tovin Ash", text: "You will want a second blade on the road ahead. Come find me when you are ready to walk.", portraitTag: "portrait.scout" }
+    ]
+  },
+  {
+    id: "scene.keva-oath-returned",
+    trigger: { kind: "quest_completed", questId: "quest.kevas-last-descent" },
+    lines: [
+      { speaker: "Keva Dross", text: "A delver's token goes back to the dark it came from. That is the whole of the oath, and you kept it for a stranger.", portraitTag: "portrait.delver" },
+      { speaker: "Keva Dross", text: "The kiln tunnels reach further than the maps admit. If you mean to walk them, I mean to be in front of you.", portraitTag: "portrait.delver" }
+    ]
+  },
+  {
+    id: "scene.eira-leaves-the-bridge",
+    trigger: { kind: "quest_completed", questId: "quest.eiras-burden" },
+    lines: [
+      { speaker: "Eira Lune", text: "I told myself the bridge could not stand a day without me. Thea will mind it better than my worry ever did.", portraitTag: "portrait.bridgekeeper" },
+      { speaker: "Eira Lune", text: "There are people out there hurt worse than bridges. Take me with you and I will mend what I can reach.", portraitTag: "portrait.bridgekeeper" }
+    ]
+  },
+  {
+    id: "scene.silent-kiln-named",
+    trigger: { kind: "quest_completed", questId: "quest.silent-kiln" },
+    lines: [
+      { speaker: "", text: "The kiln's ledger closes on a name that was never meant to survive its own erasure." },
+      { speaker: "", text: "Somewhere east, in a vault without stars, something that erases names for a living takes notice." }
+    ]
   }
 ];
 

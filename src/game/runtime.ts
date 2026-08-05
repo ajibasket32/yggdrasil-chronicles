@@ -24,6 +24,21 @@ export function announceScene(
   announceGameStatus(sceneMessages[sceneName], documentRef);
 }
 
+/**
+ * Publishes a scene-local UI state onto the `#app` element, alongside the
+ * snapshot fields `main.ts` already mirrors there. Browser tests otherwise
+ * have to infer "is a panel open" from keypress counts, which turns every
+ * authored line-length change into a broken test.
+ */
+export function setSceneFlag(
+  name: string,
+  value: string,
+  documentRef: Document | undefined = typeof document === "undefined" ? undefined : document
+): void {
+  const app = documentRef?.querySelector<HTMLElement>("#app");
+  if (app) app.dataset[name] = value;
+}
+
 /** Announces concise player-facing state from the canvas game to screen readers. */
 export function announceGameStatus(message: string, documentRef: Document | undefined = typeof document === "undefined" ? undefined : document): void {
   const status = documentRef?.querySelector<HTMLElement>("#game-status");

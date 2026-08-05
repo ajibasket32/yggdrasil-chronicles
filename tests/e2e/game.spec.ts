@@ -18,11 +18,37 @@ async function pressRepeatedly(
  */
 async function startNewChronicle(page: Page): Promise<void> {
   await pressRepeatedly(page, "Enter", 6);
-  await expect(page.locator("#app")).toHaveAttribute("data-scene", "world");
-  // One confirm per line, plus slack: the scene ends on the last one and
-  // further presses fall through harmlessly to the world.
-  await pressRepeatedly(page, "Enter", 9);
-  await page.waitForTimeout(200);
+  const app = page.locator("#app");
+  await expect(app).toHaveAttribute("data-scene", "world");
+  // Clear the prologue by watching the DOM rather than counting keys: the
+  // typewriter reveal means a line can take two confirms (finish, then
+  // advance), and authored line counts must stay free to change.
+  for (let press = 0; press < 40; press += 1) {
+    if (await app.getAttribute("data-pending-scene") === "none") break;
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(130);
+  }
+  await expect(app).toHaveAttribute("data-pending-scene", "none");
+  await page.waitForTimeout(150);
+}
+
+/**
+ * Holds a full conversation with whoever the party is standing next to, then
+ * leaves it closed. Counting keypresses does not work any more: the typewriter
+ * reveal makes a line cost one confirm or two depending on how long it is, and
+ * an extra confirm after the last line simply reopens the conversation, which
+ * silently blocks every movement key that follows.
+ */
+async function speakWithNearbyNpc(page: Page): Promise<void> {
+  const app = page.locator("#app");
+  await page.keyboard.press("e");
+  await expect(app).toHaveAttribute("data-dialogue", "open");
+  for (let press = 0; press < 40; press += 1) {
+    if (await app.getAttribute("data-dialogue") === "none") break;
+    await page.keyboard.press("e");
+    await page.waitForTimeout(130);
+  }
+  await expect(app).toHaveAttribute("data-dialogue", "none");
 }
 
 test("new chronicle reaches exploration and deterministic battle", async ({ page }) => {
@@ -259,11 +285,13 @@ test("an authored quest permanently updates world reputation and the journal", a
 
   // Speak with Mara and Orren to resolve The First Silence.
   await pressRepeatedly(page, "ArrowRight", 2);
-  await pressRepeatedly(page, "e", 3);
+  await speakWithNearbyNpc(page);
   await pressRepeatedly(page, "ArrowDown", 3);
-  await pressRepeatedly(page, "e", 3);
+  await speakWithNearbyNpc(page);
 
-  await expect(app).toHaveAttribute("data-faction-standing-count", "2");
+  await expect
+    .poll(async () => await app.getAttribute("data-faction-standing-count"), { timeout: 15_000 })
+    .toBe("2");
   await expect(app).toHaveAttribute("data-relationship-count", "2");
   const world = await canvas.screenshot();
   await page.keyboard.press("j");

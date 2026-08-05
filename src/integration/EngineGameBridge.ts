@@ -68,6 +68,7 @@ import type {
   PartyMemberView,
   BattleEventView,
   BattleStatusView,
+  BuildPreview,
   PendingSceneView,
   QuestView,
   SaveSlotSummaryView,
@@ -1203,6 +1204,37 @@ export class EngineGameBridge implements GameBridge {
     await this.persist("autosave");
     const title = quests.find(({ id }) => id === questId)?.title ?? questId;
     return { success: true, message: `Now following: ${title}.` };
+  }
+
+  /**
+   * What a creation draft would start as: the derived numbers plus the
+   * authored strengths and counters, which were written for all twenty-four
+   * loadouts and displayed nowhere. Creation was made blind without this.
+   */
+  previewBuild(ancestryId: string, jobId: string): BuildPreview | undefined {
+    const loadout = startingBuildLoadouts.find(
+      (candidate) => candidate.ancestryId === ancestryId && candidate.jobId === jobId
+    );
+    if (!loadout) return undefined;
+    const stats = statsForBuild(ancestryId, jobId);
+    return {
+      maxHp: stats.maxHp,
+      maxMp: stats.maxMp,
+      stats: {
+        strength: stats.strength,
+        dexterity: stats.dexterity,
+        agility: stats.agility,
+        vitality: stats.vitality,
+        intellect: stats.intellect,
+        wisdom: stats.wisdom,
+        charisma: stats.charisma
+      },
+      role: loadout.partyRole,
+      startingSkillNames: loadout.startingSkills
+        .map((skillId) => SKILLS[skillId]?.name ?? skillId),
+      strengths: [...loadout.strengths],
+      counters: [...loadout.counters]
+    };
   }
 
   /** Quest views with the tracked quest first, then active, available, resolved. */
@@ -2390,6 +2422,10 @@ export class EngineGameBridge implements GameBridge {
       );
     }
     this.#state = { ...this.#state, quests: progress };
+    // Completion scenes: the seen-flag makes this idempotent, so checking the
+    // whole completed set each pass fires each scene exactly once.
+    const completed = new Set(progress.filter(({ state }) => state === "completed").map(({ questId }) => questId));
+    this.queueScene((trigger) => trigger.kind === "quest_completed" && completed.has(trigger.questId));
   }
 
   /**

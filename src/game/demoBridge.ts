@@ -1,6 +1,7 @@
 import { encounters, getDialogue, items, locations, quests } from "../content";
 import type {
   BattleAction,
+  BuildPreview,
   CharacterCreationDraft,
   GameBridge,
   GameCommandResult,
@@ -308,6 +309,10 @@ export class DemoGameBridge implements GameBridge {
 
   trackQuest(_questId: string): GameCommandResult {
     return { success: false, message: "The demo journal follows a single thread." };
+  }
+
+  previewBuild(_ancestryId: string, _jobId: string): BuildPreview | undefined {
+    return undefined;
   }
 
   swapPartyMember(_reserveMemberId: string, _activeMemberId?: string): GameCommandResult {

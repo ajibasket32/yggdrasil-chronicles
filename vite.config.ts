@@ -9,10 +9,16 @@ const productionDirectory = resolve(projectRoot, "dist");
 // `npm run audit:release` compares this output against discovered references.
 const runtimeAssetPaths = [
   "/assets/vendor/kenney-rpg-audio/Audio/bookFlip1.ogg",
+  "/assets/vendor/kenney-rpg-audio/Audio/bookPlace1.ogg",
+  "/assets/vendor/kenney-rpg-audio/Audio/cloth1.ogg",
+  "/assets/vendor/kenney-rpg-audio/Audio/cloth3.ogg",
   "/assets/vendor/kenney-rpg-audio/Audio/doorOpen_1.ogg",
   "/assets/vendor/kenney-rpg-audio/Audio/footstep04.ogg",
+  "/assets/vendor/kenney-rpg-audio/Audio/handleCoins.ogg",
+  "/assets/vendor/kenney-rpg-audio/Audio/handleCoins2.ogg",
   "/assets/vendor/kenney-rpg-audio/Audio/handleSmallLeather.ogg",
   "/assets/vendor/kenney-rpg-audio/Audio/knifeSlice.ogg",
+  "/assets/vendor/kenney-rpg-audio/Audio/metalLatch.ogg",
   "/assets/vendor/puny-characters/Puny-Characters/Archer-Green.png",
   "/assets/vendor/puny-characters/Puny-Characters/Archer-Purple.png",
   "/assets/vendor/puny-characters/Puny-Characters/Character-Base.png",

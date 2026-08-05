@@ -35,6 +35,14 @@ export class BootScene extends Phaser.Scene {
     this.load.audio("sfx.attack", `${audio}/knifeSlice.ogg`);
     this.load.audio("sfx.heal", `${audio}/handleSmallLeather.ogg`);
     this.load.audio("sfx.door", `${audio}/doorOpen_1.ogg`);
+    // The events below were previously silent: victory, defeat, a level
+    // gained, coins changing hands, a menu cursor, and a missed strike.
+    this.load.audio("sfx.victory", `${audio}/handleCoins.ogg`);
+    this.load.audio("sfx.defeat", `${audio}/metalLatch.ogg`);
+    this.load.audio("sfx.levelup", `${audio}/bookPlace1.ogg`);
+    this.load.audio("sfx.coin", `${audio}/handleCoins2.ogg`);
+    this.load.audio("sfx.cursor", `${audio}/cloth1.ogg`);
+    this.load.audio("sfx.miss", `${audio}/cloth3.ogg`);
   }
 
   create(): void {
