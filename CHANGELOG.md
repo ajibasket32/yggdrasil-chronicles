@@ -202,7 +202,9 @@
 - Updated party HUD values to include equipped HP/MP bonuses while preserving
   the underlying wound/focus deficit across gear changes and battles.
 - Added distinct authored loadouts for every ancestry/job pairing, including
-  starting stats, practiced forms, inventory, resistances, and equipped gear.
+  starting stats, practiced forms, inventory, and equipped gear. (Elemental
+  resistances were decided in the integration layer at this point, not in the
+  loadout; they became authored content later — see Unreleased.)
 - Added quest-gated Tovin, Keva, and Eira recruitment plus data-driven
   companion creation and party inventory grants.
 - Added runtime multi-phase boss transitions with visible telegraphs and

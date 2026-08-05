@@ -72,7 +72,9 @@ function keyboardEvent(type: string, code: string): Event {
 }
 
 function dispatchAction(action: KeyboardAction, type: "keydown" | "keyup", target: EventTarget): void {
-  const code = gameSettingsStore.get().keyBindings[action];
+  // The primary binding: a pad button stands for one key, and the player's
+  // first-listed code is the one the bindings screen shows for that action.
+  const code = gameSettingsStore.get().keyBindings[action][0];
   if (!code) return;
   target.dispatchEvent(keyboardEvent(type, code));
 }

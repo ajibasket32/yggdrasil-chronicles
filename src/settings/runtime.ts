@@ -49,28 +49,41 @@ function readVolume(value: unknown, fallback: number): number {
  * localStorage forever otherwise, so browser-owned keys are rejected on read
  * and fall back to the current default.
  */
+function usableCode(candidate: unknown): candidate is string {
+  return typeof candidate === "string"
+    && /^[A-Za-z0-9]{1,24}$/.test(candidate)
+    && !RESERVED_KEY_CODES.includes(candidate);
+}
+
 function readKeyBindings(value: unknown): GameSettings["keyBindings"] {
   const record = isRecord(value) ? value : {};
   const bindings = Object.fromEntries(
     REBINDABLE_ACTIONS.map((action) => {
       const candidate = record[action];
-      const usable = typeof candidate === "string"
-        && /^[A-Za-z0-9]{1,24}$/.test(candidate)
-        && !RESERVED_KEY_CODES.includes(candidate);
-      return [action, usable ? candidate : DEFAULT_KEYBOARD_BINDINGS[action]];
+      const codes = (Array.isArray(candidate) ? candidate : [candidate]).filter(usableCode);
+      return [action, codes.length > 0 ? codes : [...DEFAULT_KEYBOARD_BINDINGS[action]]];
     })
-  ) as GameSettings["keyBindings"];
-  return new Set(Object.values(bindings)).size === REBINDABLE_ACTIONS.length
+  ) as unknown as GameSettings["keyBindings"];
+  // A code claimed by two actions makes one of them unreachable, and there is
+  // no principled way to pick a winner from persisted data. Reset the whole set.
+  const claimed = REBINDABLE_ACTIONS.flatMap((action) => bindings[action]);
+  return new Set(claimed).size === claimed.length
     ? bindings
-    : { ...DEFAULT_KEYBOARD_BINDINGS };
+    : copyBindings(DEFAULT_KEYBOARD_BINDINGS);
 }
 
 function readTextSize(value: unknown): TextSize {
   return TEXT_SIZES.includes(value as TextSize) ? (value as TextSize) : DEFAULT_GAME_SETTINGS.textSize;
 }
 
+function copyBindings(bindings: Readonly<GameSettings["keyBindings"]>): GameSettings["keyBindings"] {
+  return Object.fromEntries(
+    REBINDABLE_ACTIONS.map((action) => [action, [...bindings[action]]])
+  ) as unknown as GameSettings["keyBindings"];
+}
+
 function copySettings(settings: GameSettings): GameSettings {
-  return { ...settings, keyBindings: { ...settings.keyBindings } };
+  return { ...settings, keyBindings: copyBindings(settings.keyBindings) };
 }
 
 function settingsEqual(left: GameSettings, right: GameSettings): boolean {
@@ -79,7 +92,12 @@ function settingsEqual(left: GameSettings, right: GameSettings): boolean {
     && left.reducedMotion === right.reducedMotion
     && left.soundEnabled === right.soundEnabled
     && left.soundVolume === right.soundVolume
-    && REBINDABLE_ACTIONS.every((action) => left.keyBindings[action] === right.keyBindings[action]);
+    && REBINDABLE_ACTIONS.every((action) => {
+      const leftCodes = left.keyBindings[action];
+      const rightCodes = right.keyBindings[action];
+      return leftCodes.length === rightCodes.length
+        && leftCodes.every((code, index) => code === rightCodes[index]);
+    });
 }
 
 /**

@@ -112,12 +112,12 @@ describe("touch controls", () => {
   it("drives the game through the keyboard path every scene already reads", () => {
     const { controls, codes } = mount();
     button(controls, "pad-a").fire("pointerdown");
-    expect(codes).toEqual([DEFAULT_KEYBOARD_BINDINGS.confirm]);
+    expect(codes).toEqual([DEFAULT_KEYBOARD_BINDINGS.confirm[0]]);
     controls.destroy();
   });
 
   it("follows a rebound key rather than a hardcoded one", () => {
-    gameSettingsStore.update({ keyBindings: { journal: "KeyK" } });
+    gameSettingsStore.update({ keyBindings: { journal: ["KeyK"] } });
     const { controls, codes } = mount();
     button(controls, "pad-j").fire("pointerdown");
     expect(codes).toEqual(["KeyK"]);

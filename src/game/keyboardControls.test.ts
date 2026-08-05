@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_KEYBOARD_BINDINGS } from "../settings";
 import {
   keyboardActionForCode,
+  keyboardBindingLabel,
   keyboardCodeLabel,
   rebindKeyboardAction
 } from "./keyboardControls";
@@ -14,9 +15,31 @@ describe("keyboard controls", () => {
 
   it("swaps conflicting keys so neither action becomes unreachable", () => {
     const rebound = rebindKeyboardAction(DEFAULT_KEYBOARD_BINDINGS, "journal", "KeyI");
-    expect(rebound.journal).toBe("KeyI");
-    expect(rebound.inventory).toBe("KeyJ");
-    expect(new Set(Object.values(rebound)).size).toBe(Object.keys(rebound).length);
+    // An explicit binding replaces the whole list; the displaced action keeps
+    // what the new one gave up rather than being left unbound.
+    expect(rebound.journal).toEqual(["KeyI"]);
+    expect(rebound.inventory).toEqual(["KeyJ"]);
+    const claimed = Object.values(rebound).flat();
+    expect(new Set(claimed).size).toBe(claimed.length);
+  });
+
+  it("keeps WASD alongside the arrow keys until a player rebinds movement", () => {
+    for (const [code, action] of [["KeyW", "up"], ["KeyS", "down"], ["KeyA", "left"], ["KeyD", "right"]] as const) {
+      expect(keyboardActionForCode(code, DEFAULT_KEYBOARD_BINDINGS)).toBe(action);
+    }
+    for (const [code, action] of [["ArrowUp", "up"], ["ArrowDown", "down"], ["ArrowLeft", "left"], ["ArrowRight", "right"]] as const) {
+      expect(keyboardActionForCode(code, DEFAULT_KEYBOARD_BINDINGS)).toBe(action);
+    }
+    // Rebinding is a deliberate choice and takes the whole action with it.
+    const rebound = rebindKeyboardAction(DEFAULT_KEYBOARD_BINDINGS, "up", "KeyT");
+    expect(rebound.up).toEqual(["KeyT"]);
+    expect(keyboardActionForCode("KeyW", rebound)).toBeUndefined();
+  });
+
+  it("lists every key an action answers to", () => {
+    expect(keyboardBindingLabel(DEFAULT_KEYBOARD_BINDINGS.up)).toBe("Up / W");
+    expect(keyboardBindingLabel(DEFAULT_KEYBOARD_BINDINGS.cancel)).toBe("Esc");
+    expect(keyboardBindingLabel([])).toBe("unbound");
   });
 
   it("formats browser codes for player-facing menus", () => {

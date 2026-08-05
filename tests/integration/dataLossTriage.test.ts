@@ -87,9 +87,9 @@ describe("Wave 1 — the default bindings never claim a browser key", () => {
       reducedMotion: false,
       soundEnabled: true,
       soundVolume: 0.65,
-      keyBindings: { ...DEFAULT_KEYBOARD_BINDINGS, quickSave: "F5" }
+      keyBindings: { ...DEFAULT_KEYBOARD_BINDINGS, quickSave: ["F5"] }
     });
-    expect(healed.keyBindings.quickSave).toBe(DEFAULT_KEYBOARD_BINDINGS.quickSave);
+    expect(healed.keyBindings.quickSave).toEqual(DEFAULT_KEYBOARD_BINDINGS.quickSave);
   });
 
   it("refuses to rebind an action onto a browser-owned key", () => {

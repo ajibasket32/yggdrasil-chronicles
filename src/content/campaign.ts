@@ -1,5 +1,6 @@
 import type {
   ContentPack,
+  Element,
   EncounterDefinition,
   ItemDefinition,
   LocationDefinition,
@@ -678,7 +679,25 @@ export interface StartingBuildLoadout {
   readonly counters: readonly string[];
   readonly startingItems: readonly string[];
   readonly startingSkills: readonly string[];
+  /** Negative resists the element, positive is a weakness to it. */
+  readonly elementalAffinities: Partial<Record<Element, number>>;
 }
+
+/**
+ * Ancestry elemental affinities. Negative resists, positive is a weakness —
+ * matching `Combatant.elements`.
+ *
+ * These were hardcoded in `EngineGameBridge` as a chain of ternaries on the
+ * ancestry id, which put a content decision in the integration layer and left
+ * the authored loadouts unable to describe the character they produce. They are
+ * data here, so a build preview can state them and content validation can see them.
+ */
+const ancestryAffinities: Readonly<Record<AncestryId, StartingBuildLoadout["elementalAffinities"]>> = {
+  hearthborn: { aether: -0.1 },
+  sylvan: { nature: -0.2, fire: 0.15 },
+  stonekin: { earth: -0.2, lightning: 0.1 },
+  wayfarer: { wind: -0.1 }
+};
 
 const ancestryLoadoutNotes: Readonly<Record<AncestryId, Pick<StartingBuildLoadout, "strengths" | "counters">>> = {
   hearthborn: { strengths: ["Flexible opening turns", "Reliable recovery"], counters: ["Focused elemental pressure", "Long attrition fights"] },
@@ -687,7 +706,7 @@ const ancestryLoadoutNotes: Readonly<Record<AncestryId, Pick<StartingBuildLoadou
   wayfarer: { strengths: ["Fast positioning", "Item efficiency"], counters: ["Area damage", "Forced stand-your-ground fights"] }
 };
 
-const jobLoadoutNotes: Readonly<Record<StartingJobId, Omit<StartingBuildLoadout, "id" | "ancestryId" | "jobId" | "strengths" | "counters">>> = {
+const jobLoadoutNotes: Readonly<Record<StartingJobId, Omit<StartingBuildLoadout, "id" | "ancestryId" | "jobId" | "strengths" | "counters" | "elementalAffinities">>> = {
   vanguard: { partyRole: "Front-line defender", startingItems: ["item.root-tonic", "item.resin-vest"], startingSkills: ["skill.guard-line", "skill.shield-bash"] },
   ranger: { partyRole: "Fast physical striker", startingItems: ["item.root-tonic", "item.wayfarer-blade"], startingSkills: ["skill.aimed-shot", "skill.quickstep"] },
   mender: { partyRole: "Healing and protection", startingItems: ["item.root-tonic", "item.aether-drop"], startingSkills: ["skill.mend", "skill.ward-thread"] },
@@ -704,7 +723,8 @@ export const startingBuildLoadouts: readonly StartingBuildLoadout[] = ancestries
     jobId: job.id,
     ...jobLoadoutNotes[job.id],
     strengths: [...ancestryLoadoutNotes[ancestry.id].strengths, job.role],
-    counters: ancestryLoadoutNotes[ancestry.id].counters
+    counters: ancestryLoadoutNotes[ancestry.id].counters,
+    elementalAffinities: { ...ancestryAffinities[ancestry.id] }
   }))
 );
 

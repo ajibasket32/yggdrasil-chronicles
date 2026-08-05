@@ -106,6 +106,10 @@ const CAMP_SUPPLY_ITEM = "item.trail-rations";
 function curioFlagFor(locationId: string): string {
   return `content.curio.${locationId}`;
 }
+function titleCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 const CORE_PACK_VERSION = "0.1.0";
 /** What this build actually ships, for reconciliation against what a save was written with. */
 const RUNNING_CONTENT_PACKS: Readonly<Record<string, string>> = {
@@ -518,13 +522,10 @@ function createPartyCharacter(options: {
     hp: stats.maxHp,
     mp: stats.maxMp,
     skills: [...options.skills],
-    elements: options.ancestryId === "sylvan"
-      ? { nature: -0.2, fire: 0.15 }
-      : options.ancestryId === "stonekin"
-        ? { earth: -0.2, lightning: 0.1 }
-        : options.ancestryId === "wayfarer"
-          ? { wind: -0.1 }
-          : { aether: -0.1 },
+    // Authored per build in campaign.ts rather than decided here: an ancestry's
+    // elemental identity is content, and the build preview has to be able to
+    // state it before the player commits.
+    elements: { ...(startingBuildLoadouts.find(({ ancestryId }) => ancestryId === options.ancestryId)?.elementalAffinities ?? {}) },
     statuses: [],
     isPlayerControlled: true,
     equipment: {}
@@ -1272,7 +1273,16 @@ export class EngineGameBridge implements GameBridge {
       startingSkillNames: loadout.startingSkills
         .map((skillId) => SKILLS[skillId]?.name ?? skillId),
       strengths: [...loadout.strengths],
-      counters: [...loadout.counters]
+      counters: [...loadout.counters],
+      // Stated up front rather than discovered by dying to it. GAME_DESIGN.md
+      // promises strategy "without hidden formulas"; a resistance the player
+      // cannot see before committing to a build is exactly a hidden formula.
+      resists: Object.entries(loadout.elementalAffinities)
+        .filter(([, value]) => value < 0)
+        .map(([element]) => titleCase(element)),
+      vulnerableTo: Object.entries(loadout.elementalAffinities)
+        .filter(([, value]) => value > 0)
+        .map(([element]) => titleCase(element))
     };
   }
 

@@ -95,6 +95,9 @@ export interface BuildPreview {
   /** The authored build notes — written for every loadout and never displayed. */
   strengths: string[];
   counters: string[];
+  /** Elements this build resists, and elements it is weak to, in plain words. */
+  resists: string[];
+  vulnerableTo: string[];
 }
 
 export interface BattleStatusView {

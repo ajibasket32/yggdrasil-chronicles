@@ -11,6 +11,7 @@ import { gamepadButtonAction, pollStickDirection, type StickRepeatState } from "
 import {
   keyboardActionForCode,
   keyboardActionLabel,
+  keyboardBindingLabel,
   keyboardCodeLabel,
   rebindKeyboardAction
 } from "../keyboardControls";
@@ -146,9 +147,9 @@ export class TitleScene extends Phaser.Scene {
   private refreshControlsText(): void {
     const bindings = gameSettingsStore.get().keyBindings;
     this.controlsText?.setText(
-      `${keyboardCodeLabel(bindings.up)}/${keyboardCodeLabel(bindings.down)} / D-pad  Navigate     `
-      + `${keyboardCodeLabel(bindings.confirm)} / A  Confirm     `
-      + `${keyboardCodeLabel(bindings.cancel)} / B  Back`
+      `${keyboardCodeLabel(bindings.up[0] ?? "")}/${keyboardCodeLabel(bindings.down[0] ?? "")} / D-pad  Navigate     `
+      + `${keyboardCodeLabel(bindings.confirm[0] ?? "")} / A  Confirm     `
+      + `${keyboardCodeLabel(bindings.cancel[0] ?? "")} / B  Back`
     );
   }
 
@@ -245,7 +246,7 @@ export class TitleScene extends Phaser.Scene {
     const heading = this.add.text(72, 190, "KEYBOARD BINDINGS", { ...TEXT.heading, color: COLORS.gold });
     const rows = REBINDABLE_ACTIONS.map((action, index) => {
       const selected = index === this.bindingIndex;
-      const value = selected && this.capturingBinding ? "PRESS A KEY…" : keyboardCodeLabel(bindings[action]);
+      const value = selected && this.capturingBinding ? "PRESS A KEY…" : keyboardBindingLabel(bindings[action]);
       return this.add.text(
         72,
         226 + index * 20,
@@ -275,7 +276,7 @@ export class TitleScene extends Phaser.Scene {
     if (selectedAction) {
       announceGameStatus(this.capturingBinding
         ? `Press a new key for ${keyboardActionLabel(selectedAction)}.`
-        : `Keyboard bindings. ${keyboardActionLabel(selectedAction)} is assigned to ${keyboardCodeLabel(bindings[selectedAction])}.`);
+        : `Keyboard bindings. ${keyboardActionLabel(selectedAction)} is assigned to ${keyboardBindingLabel(bindings[selectedAction])}.`);
     }
   }
 
@@ -360,6 +361,8 @@ export class TitleScene extends Phaser.Scene {
         `STR ${preview.stats.strength}  DEX ${preview.stats.dexterity}  AGI ${preview.stats.agility}  VIT ${preview.stats.vitality}`,
         `INT ${preview.stats.intellect}  WIS ${preview.stats.wisdom}  CHA ${preview.stats.charisma}`,
         `Forms: ${preview.startingSkillNames.join(", ")}`,
+        preview.resists.length ? `Resists: ${preview.resists.join(", ")}` : "",
+        preview.vulnerableTo.length ? `Weak to: ${preview.vulnerableTo.join(", ")}` : "",
         "",
         `Strong: ${preview.strengths.join("; ")}`,
         `Watch for: ${preview.counters.join("; ")}`

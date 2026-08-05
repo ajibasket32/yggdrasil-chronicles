@@ -89,9 +89,9 @@ describe("persistent game settings", () => {
       ...DEFAULT_GAME_SETTINGS,
       keyBindings: {
         ...DEFAULT_GAME_SETTINGS.keyBindings,
-        journal: "KeyK"
+        journal: ["KeyK"]
       }
-    }).keyBindings.journal).toBe("KeyK");
+    }).keyBindings.journal).toEqual(["KeyK"]);
     expect(sanitizeGameSettings({
       ...DEFAULT_GAME_SETTINGS,
       keyBindings: {
@@ -126,13 +126,13 @@ describe("persistent game settings", () => {
 
     store.update({ highContrast: true });
     store.update({ highContrast: true });
-    store.update({ keyBindings: { journal: "KeyK" } });
+    store.update({ keyBindings: { journal: ["KeyK"] } });
     unsubscribe();
     store.update({ highContrast: false });
 
     expect(seen).toEqual([true, true]);
     expect(store.get().highContrast).toBe(false);
-    expect(store.get().keyBindings.journal).toBe("KeyK");
+    expect(store.get().keyBindings.journal).toEqual(["KeyK"]);
   });
 
   it("applies visual hooks and Phaser sound state without a live browser", () => {

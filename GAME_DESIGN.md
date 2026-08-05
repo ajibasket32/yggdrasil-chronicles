@@ -6,7 +6,12 @@ Yggdrasil Chronicles is a party-based JRPG about becoming part of an old world r
 
 ## Core loop
 
-Explore → talk and investigate → accept or discover goals → prepare the party → fight or negotiate → resolve consequences → rest and save → see the world react.
+Explore → talk and investigate → accept or discover goals → prepare the party → fight → resolve consequences → rest and save → see the world react.
+
+Combat is the resolution system. Conversation shapes *which* fights happen, what
+the party brings to them, and what the world does afterwards; it is not a second
+way to win one. Binding quest decisions, not a negotiation minigame, carry the
+weight of choice.
 
 The authored campaign is independently completable without generated narrative.
 The release target is 20+ hours in normal exploratory play; this duration must
@@ -33,7 +38,14 @@ swaps.
 
 Battles are gridless, single-screen, turn-based encounters. Initiative, hits, criticals, status application, enemy choices, and rewards use seeded deterministic rules. The same state, action sequence, and seed must produce the same result.
 
-Actions include attack, skill, item, guard, and escape. Elements, resistances, short status durations, equipment tradeoffs, and boss phases create strategy without hidden formulas.
+Actions include attack, skill, item, guard, and escape. Elements, resistances,
+short status durations, equipment tradeoffs, and boss phases create strategy
+without hidden formulas — and "without hidden formulas" is a working commitment,
+not a slogan. A build states the elements it resists and is weak to at character
+creation, before the choice is made. MP costs, status durations, and an enemy's
+learned weaknesses and resistances are all shown in battle rather than inferred
+from damage. Every ancestry's elemental identity is authored data in
+`src/content/campaign.ts`, not a rule buried in the integration layer.
 
 ## Quests and factions
 

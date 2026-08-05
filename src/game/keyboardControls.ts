@@ -32,7 +32,12 @@ export function keyboardActionForCode(
   code: string,
   bindings: Readonly<KeyboardBindings>
 ): KeyboardAction | undefined {
-  return REBINDABLE_ACTIONS.find((action) => bindings[action] === code);
+  return REBINDABLE_ACTIONS.find((action) => bindings[action].includes(code));
+}
+
+/** Every code bound to an action, for display: "↑ / W". */
+export function keyboardBindingLabel(codes: readonly string[]): string {
+  return codes.length > 0 ? codes.map(keyboardCodeLabel).join(" / ") : "unbound";
 }
 
 export function keyboardActionLabel(action: KeyboardAction): string {
@@ -58,10 +63,16 @@ export function rebindKeyboardAction(
   code: string
 ): KeyboardBindings {
   if (isReservedKeyCode(code)) return { ...bindings };
-  const next = { ...bindings };
-  const previousCode = next[action];
+  const next = { ...bindings } as Record<KeyboardAction, readonly string[]>;
+  const previousCodes = next[action];
   const conflict = keyboardActionForCode(code, bindings);
-  next[action] = code;
-  if (conflict && conflict !== action) next[conflict] = previousCode;
+  // An explicit choice replaces the whole list: a player who binds "up" to K
+  // means K, not K plus the arrow and W they never asked for.
+  next[action] = [code];
+  if (conflict && conflict !== action) {
+    // Give the displaced action whatever it lost, so nothing becomes unreachable.
+    const remaining = next[conflict].filter((existing) => existing !== code);
+    next[conflict] = remaining.length > 0 ? remaining : previousCodes;
+  }
   return next;
 }

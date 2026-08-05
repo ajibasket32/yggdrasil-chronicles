@@ -359,8 +359,8 @@ export class BattleScene extends Phaser.Scene {
     this.add.text(
       36,
       488,
-      `${keyboardCodeLabel(bindings.up)}/${keyboardCodeLabel(bindings.down)} moves actions · `
-      + `${keyboardCodeLabel(bindings.confirm)} / A confirms · ${keyboardCodeLabel(bindings.cancel)} / B selects escape`,
+      `${keyboardCodeLabel(bindings.up[0] ?? "")}/${keyboardCodeLabel(bindings.down[0] ?? "")} moves actions · `
+      + `${keyboardCodeLabel(bindings.confirm[0] ?? "")} / A confirms · ${keyboardCodeLabel(bindings.cancel[0] ?? "")} / B selects escape`,
       TEXT.small
     );
     this.add.text(36, 507, this.resolving ? "Resolving…" : "Choose an action, then confirm.", TEXT.small);
@@ -403,8 +403,8 @@ export class BattleScene extends Phaser.Scene {
     this.add.text(
       36,
       488,
-      `${keyboardCodeLabel(bindings.up)}/${keyboardCodeLabel(bindings.down)} ${verb} · `
-      + `${keyboardCodeLabel(bindings.confirm)} / A confirms · ${keyboardCodeLabel(bindings.cancel)} / B back`,
+      `${keyboardCodeLabel(bindings.up[0] ?? "")}/${keyboardCodeLabel(bindings.down[0] ?? "")} ${verb} · `
+      + `${keyboardCodeLabel(bindings.confirm[0] ?? "")} / A confirms · ${keyboardCodeLabel(bindings.cancel[0] ?? "")} / B back`,
       TEXT.small
     );
   }

@@ -922,15 +922,15 @@ export class WorldScene extends Phaser.Scene {
     const npc = this.nearestNpc();
     const bindings = gameSettingsStore.get().keyBindings;
     if (npc) {
-      this.prompt.setText(`${keyboardCodeLabel(bindings.interact)} / A  Talk`);
+      this.prompt.setText(`${keyboardCodeLabel(bindings.interact[0] ?? "")} / A  Talk`);
     } else if (this.isNearEncounter()) {
-      this.prompt.setText(`${keyboardCodeLabel(bindings.interact)} / A  Engage`);
+      this.prompt.setText(`${keyboardCodeLabel(bindings.interact[0] ?? "")} / A  Engage`);
     } else if (this.isNearCurio()) {
-      this.prompt.setText(`${keyboardCodeLabel(bindings.interact)} / A  Search`);
+      this.prompt.setText(`${keyboardCodeLabel(bindings.interact[0] ?? "")} / A  Search`);
     } else {
       this.prompt.setText(
-        `${keyboardCodeLabel(bindings.journal)} Journal   ${keyboardCodeLabel(bindings.party)} Party   `
-        + `${keyboardCodeLabel(bindings.map)} Map   ${keyboardCodeLabel(bindings.cancel)} Menu`
+        `${keyboardCodeLabel(bindings.journal[0] ?? "")} Journal   ${keyboardCodeLabel(bindings.party[0] ?? "")} Party   `
+        + `${keyboardCodeLabel(bindings.map[0] ?? "")} Map   ${keyboardCodeLabel(bindings.cancel[0] ?? "")} Menu`
       );
     }
   }

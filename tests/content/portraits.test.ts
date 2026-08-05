@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { npcs } from "../../src/content/campaign";
+import { npcs, startingBuildLoadouts } from "../../src/content/campaign";
 import { knownPortraitTags, portraitAppearance } from "../../src/content/portraits";
 import { scenes } from "../../src/content/scenes";
 
@@ -50,5 +50,26 @@ describe("speaker portraits", () => {
   it("returns nothing for an absent tag rather than a default face", () => {
     expect(portraitAppearance(undefined)).toBeUndefined();
     expect(portraitAppearance("portrait.nobody")).toBeUndefined();
+  });
+});
+
+describe("authored build affinities", () => {
+  it("gives every starting build the elemental identity the docs claim", () => {
+    for (const loadout of startingBuildLoadouts) {
+      const entries = Object.entries(loadout.elementalAffinities);
+      expect(entries.length, loadout.id).toBeGreaterThan(0);
+      for (const [element, value] of entries) {
+        expect(Math.abs(value), `${loadout.id} ${element}`).toBeLessThanOrEqual(1);
+        expect(value, `${loadout.id} ${element}`).not.toBe(0);
+      }
+    }
+  });
+
+  it("varies affinities by ancestry rather than giving everyone the same set", () => {
+    const byAncestry = new Map<string, string>();
+    for (const loadout of startingBuildLoadouts) {
+      byAncestry.set(loadout.ancestryId, JSON.stringify(loadout.elementalAffinities));
+    }
+    expect(new Set(byAncestry.values()).size).toBe(byAncestry.size);
   });
 });

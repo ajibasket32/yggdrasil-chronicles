@@ -15,7 +15,7 @@ Open `http://127.0.0.1:5173`. The game remains playable without an AI key.
 
 ## Controls
 
-- Move: Arrow keys
+- Move: Arrow keys or WASD
 - Interact/confirm: Enter or E
 - Cancel/menu: Escape
 - Journal: J
@@ -26,9 +26,13 @@ Open `http://127.0.0.1:5173`. The game remains playable without an AI key.
 - Quick save: F9 — writes to its own slot, so it never overwrites a manual save
 - Quick load: F8
 - System menu/manual saves: Escape, then choose a slot
-- Gamepad: D-pad to move, A to confirm, B to cancel
+- Gamepad: D-pad or left stick to move, A to confirm, B to cancel
+- Touch: an on-screen pad appears on touch devices — d-pad, A, B, and the journal
 
-All of the above keys are rebindable from the title screen's Settings menu.
+All of the above keys are rebindable from the title screen's Settings menu, and
+from the in-game system menu. Rebinding an action replaces every key assigned to
+it, so binding movement to something else drops the WASD default with it. The
+same menus carry High Contrast, Text Size, Reduced Motion, and audio.
 
 Inventory and party screens use the same directional controls. Consumables
 select a party target; gear can be equipped or removed; advanced job branches

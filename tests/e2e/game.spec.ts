@@ -262,9 +262,9 @@ test("a rebound journal key persists and controls the world scene", async ({ pag
   await page.keyboard.press("k");
 
   const savedSettings = await page.evaluate(() =>
-    window.localStorage.getItem("yggdrasil-chronicles.settings.v1")
+    window.localStorage.getItem("yggdrasil-chronicles.settings.v2")
   );
-  expect(savedSettings).toContain('"journal":"KeyK"');
+  expect(savedSettings).toContain('"journal":["KeyK"]');
 
   await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
@@ -279,8 +279,8 @@ test("a rebound journal key persists and controls the world scene", async ({ pag
 
   await page.reload();
   expect(await page.evaluate(() =>
-    window.localStorage.getItem("yggdrasil-chronicles.settings.v1")
-  )).toContain('"journal":"KeyK"');
+    window.localStorage.getItem("yggdrasil-chronicles.settings.v2")
+  )).toContain('"journal":["KeyK"]');
 });
 
 test("an authored quest permanently updates world reputation and the journal", async ({ page }) => {
