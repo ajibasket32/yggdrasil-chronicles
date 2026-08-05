@@ -1,5 +1,5 @@
 import type Phaser from "phaser";
-import { gameSettingsStore } from "../settings";
+import { gameSettingsStore, type GameSettings, type TextSize } from "../settings";
 import type { GameBridge } from "./bridge";
 
 export const BRIDGE_KEY = "yggdrasil.bridge";
@@ -53,7 +53,19 @@ export function playSound(scene: Phaser.Scene, key: string): void {
   if (scene.cache.audio.exists(key)) scene.sound.play(key);
 }
 
-export const COLORS = {
+export interface Palette {
+  ink: number;
+  panel: number;
+  panelLight: number;
+  cream: string;
+  muted: string;
+  gold: string;
+  green: number;
+  rain: number;
+  danger: number;
+}
+
+const STANDARD_PALETTE: Readonly<Palette> = {
   ink: 0x101622,
   panel: 0x182333,
   panelLight: 0x24364a,
@@ -63,11 +75,73 @@ export const COLORS = {
   green: 0x477a63,
   rain: 0x6da0a8,
   danger: 0xb84a56
-} as const;
+};
+
+/**
+ * High Contrast, inside the canvas.
+ *
+ * The setting used to be a single CSS `filter` on the canvas element, which
+ * raises contrast uniformly — including on the parts that were already
+ * legible — and does nothing for the actual problem: muted grey body text on a
+ * mid-blue panel. This palette darkens every panel to near-black and lifts
+ * every text colour to full strength, which is what the setting promises.
+ */
+const HIGH_CONTRAST_PALETTE: Readonly<Palette> = {
+  ink: 0x000000,
+  panel: 0x05070c,
+  panelLight: 0x101826,
+  cream: "#ffffff",
+  muted: "#e2ecf0",
+  gold: "#ffd84d",
+  green: 0x2f6f52,
+  rain: 0x8fd0da,
+  danger: 0xff6b78
+};
+
+/**
+ * Live palette. Mutated in place by `applyPresentationSettings` rather than
+ * swapped, because a hundred call sites read `COLORS.cream` at draw time; this
+ * way a preference change reaches all of them without threading a theme object
+ * through every scene.
+ */
+export const COLORS: Palette = { ...STANDARD_PALETTE };
+
+const TEXT_SCALES: Readonly<Record<TextSize, number>> = {
+  small: 0.88,
+  medium: 1,
+  large: 1.28
+};
+
+let textScale = 1;
+
+/**
+ * A font size in px, scaled by the player's text-size preference. Call sites
+ * that need a size other than the four in `TEXT` use this instead of a literal,
+ * so the setting reaches the 9px HP readouts too.
+ */
+export function fontPx(basePx: number): string {
+  return `${Math.max(8, Math.round(basePx * textScale))}px`;
+}
+
+const BASE_TEXT_SIZES = { title: 38, heading: 20, body: 14, small: 11 } as const;
 
 export const TEXT = {
   title: { fontFamily: "Georgia, serif", fontSize: "38px", color: COLORS.cream },
   heading: { fontFamily: "Georgia, serif", fontSize: "20px", color: COLORS.cream },
   body: { fontFamily: "system-ui, sans-serif", fontSize: "14px", color: COLORS.cream },
   small: { fontFamily: "system-ui, sans-serif", fontSize: "11px", color: COLORS.muted }
-} as const;
+};
+
+/**
+ * Pushes accessibility preferences into the canvas palette and type scale.
+ * Scenes redraw from `COLORS` and `TEXT`, so calling this before a redraw is
+ * all that is needed to restyle the game.
+ */
+export function applyPresentationSettings(settings: GameSettings): void {
+  Object.assign(COLORS, settings.highContrast ? HIGH_CONTRAST_PALETTE : STANDARD_PALETTE);
+  textScale = TEXT_SCALES[settings.textSize] ?? 1;
+  TEXT.title = { ...TEXT.title, fontSize: fontPx(BASE_TEXT_SIZES.title), color: COLORS.cream };
+  TEXT.heading = { ...TEXT.heading, fontSize: fontPx(BASE_TEXT_SIZES.heading), color: COLORS.cream };
+  TEXT.body = { ...TEXT.body, fontSize: fontPx(BASE_TEXT_SIZES.body), color: COLORS.cream };
+  TEXT.small = { ...TEXT.small, fontSize: fontPx(BASE_TEXT_SIZES.small), color: COLORS.muted };
+}

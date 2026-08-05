@@ -1,5 +1,5 @@
 import "./styles.css";
-import { createYggdrasilGame } from "./game";
+import { applyPresentationSettings, createYggdrasilGame } from "./game";
 import { EngineGameBridge } from "./integration/EngineGameBridge";
 import { applySettingsToPhaserGame, gameSettingsStore } from "./settings";
 
@@ -36,5 +36,11 @@ if (app) {
   bridge.subscribe(reflectSnapshot);
 }
 const game = createYggdrasilGame({ parent: "app", bridge });
+// The canvas palette and type scale are preferences too, and they have to be
+// in place before the first scene draws.
+applyPresentationSettings(gameSettingsStore.get());
 applySettingsToPhaserGame(gameSettingsStore.get(), game);
-gameSettingsStore.subscribe((settings) => applySettingsToPhaserGame(settings, game));
+gameSettingsStore.subscribe((settings) => {
+  applyPresentationSettings(settings);
+  applySettingsToPhaserGame(settings, game);
+});

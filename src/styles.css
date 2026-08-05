@@ -56,8 +56,13 @@ body {
   image-rendering: crisp-edges;
 }
 
+/*
+ * High Contrast is a real palette inside the canvas now (see COLORS in
+ * src/game/runtime.ts), so this no longer raises contrast globally — a blanket
+ * filter also crushed the terrain art. The border stays: it marks the play area
+ * against the page.
+ */
 .game-high-contrast #app canvas {
-  filter: contrast(1.45) brightness(1.12);
   border-color: #fff2a8;
 }
 

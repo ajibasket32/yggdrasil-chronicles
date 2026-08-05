@@ -5,8 +5,10 @@ import {
   REBINDABLE_ACTIONS,
   RESERVED_KEY_CODES,
   SETTINGS_STORAGE_KEY,
+  TEXT_SIZES,
   type GameSettings,
-  type GameSettingsPatch
+  type GameSettingsPatch,
+  type TextSize
 } from "./types";
 
 /** The small Storage surface needed by this module, which keeps it testable. */
@@ -63,12 +65,17 @@ function readKeyBindings(value: unknown): GameSettings["keyBindings"] {
     : { ...DEFAULT_KEYBOARD_BINDINGS };
 }
 
+function readTextSize(value: unknown): TextSize {
+  return TEXT_SIZES.includes(value as TextSize) ? (value as TextSize) : DEFAULT_GAME_SETTINGS.textSize;
+}
+
 function copySettings(settings: GameSettings): GameSettings {
   return { ...settings, keyBindings: { ...settings.keyBindings } };
 }
 
 function settingsEqual(left: GameSettings, right: GameSettings): boolean {
   return left.highContrast === right.highContrast
+    && left.textSize === right.textSize
     && left.reducedMotion === right.reducedMotion
     && left.soundEnabled === right.soundEnabled
     && left.soundVolume === right.soundVolume
@@ -88,6 +95,7 @@ export function sanitizeGameSettings(value: unknown): GameSettings {
   return {
     version: 1,
     highContrast: readBoolean(value.highContrast, DEFAULT_GAME_SETTINGS.highContrast),
+    textSize: readTextSize(value.textSize),
     reducedMotion: readBoolean(value.reducedMotion, DEFAULT_GAME_SETTINGS.reducedMotion),
     soundEnabled: readBoolean(value.soundEnabled, DEFAULT_GAME_SETTINGS.soundEnabled),
     soundVolume: readVolume(value.soundVolume, DEFAULT_GAME_SETTINGS.soundVolume),
@@ -194,6 +202,7 @@ export function applyVisualGameSettings(
   root?.style.setProperty("--game-motion-scale", settings.reducedMotion ? "0" : "1");
   root?.setAttribute("data-game-high-contrast", String(settings.highContrast));
   root?.setAttribute("data-game-reduced-motion", String(settings.reducedMotion));
+  root?.setAttribute("data-game-text-size", settings.textSize);
 
   canvas?.classList.toggle("game-high-contrast", settings.highContrast);
   canvas?.classList.toggle("game-reduced-motion", settings.reducedMotion);

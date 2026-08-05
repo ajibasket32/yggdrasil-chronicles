@@ -110,7 +110,7 @@ test("system menu exposes all manual save slots and can return to the title", as
   // there. Update both walks in this file together.
   await pressRepeatedly(page, "ArrowDown", 2);
   await page.keyboard.press("Enter");
-  await pressRepeatedly(page, "ArrowDown", 11);
+  await pressRepeatedly(page, "ArrowDown", 12);
   await page.keyboard.press("Enter");
   await expect(page.locator("#app")).toHaveAttribute("data-scene", "title");
 });
@@ -137,7 +137,7 @@ test("manual load restores the selected chronicle from the title", async ({ page
 
   // Return to the title through the system menu, then load Manual Slot 1.
   await page.keyboard.press("Escape");
-  await pressRepeatedly(page, "ArrowDown", 13);
+  await pressRepeatedly(page, "ArrowDown", 14);
   await page.keyboard.press("Enter");
   await expect(app).toHaveAttribute("data-scene", "title");
   await pressRepeatedly(page, "ArrowDown", 2);
@@ -232,11 +232,17 @@ test("accessibility and audio settings persist after a reload", async ({ page })
   await page.keyboard.press("ArrowDown");
   await page.waitForTimeout(350);
   await page.keyboard.press("Enter");
+  await expect(root).toHaveAttribute("data-game-text-size", "large");
+  await page.waitForTimeout(350);
+  await page.keyboard.press("ArrowDown");
+  await page.waitForTimeout(350);
+  await page.keyboard.press("Enter");
   await expect(root).toHaveAttribute("data-game-reduced-motion", "true");
 
   await page.reload();
   await expect(app).toHaveAttribute("data-scene", "title");
   await expect(root).toHaveAttribute("data-game-high-contrast", "true");
+  await expect(root).toHaveAttribute("data-game-text-size", "large");
   await expect(root).toHaveAttribute("data-game-reduced-motion", "true");
 });
 
@@ -249,7 +255,7 @@ test("a rebound journal key persists and controls the world scene", async ({ pag
   // Settings -> Keyboard Bindings -> Journal, then capture K.
   await pressRepeatedly(page, "ArrowDown", 3);
   await page.keyboard.press("Enter");
-  await pressRepeatedly(page, "ArrowDown", 4);
+  await pressRepeatedly(page, "ArrowDown", 5);
   await page.keyboard.press("Enter");
   await pressRepeatedly(page, "ArrowDown", 7);
   await page.keyboard.press("Enter");

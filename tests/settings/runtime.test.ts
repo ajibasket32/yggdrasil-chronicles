@@ -149,6 +149,7 @@ describe("persistent game settings", () => {
       {
         version: 1,
         highContrast: true,
+        textSize: "large",
         reducedMotion: true,
         soundEnabled: false,
         soundVolume: 0.3,

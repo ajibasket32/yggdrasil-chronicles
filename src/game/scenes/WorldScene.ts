@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { codexSections, locations, npcs, portraitAppearance, vendorProfiles } from "../../content";
-import { gameSettingsStore } from "../../settings";
+import { gameSettingsStore, nextTextSize } from "../../settings";
 import type {
   BackupView,
   GameBridge,
@@ -16,7 +16,7 @@ import { keyboardActionForCode, keyboardCodeLabel } from "../keyboardControls";
 import { windowAround, windowFooter, type OverlayWindow } from "../overlayWindow";
 import { groundTile, tileVariant, treeAt, TREE_TILES } from "../tileset";
 import { getNpcSpawnPoints } from "../npcPlacement";
-import { announceGameStatus, announceScene, COLORS, getBridge, motionDuration, playSound, setSceneFlag, TEXT } from "../runtime";
+import { announceGameStatus, announceScene, COLORS, fontPx, getBridge, motionDuration, playSound, setSceneFlag, TEXT } from "../runtime";
 import {
   getLocationExits,
   getObjectiveGuidance,
@@ -56,7 +56,7 @@ const CURIO_POINTS: Readonly<Record<string, Point>> = {
 const HUD_X = MAP_COLUMNS * TILE;
 const EQUIPMENT_SLOTS = ["weapon", "armor", "accessory"] as const;
 /** Must match the length of the `commands` array built in overlayContent's "system" branch. */
-const SYSTEM_MENU_COMMAND_COUNT = 14;
+const SYSTEM_MENU_COMMAND_COUNT = 15;
 
 /** Load-menu ordering, matching SAVE_SLOTS in the save module. */
 const SAVE_SLOT_ORDER = ["autosave", "quick", "manual-1", "manual-2", "manual-3"] as const;
@@ -119,6 +119,8 @@ export class WorldScene extends Phaser.Scene {
   private interactiveMode: InteractiveOverlayMode = "browse";
   private selectedInventoryItemId?: string;
   private systemBusy = false;
+  /** Set when a palette or type-scale change needs the map repainted on exit. */
+  private restyleOnClose = false;
   /**
    * The system menu's sub-view. While set, the command list is replaced by a
    * list of save slots (or archived backups) and every key routes to it.
@@ -271,7 +273,7 @@ export class WorldScene extends Phaser.Scene {
     const speakerInset = line.speaker && portraitAppearance(line.portraitTag) ? 104 : 40;
     const body = this.add.text(speakerInset, line.speaker ? 396 : 380, "", {
       ...TEXT.body,
-      fontSize: line.speaker ? "15px" : "14px",
+      fontSize: fontPx(line.speaker ? 15 : 14),
       color: line.speaker ? COLORS.cream : COLORS.muted,
       fontStyle: line.speaker ? "normal" : "italic",
       wordWrap: { width: 910 - speakerInset },
@@ -676,7 +678,7 @@ export class WorldScene extends Phaser.Scene {
       }
       this.add.text(point.x * TILE + 16, point.y * TILE - 15, npc.name.split(" ")[0] ?? npc.name, {
         ...TEXT.small,
-        fontSize: "9px",
+        fontSize: fontPx(9),
         backgroundColor: "#101622aa",
         padding: { x: 3, y: 1 }
       }).setOrigin(0.5).setDepth(9);
@@ -696,7 +698,7 @@ export class WorldScene extends Phaser.Scene {
     if (guidance?.local && (activeQuest?.objectiveKind === "defeat" || activeQuest?.objectiveKind === "collect")) {
       this.add.text(point.x * TILE + 16, point.y * TILE - 15, "◆ OBJECTIVE", {
         ...TEXT.small,
-        fontSize: "9px",
+        fontSize: fontPx(9),
         color: COLORS.gold,
         backgroundColor: "#101622cc",
         padding: { x: 4, y: 2 }
@@ -709,17 +711,30 @@ export class WorldScene extends Phaser.Scene {
     const snapshot = this.snapshot;
     const panel = this.add.rectangle(HUD_X, 0, 960 - HUD_X, 540, COLORS.panel).setOrigin(0);
     const children: Phaser.GameObjects.GameObject[] = [panel];
-    children.push(this.add.text(HUD_X + 18, 20, snapshot.locationName.toUpperCase(), { ...TEXT.heading, fontSize: "17px", wordWrap: { width: 188 } }));
+    // The header block flows rather than sitting at fixed offsets: a location
+    // name or a clock line takes however many rows the player's text size needs,
+    // and Large used to run the clock straight through the PARTY heading.
+    const name = this.add.text(HUD_X + 18, 20, snapshot.locationName.toUpperCase(), { ...TEXT.heading, fontSize: fontPx(17), wordWrap: { width: 188 } });
+    children.push(name);
     // Marks belong on the HUD, not only inside a shop: a player deciding
     // whether to walk to a vendor needs to know what they can afford first.
-    children.push(this.add.text(HUD_X + 18, 66, `${this.formatTime(snapshot.worldMinutes)}  ·  ${snapshot.difficulty.toUpperCase()}  ·  ${snapshot.currency} marks`, TEXT.small));
-    children.push(this.add.rectangle(HUD_X + 18, 90, 188, 1, COLORS.panelLight).setOrigin(0));
-    children.push(this.add.text(HUD_X + 18, 105, "PARTY", { ...TEXT.small, color: COLORS.gold }));
+    const clock = this.add.text(
+      HUD_X + 18,
+      name.y + name.height + 12,
+      `${this.formatTime(snapshot.worldMinutes)}  ·  ${snapshot.difficulty.toUpperCase()}  ·  ${snapshot.currency} marks`,
+      { ...TEXT.small, wordWrap: { width: 188 }, lineSpacing: 3 }
+    );
+    children.push(clock);
+    const ruleY = clock.y + clock.height + 10;
+    children.push(this.add.rectangle(HUD_X + 18, ruleY, 188, 1, COLORS.panelLight).setOrigin(0));
+    const partyHeading = this.add.text(HUD_X + 18, ruleY + 14, "PARTY", { ...TEXT.small, color: COLORS.gold });
+    children.push(partyHeading);
+    const partyTop = partyHeading.y + partyHeading.height + 8;
     snapshot.party.slice(0, 4).forEach((member, index) => {
-      const y = 132 + index * 63;
+      const y = partyTop + index * 63;
       children.push(this.add.rectangle(HUD_X + 18, y, 34, 34, member.portraitTint).setOrigin(0));
-      children.push(this.add.text(HUD_X + 61, y - 2, `${member.name}  Lv ${member.level}`, { ...TEXT.body, fontSize: "12px" }));
-      children.push(this.add.text(HUD_X + 61, y + 16, `HP ${member.hp}/${member.maxHp}  MP ${member.mp}/${member.maxMp}`, { ...TEXT.small, fontSize: "9px" }));
+      children.push(this.add.text(HUD_X + 61, y - 2, `${member.name}  Lv ${member.level}`, { ...TEXT.body, fontSize: fontPx(12), wordWrap: { width: 145 } }));
+      children.push(this.add.text(HUD_X + 61, y + 16, `HP ${member.hp}/${member.maxHp}  MP ${member.mp}/${member.maxMp}`, { ...TEXT.small, fontSize: fontPx(9) }));
     });
     const objective = snapshot.quests.find(({ state }) => state === "active");
     children.push(this.add.text(HUD_X + 18, 393, "ACTIVE THREAD", { ...TEXT.small, color: COLORS.gold }));
@@ -738,12 +753,12 @@ export class WorldScene extends Phaser.Scene {
       lineSpacing: 2
     }));
     const saveLabel = snapshot.autosave === "saving" ? "Saving…" : snapshot.autosave === "error" ? "Save failed" : snapshot.autosave === "saved" ? "✓ Autosaved" : "Offline";
-    children.push(this.add.text(HUD_X + 18, 524, saveLabel, { ...TEXT.small, fontSize: "9px", color: snapshot.autosave === "error" ? "#ef7882" : COLORS.muted }));
+    children.push(this.add.text(HUD_X + 18, 524, saveLabel, { ...TEXT.small, fontSize: fontPx(9), color: snapshot.autosave === "error" ? "#ef7882" : COLORS.muted }));
     const campaign = snapshot.campaign;
     if (campaign) {
       children.push(this.add.text(HUD_X + 188, 524, `MAIN ${campaign.completedMainQuests}/${campaign.totalMainQuests}`, {
         ...TEXT.small,
-        fontSize: "9px",
+        fontSize: fontPx(9),
         color: campaign.complete ? COLORS.gold : COLORS.muted
       }).setOrigin(1, 0));
     }
@@ -866,7 +881,7 @@ export class WorldScene extends Phaser.Scene {
     if (!point) return;
     const sprite = this.add.text(point.x * TILE + 16, point.y * TILE + 16, "◈", {
       ...TEXT.heading,
-      fontSize: "18px",
+      fontSize: fontPx(18),
       color: "#d8c27a"
     }).setOrigin(0.5).setDepth(8);
     this.curio = { point, sprite };
@@ -1130,7 +1145,7 @@ export class WorldScene extends Phaser.Scene {
       ending.body,
       {
         ...TEXT.body,
-        fontSize: "17px",
+        fontSize: fontPx(17),
         align: "center",
         wordWrap: { width: 650 },
         lineSpacing: 9,
@@ -1141,7 +1156,7 @@ export class WorldScene extends Phaser.Scene {
     if (ending.epilogue) {
       children.push(this.add.text(480, 306, `WHAT THE CHOICE COST\n${ending.epilogue}`, {
         ...TEXT.body,
-        fontSize: "14px",
+        fontSize: fontPx(14),
         align: "center",
         wordWrap: { width: 620 },
         lineSpacing: 7,
@@ -1154,7 +1169,7 @@ export class WorldScene extends Phaser.Scene {
       `${this.snapshot.playerName}'s chronicle remains open. The road can still be explored, and unfinished threads still wait.`,
       {
         ...TEXT.body,
-        fontSize: "13px",
+        fontSize: fontPx(13),
         align: "center",
         wordWrap: { width: 650 },
         lineSpacing: 7,
@@ -1191,7 +1206,7 @@ export class WorldScene extends Phaser.Scene {
       "Thank you for walking the roads."
     ].join("\n"), {
       ...TEXT.body,
-      fontSize: "14px",
+      fontSize: fontPx(14),
       align: "center",
       lineSpacing: 8,
       color: COLORS.cream
@@ -1433,6 +1448,7 @@ export class WorldScene extends Phaser.Scene {
       "Delete a Save…",
       `Restore a Backup…${this.backupChoices.length ? `   (${this.backupChoices.length})` : ""}`,
       `High Contrast: ${gameSettingsStore.get().highContrast ? "ON" : "OFF"}`,
+      `Text Size: ${gameSettingsStore.get().textSize.toUpperCase()}`,
       `Reduced Motion: ${gameSettingsStore.get().reducedMotion ? "ON" : "OFF"}`,
       `Sound: ${gameSettingsStore.get().soundEnabled ? "ON" : "OFF"}`,
       `Sound Volume: ${Math.round(gameSettingsStore.get().soundVolume * 100)}%`,
@@ -1768,6 +1784,15 @@ export class WorldScene extends Phaser.Scene {
   private closeOverlay(): void {
     this.systemPicker = undefined;
     this.armedSaveSlot = undefined;
+    if (this.restyleOnClose) {
+      this.restyleOnClose = false;
+      this.overlay?.destroy();
+      this.overlay = undefined;
+      this.overlayKind = undefined;
+      this.locked = false;
+      this.renderLocation(false);
+      return;
+    }
     if (this.overlayKind === "shop") void this.bridge.leaveShop();
     this.overlay?.destroy();
     this.overlay = undefined;
@@ -1926,17 +1951,21 @@ export class WorldScene extends Phaser.Scene {
       this.openSlotPicker("restore");
       return;
     }
-    if (this.systemIndex >= 7 && this.systemIndex <= 10) {
+    if (this.systemIndex >= 7 && this.systemIndex <= 11) {
       const settings = gameSettingsStore.get();
       if (this.systemIndex === 7) gameSettingsStore.update({ highContrast: !settings.highContrast });
-      else if (this.systemIndex === 8) gameSettingsStore.update({ reducedMotion: !settings.reducedMotion });
-      else if (this.systemIndex === 9) gameSettingsStore.update({ soundEnabled: !settings.soundEnabled });
+      else if (this.systemIndex === 8) gameSettingsStore.update({ textSize: nextTextSize(settings.textSize) });
+      else if (this.systemIndex === 9) gameSettingsStore.update({ reducedMotion: !settings.reducedMotion });
+      else if (this.systemIndex === 10) gameSettingsStore.update({ soundEnabled: !settings.soundEnabled });
       else gameSettingsStore.update({ soundVolume: settings.soundVolume >= 1 ? 0 : Math.min(1, settings.soundVolume + 0.1) });
       playSound(this, "sfx.confirm");
+      // The palette and type scale changed under the whole scene, but the map
+      // was drawn before that. Repaint it once the menu is out of the way.
+      if (this.systemIndex === 7 || this.systemIndex === 8) this.restyleOnClose = true;
       this.drawSystemOverlay();
       return;
     }
-    if (this.systemIndex === 11) {
+    if (this.systemIndex === 12) {
       // Report what actually happened: resting can now be refused for want of
       // coin or camp supplies, and the two forms restore different things.
       const result = await this.bridge.rest();
@@ -1944,7 +1973,7 @@ export class WorldScene extends Phaser.Scene {
       this.showToast(result.message);
       return;
     }
-    if (this.systemIndex === 12) {
+    if (this.systemIndex === 13) {
       this.closeOverlay();
       this.codexIndex = 0;
       this.toggleOverlay("codex");

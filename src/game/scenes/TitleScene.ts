@@ -3,6 +3,7 @@ import { ancestries, jobs } from "../../content";
 import {
   DEFAULT_KEYBOARD_BINDINGS,
   gameSettingsStore,
+  nextTextSize,
   REBINDABLE_ACTIONS
 } from "../../settings";
 import type { CharacterCreationDraft, Difficulty, GameBridge, GameCommandResult } from "../bridge";
@@ -13,7 +14,7 @@ import {
   keyboardCodeLabel,
   rebindKeyboardAction
 } from "../keyboardControls";
-import { announceGameStatus, announceScene, COLORS, getBridge, motionDuration, playSound, TEXT } from "../runtime";
+import { announceGameStatus, announceScene, COLORS, fontPx, getBridge, motionDuration, playSound, TEXT } from "../runtime";
 
 const NAME_CHOICES = ["Rowan", "Aster", "Marlowe", "Sage", "Kestrel", "Vale"] as const;
 /** Slots the load menu offers, in display order. `quick` is listed so a quick save is recoverable from the title. */
@@ -67,7 +68,7 @@ export class TitleScene extends Phaser.Scene {
     this.loadIndex = 0;
     this.cameras.main.setBackgroundColor(COLORS.ink);
     this.paintBackdrop();
-    this.add.text(64, 66, "YGGDRASIL", { ...TEXT.title, fontSize: "54px", letterSpacing: 7 });
+    this.add.text(64, 66, "YGGDRASIL", { ...TEXT.title, fontSize: fontPx(54), letterSpacing: 7 });
     this.add.text(68, 126, "C H R O N I C L E S", { ...TEXT.body, color: COLORS.gold, letterSpacing: 4 });
     this.add.text(68, 164, "The Severed Concord", { ...TEXT.heading, fontStyle: "italic", color: COLORS.muted });
     this.controlsText = this.add.text(68, 470, "", TEXT.small);
@@ -209,6 +210,7 @@ export class TitleScene extends Phaser.Scene {
     const settings = gameSettingsStore.get();
     const choices = [
       `HIGH CONTRAST       ${settings.highContrast ? "ON" : "OFF"}`,
+      `TEXT SIZE           ${settings.textSize.toUpperCase()}`,
       `REDUCED MOTION      ${settings.reducedMotion ? "ON" : "OFF"}`,
       `SOUND               ${settings.soundEnabled ? "ON" : "OFF"}`,
       `SOUND VOLUME        ${Math.round(settings.soundVolume * 100)}%`,
@@ -250,7 +252,7 @@ export class TitleScene extends Phaser.Scene {
         `${selected ? "›" : " "} ${keyboardActionLabel(action).padEnd(24)} ${value}`,
         {
           ...TEXT.body,
-          fontSize: "12px",
+          fontSize: fontPx(12),
           color: selected ? COLORS.gold : COLORS.cream
         }
       );
@@ -260,7 +262,7 @@ export class TitleScene extends Phaser.Scene {
       72,
       226 + REBINDABLE_ACTIONS.length * 20 + 8,
       `${resetSelected ? "›" : " "} Reset all bindings to defaults`,
-      { ...TEXT.body, fontSize: "12px", color: resetSelected ? COLORS.gold : COLORS.cream }
+      { ...TEXT.body, fontSize: fontPx(12), color: resetSelected ? COLORS.gold : COLORS.cream }
     ));
     this.menuTexts = [heading, ...rows];
     this.detailText = this.add.text(
@@ -289,7 +291,7 @@ export class TitleScene extends Phaser.Scene {
       const selected = index === this.loadIndex;
       return this.add.text(72, 250 + index * 42, `${selected ? "›" : " "} ${SLOT_TITLES[slot]}  —  ${this.slotSummary(slot)}`, {
         ...TEXT.heading,
-        fontSize: "17px",
+        fontSize: fontPx(17),
         color: selected ? (available ? COLORS.gold : COLORS.muted) : available ? COLORS.cream : "#64727a"
       });
     });
@@ -369,7 +371,7 @@ export class TitleScene extends Phaser.Scene {
       this.creationRow === 3
         ? (difficulty?.description ?? "")
         : `${ancestry?.trait ?? ""}\n${job?.role ?? ""}  ·  Branches: ${job?.branches.join(" / ") ?? ""}\n\n${previewText}`,
-      { ...TEXT.body, fontSize: "12px", wordWrap: { width: 360 }, lineSpacing: 6, color: COLORS.muted }
+      { ...TEXT.body, fontSize: fontPx(12), wordWrap: { width: 360 }, lineSpacing: 6, color: COLORS.muted }
     );
   }
 
@@ -384,7 +386,7 @@ export class TitleScene extends Phaser.Scene {
       this.loadIndex = Phaser.Math.Wrap(this.loadIndex + delta, 0, MANUAL_SLOTS.length);
       this.drawLoadMenu();
     } else if (this.mode === "settings") {
-      this.settingsIndex = Phaser.Math.Wrap(this.settingsIndex + delta, 0, 5);
+      this.settingsIndex = Phaser.Math.Wrap(this.settingsIndex + delta, 0, 6);
       this.drawSettings();
     } else if (this.mode === "bindings") {
       if (this.capturingBinding) return;
@@ -443,9 +445,10 @@ export class TitleScene extends Phaser.Scene {
     if (this.mode === "settings") {
       const settings = gameSettingsStore.get();
       if (this.settingsIndex === 0) gameSettingsStore.update({ highContrast: !settings.highContrast });
-      else if (this.settingsIndex === 1) gameSettingsStore.update({ reducedMotion: !settings.reducedMotion });
-      else if (this.settingsIndex === 2) gameSettingsStore.update({ soundEnabled: !settings.soundEnabled });
-      else if (this.settingsIndex === 3) gameSettingsStore.update({ soundVolume: settings.soundVolume >= 1 ? 0 : Math.min(1, settings.soundVolume + 0.1) });
+      else if (this.settingsIndex === 1) gameSettingsStore.update({ textSize: nextTextSize(settings.textSize) });
+      else if (this.settingsIndex === 2) gameSettingsStore.update({ reducedMotion: !settings.reducedMotion });
+      else if (this.settingsIndex === 3) gameSettingsStore.update({ soundEnabled: !settings.soundEnabled });
+      else if (this.settingsIndex === 4) gameSettingsStore.update({ soundVolume: settings.soundVolume >= 1 ? 0 : Math.min(1, settings.soundVolume + 0.1) });
       else {
         this.capturingBinding = false;
         this.drawBindings();

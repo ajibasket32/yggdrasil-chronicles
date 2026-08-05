@@ -51,9 +51,24 @@ export const RESERVED_KEY_CODES: readonly string[] = [
   "F1", "F3", "F5", "F6", "F7", "F10", "F11", "F12", "Tab"
 ];
 
+/**
+ * Interface text scale. The smallest text in the game is 9px HP/MP readouts,
+ * which is below what a lot of people can read on a 960px canvas; `large`
+ * exists so that is a preference rather than a barrier.
+ */
+export const TEXT_SIZES = ["small", "medium", "large"] as const;
+export type TextSize = typeof TEXT_SIZES[number];
+
+/** Steps to the next text size, wrapping. Both settings surfaces cycle rather than toggle. */
+export function nextTextSize(current: TextSize): TextSize {
+  const index = TEXT_SIZES.indexOf(current);
+  return TEXT_SIZES[(index + 1) % TEXT_SIZES.length] ?? "medium";
+}
+
 export interface GameSettings {
   version: 1;
   highContrast: boolean;
+  textSize: TextSize;
   reducedMotion: boolean;
   soundEnabled: boolean;
   soundVolume: number;
@@ -63,6 +78,7 @@ export interface GameSettings {
 export const DEFAULT_GAME_SETTINGS: Readonly<GameSettings> = {
   version: 1,
   highContrast: false,
+  textSize: "medium",
   reducedMotion: false,
   soundEnabled: true,
   soundVolume: 0.65,

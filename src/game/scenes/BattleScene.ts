@@ -3,7 +3,7 @@ import { gameSettingsStore } from "../../settings";
 import type { BattleAction, BattleView, GameBridge, GameSnapshot } from "../bridge";
 import { gamepadButtonAction, pollStickDirection, type StickRepeatState } from "../gamepadControls";
 import { keyboardActionForCode, keyboardCodeLabel } from "../keyboardControls";
-import { announceGameStatus, announceScene, COLORS, getBridge, motionDuration, playSound, TEXT } from "../runtime";
+import { announceGameStatus, announceScene, COLORS, fontPx, getBridge, motionDuration, playSound, TEXT } from "../runtime";
 
 const ACTIONS: Array<{ id: BattleAction; label: string; hint: string }> = [
   { id: "attack", label: "ATTACK", hint: "A reliable physical strike." },
@@ -242,7 +242,7 @@ export class BattleScene extends Phaser.Scene {
     if (!position) return;
     const label = this.add.text(position.x, position.y - 18, text, {
       ...TEXT.heading,
-      fontSize: emphatic ? "22px" : "17px",
+      fontSize: fontPx(emphatic ? 22 : 17),
       color: `#${color.toString(16).padStart(6, "0")}`
     }).setOrigin(0.5).setDepth(60).setAlpha(0);
 
@@ -291,7 +291,7 @@ export class BattleScene extends Phaser.Scene {
   private drawStatuses(x: number, y: number, statuses: BattleView["actors"][number]["statuses"]): void {
     if (statuses.length === 0) return;
     const text = statuses.map(({ id, remainingTurns }) => `${id.slice(0, 3).toUpperCase()}${remainingTurns}`).join(" ");
-    this.add.text(x, y, text, { ...TEXT.small, fontSize: "9px", color: COLORS.gold }).setOrigin(0);
+    this.add.text(x, y, text, { ...TEXT.small, fontSize: fontPx(9), color: COLORS.gold }).setOrigin(0);
   }
 
   private drawActiveActorMarker(x: number, y: number, active: boolean, name: string): void {
@@ -310,7 +310,7 @@ export class BattleScene extends Phaser.Scene {
     const ratio = maxHp > 0 ? Phaser.Math.Clamp(hp / maxHp, 0, 1) : 0;
     this.add.rectangle(x, y, width, 7, 0x11151c).setOrigin(0);
     this.add.rectangle(x, y, width * ratio, 7, party ? 0x64ba83 : 0xc95d63).setOrigin(0);
-    this.add.text(x, y + 9, `${name}  ${hp}/${maxHp}`, { ...TEXT.small, fontSize: "9px" }).setOrigin(0);
+    this.add.text(x, y + 9, `${name}  ${hp}/${maxHp}`, { ...TEXT.small, fontSize: fontPx(9) }).setOrigin(0);
   }
 
   private paintCommandPanel(battle: BattleView): void {
@@ -329,7 +329,7 @@ export class BattleScene extends Phaser.Scene {
     actions.forEach((action, index) => {
       this.add.text(28 + index * 121, 393, action.label, {
         ...TEXT.heading,
-        fontSize: "16px",
+        fontSize: fontPx(16),
         color: index === this.actionIndex ? COLORS.gold : COLORS.cream,
         backgroundColor: index === this.actionIndex ? "#30453f" : "#00000000",
         padding: { x: 8, y: 7 }
@@ -372,7 +372,7 @@ export class BattleScene extends Phaser.Scene {
       const selected = index === this.subMenuIndex;
       this.add.text(36, 393 + index * 24, `${selected ? "›" : " "} ${skill.name.padEnd(20)} ${skill.mpCost} MP`, {
         ...TEXT.heading,
-        fontSize: "14px",
+        fontSize: fontPx(14),
         color: selected ? COLORS.gold : COLORS.cream
       });
     });
@@ -388,7 +388,7 @@ export class BattleScene extends Phaser.Scene {
       const selected = index === this.subMenuIndex;
       this.add.text(36, 393 + index * 24, `${selected ? "›" : " "} ${item.name.padEnd(20)} x${item.quantity}`, {
         ...TEXT.heading,
-        fontSize: "14px",
+        fontSize: fontPx(14),
         color: selected ? COLORS.gold : COLORS.cream
       });
       if (selected) {
