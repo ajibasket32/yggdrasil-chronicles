@@ -109,7 +109,8 @@ const worldStateSchema = z.object({
   factionStanding: z.record(z.string(), z.number().min(-100).max(100)),
   relationships: z.array(relationshipSchema),
   chronicle: z.array(chronicleEntrySchema),
-  worldMinutes: z.number().int().nonnegative()
+  worldMinutes: z.number().int().nonnegative(),
+  playSeconds: z.number().int().nonnegative()
 }).strict();
 
 export const gameStateSchema = z.object({
@@ -190,9 +191,25 @@ function migrateVersionOne(input: Record<string, unknown>): Record<string, unkno
  * first ordinary version bump would have invalidated every save on disk: a v1
  * record was passed through untouched and then failed the `z.literal(2)` check.
  */
+/**
+ * v2 to v3. Splits real play time out of in-fiction time. An existing save has
+ * no record of how long it was played, and `worldMinutes` is not an answer —
+ * resting advances it by eight hours. Starting the counter at zero
+ * under-reports an old chronicle rather than inventing a number for it.
+ */
+function migrateVersionTwo(input: Record<string, unknown>): Record<string, unknown> {
+  const world = isRecord(input.world) ? input.world : {};
+  return {
+    ...input,
+    schemaVersion: 3,
+    world: { ...world, playSeconds: typeof world.playSeconds === "number" ? world.playSeconds : 0 }
+  };
+}
+
 const MIGRATIONS: Readonly<Record<number, (input: Record<string, unknown>) => Record<string, unknown>>> = {
   0: migrateVersionZero,
-  1: migrateVersionOne
+  1: migrateVersionOne,
+  2: migrateVersionTwo
 };
 
 export function migrateGameState(input: unknown): GameState {

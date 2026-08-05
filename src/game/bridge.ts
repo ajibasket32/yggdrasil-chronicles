@@ -327,7 +327,20 @@ export interface SaveSlotSummaryView {
   updatedAt: string;
   locationName: string;
   partyLevel: number;
+  /** Real time at the controls. */
   playTimeMinutes: number;
+  /** In-fiction clock; rest and fast travel advance it in leaps. */
+  worldMinutes: number;
+}
+
+/** An archived save record, offered as a recovery route. */
+export interface BackupView {
+  id: string;
+  slot: GameSaveSlot;
+  slotLabel: string;
+  backedUpAt: string;
+  locationName: string;
+  partyLevel: number;
 }
 
 export type SnapshotListener = (snapshot: Readonly<GameSnapshot>) => void;
@@ -397,6 +410,10 @@ export interface GameBridge {
   leaveShop(): void | Promise<void>;
   exportSave(slot: GameSaveSlot): string | Promise<string>;
   importSave(slot: GameSaveSlot, json: string): GameCommandResult | Promise<GameCommandResult>;
+  /** Records displaced by an overwrite or an import, newest first. */
+  listBackups(): BackupView[] | Promise<BackupView[]>;
+  /** Puts an archived record back in its slot and loads it. */
+  restoreBackup(backupId: string): GameCommandResult | Promise<GameCommandResult>;
 }
 
 export interface GameLaunchOptions {

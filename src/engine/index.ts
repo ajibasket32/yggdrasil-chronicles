@@ -1,4 +1,5 @@
 export * from "./combat";
+export * from "./contentPacks";
 export * from "./equipment";
 export * from "./inventory";
 export * from "./progression";

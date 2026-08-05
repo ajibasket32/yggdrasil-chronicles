@@ -109,6 +109,16 @@ export interface WorldState {
   relationships: Relationship[];
   chronicle: ChronicleEntry[];
   worldMinutes: number;
+  /**
+   * Real seconds spent playing this chronicle. Distinct from `worldMinutes`,
+   * which is in-fiction time and jumps by hours whenever the party rests or
+   * fast-travels. The save list showed the latter as "play time", which meant a
+   * single night of camping read as eight hours played.
+   *
+   * Written only by the integration layer, which is the sole owner of the
+   * clock; the engine stays a pure function of its inputs.
+   */
+  playSeconds: number;
 }
 
 export interface ChronicleEntry {

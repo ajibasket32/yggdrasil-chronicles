@@ -2,7 +2,9 @@ import Phaser from "phaser";
 import { codexSections, locations, npcs, vendorProfiles } from "../../content";
 import { gameSettingsStore } from "../../settings";
 import type {
+  BackupView,
   GameBridge,
+  GameSaveSlot,
   GameSnapshot,
   InventoryView,
   InteractionView,
@@ -53,7 +55,34 @@ const CURIO_POINTS: Readonly<Record<string, Point>> = {
 const HUD_X = MAP_COLUMNS * TILE;
 const EQUIPMENT_SLOTS = ["weapon", "armor", "accessory"] as const;
 /** Must match the length of the `commands` array built in overlayContent's "system" branch. */
-const SYSTEM_MENU_COMMAND_COUNT = 12;
+const SYSTEM_MENU_COMMAND_COUNT = 14;
+
+/** Load-menu ordering, matching SAVE_SLOTS in the save module. */
+const SAVE_SLOT_ORDER = ["autosave", "quick", "manual-1", "manual-2", "manual-3"] as const;
+const SAVE_SLOT_LABELS: Readonly<Record<GameSaveSlot, string>> = {
+  autosave: "Autosave",
+  quick: "Quick Save",
+  "manual-1": "Manual Slot 1",
+  "manual-2": "Manual Slot 2",
+  "manual-3": "Manual Slot 3"
+};
+
+/**
+ * Actions the slot picker can carry out. `save`, `import` and `delete` destroy
+ * whatever is in the chosen slot, so they arm on the first confirm and commit
+ * on the second.
+ */
+type SlotPickerAction = "save" | "export" | "import" | "delete";
+const DESTRUCTIVE_SLOT_ACTIONS: ReadonlySet<SlotPickerAction> = new Set<SlotPickerAction>([
+  "save",
+  "import",
+  "delete"
+]);
+
+function formatPlayTime(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
+}
 /** Rows that fit the overlay panel without the cursor leaving the visible area. */
 const INVENTORY_VISIBLE_ROWS = 6;
 const SHOP_VISIBLE_ROWS = 5;
@@ -89,6 +118,19 @@ export class WorldScene extends Phaser.Scene {
   private interactiveMode: InteractiveOverlayMode = "browse";
   private selectedInventoryItemId?: string;
   private systemBusy = false;
+  /**
+   * The system menu's sub-view. While set, the command list is replaced by a
+   * list of save slots (or archived backups) and every key routes to it.
+   */
+  private systemPicker?: {
+    action: SlotPickerAction | "restore";
+    index: number;
+    /** Slot or backup id awaiting a second confirm, for the destructive actions. */
+    armed?: string;
+  };
+  private backupChoices: BackupView[] = [];
+  /** Save row armed by a first confirm, awaiting the second that overwrites it. */
+  private armedSaveSlot?: GameSaveSlot;
   private shopIndex = 0;
   private shopMode: "buy" | "sell" = "buy";
   private npcSprites: Array<{ id: string; point: Point; sprite: Phaser.GameObjects.Image }> = [];
@@ -1144,7 +1186,9 @@ export class WorldScene extends Phaser.Scene {
       88,
       462,
       kind === "system"
-        ? "Arrows / D-pad  Select     Enter / A  Confirm     Esc / B  Close"
+        ? this.systemPicker
+          ? "↑↓  Select     Enter / A  Confirm     Esc / B  Back"
+          : "Arrows / D-pad  Select     Enter / A  Confirm     Esc / B  Close"
         : kind === "codex"
           ? "↑↓  Turn page     Esc / B  Close"
           : kind === "map"
@@ -1317,12 +1361,15 @@ export class WorldScene extends Phaser.Scene {
         ? this.snapshot.inventory.map((item) => `${item.name} ×${item.quantity}\n   ${item.description}`).join("\n\n")
         : "The travel pack is empty.";
     }
+    if (this.systemPicker) return this.pickerBody(this.systemPicker);
     const commands = [
-      "Save to Manual Slot 1",
-      "Save to Manual Slot 2",
-      "Save to Manual Slot 3",
-      "Export Autosave",
-      "Import Autosave",
+      ...(["manual-1", "manual-2", "manual-3"] as const).map(
+        (slot, index) => `Save to Manual Slot ${index + 1}${this.slotDetail(slot)}`
+      ),
+      "Export a Save…",
+      "Import into a Slot…",
+      "Delete a Save…",
+      `Restore a Backup…${this.backupChoices.length ? `   (${this.backupChoices.length})` : ""}`,
       `High Contrast: ${gameSettingsStore.get().highContrast ? "ON" : "OFF"}`,
       `Reduced Motion: ${gameSettingsStore.get().reducedMotion ? "ON" : "OFF"}`,
       `Sound: ${gameSettingsStore.get().soundEnabled ? "ON" : "OFF"}`,
@@ -1640,6 +1687,11 @@ export class WorldScene extends Phaser.Scene {
       this.closeOverlay();
       return;
     }
+    if (this.systemPicker) {
+      this.systemPicker = undefined;
+      this.drawSystemOverlay();
+      return;
+    }
     if (this.overlayKind === "inventory" && this.interactiveMode === "target") {
       this.interactiveMode = "browse";
       this.selectedInventoryItemId = undefined;
@@ -1652,6 +1704,8 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private closeOverlay(): void {
+    this.systemPicker = undefined;
+    this.armedSaveSlot = undefined;
     if (this.overlayKind === "shop") void this.bridge.leaveShop();
     this.overlay?.destroy();
     this.overlay = undefined;
@@ -1690,7 +1744,76 @@ export class WorldScene extends Phaser.Scene {
 
   private moveSystem(delta: number): void {
     playSound(this, "sfx.cursor");
+    const picker = this.systemPicker;
+    if (picker) {
+      const count = this.pickerLength(picker.action);
+      if (count === 0) return;
+      picker.index = Phaser.Math.Wrap(picker.index + delta, 0, count);
+      // Moving the cursor disarms: a confirm only ever destroys the slot the
+      // player was looking at when they armed it.
+      picker.armed = undefined;
+      this.drawSystemOverlay();
+      return;
+    }
     this.systemIndex = Phaser.Math.Wrap(this.systemIndex + delta, 0, SYSTEM_MENU_COMMAND_COUNT);
+    this.armedSaveSlot = undefined;
+    this.drawSystemOverlay();
+  }
+
+  /** What the player would destroy or load, appended to a slot row. */
+  private slotDetail(slot: GameSaveSlot): string {
+    const summary = this.snapshot.saveSummaries?.find((entry) => entry.slot === slot);
+    if (!summary) return "   — empty";
+    const saved = new Date(summary.updatedAt);
+    const stamp = Number.isNaN(saved.getTime())
+      ? ""
+      : `  ·  ${saved.toLocaleDateString()} ${saved.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    return `   — Lv ${summary.partyLevel}  ${summary.locationName}  ·  ${formatPlayTime(summary.playTimeMinutes)} played${stamp}`;
+  }
+
+  /** Slots a given action can act on: occupied ones, except import, which needs a destination. */
+  private pickerSlots(action: SlotPickerAction): readonly GameSaveSlot[] {
+    if (action === "import") return SAVE_SLOT_ORDER;
+    const occupied = this.snapshot.saveSlots ?? [];
+    return SAVE_SLOT_ORDER.filter((slot) => occupied.includes(slot));
+  }
+
+  private pickerLength(action: SlotPickerAction | "restore"): number {
+    return action === "restore" ? this.backupChoices.length : this.pickerSlots(action).length;
+  }
+
+  private pickerBody(picker: NonNullable<WorldScene["systemPicker"]>): string {
+    const heading = {
+      save: "Choose a slot to save into.",
+      export: "Choose a save to export as JSON.",
+      import: "Choose the slot to import into.",
+      restore: "Choose an archived record to put back."
+    }[picker.action === "delete" ? "save" : picker.action];
+    const title = picker.action === "delete" ? "Choose a save to delete." : heading;
+    if (this.pickerLength(picker.action) === 0) {
+      return picker.action === "restore"
+        ? `No backups yet. One is kept whenever a manual slot is overwritten or a save is imported.\n\nEsc / B  Back`
+        : `There are no saved chronicles yet.\n\nEsc / B  Back`;
+    }
+    const rows = picker.action === "restore"
+      ? this.backupChoices.map((backup, index) => {
+          const stamp = new Date(backup.backedUpAt);
+          const when = Number.isNaN(stamp.getTime()) ? backup.backedUpAt : stamp.toLocaleString();
+          const armed = picker.armed === backup.id ? "   ⚠ confirm again to replace the slot" : "";
+          return `${index === picker.index ? "›" : " "} ${backup.slotLabel}  —  Lv ${backup.partyLevel}  ${backup.locationName}  ·  ${when}${armed}`;
+        })
+      : this.pickerSlots(picker.action).map((slot, index) => {
+          const occupied = (this.snapshot.saveSlots ?? []).includes(slot);
+          const armed = picker.armed === slot
+            ? `   ⚠ confirm again to ${picker.action === "delete" ? "delete" : "overwrite"}`
+            : "";
+          return `${index === picker.index ? "›" : " "} ${SAVE_SLOT_LABELS[slot]}${occupied ? this.slotDetail(slot) : "   — empty"}${armed}`;
+        });
+    return `${title}\n\n${rows.join("\n")}`;
+  }
+
+  private openSlotPicker(action: SlotPickerAction | "restore"): void {
+    this.systemPicker = { action, index: 0 };
     this.drawSystemOverlay();
   }
 
@@ -1703,32 +1826,55 @@ export class WorldScene extends Phaser.Scene {
 
   private async confirmSystemCommand(): Promise<void> {
     if (this.systemBusy) return;
+    if (this.systemPicker) {
+      await this.confirmSlotPicker(this.systemPicker);
+      return;
+    }
     if (this.systemIndex < 3) {
       const slot = (["manual-1", "manual-2", "manual-3"] as const)[this.systemIndex];
       if (!slot) return;
+      // Overwriting a slot the player deliberately filled asks twice, the same
+      // way the picker does. The first press arms and says what it will replace.
+      if ((this.snapshot.saveSlots ?? []).includes(slot) && this.armedSaveSlot !== slot) {
+        this.armedSaveSlot = slot;
+        this.showToast(`${SAVE_SLOT_LABELS[slot]} already holds a chronicle. Confirm again to overwrite it.`);
+        return;
+      }
+      this.armedSaveSlot = undefined;
       await this.bridge.save(slot);
-      this.showToast(`Chronicle saved to Manual Slot ${this.systemIndex + 1}.`);
+      await this.refreshBackupChoices();
+      this.showToast(`Chronicle saved to ${SAVE_SLOT_LABELS[slot]}.`);
+      this.drawSystemOverlay();
       return;
     }
     if (this.systemIndex === 3) {
-      await this.exportAutosave();
+      this.openSlotPicker("export");
       return;
     }
     if (this.systemIndex === 4) {
-      this.importAutosave();
+      this.openSlotPicker("import");
       return;
     }
-    if (this.systemIndex >= 5 && this.systemIndex <= 8) {
+    if (this.systemIndex === 5) {
+      this.openSlotPicker("delete");
+      return;
+    }
+    if (this.systemIndex === 6) {
+      await this.refreshBackupChoices();
+      this.openSlotPicker("restore");
+      return;
+    }
+    if (this.systemIndex >= 7 && this.systemIndex <= 10) {
       const settings = gameSettingsStore.get();
-      if (this.systemIndex === 5) gameSettingsStore.update({ highContrast: !settings.highContrast });
-      else if (this.systemIndex === 6) gameSettingsStore.update({ reducedMotion: !settings.reducedMotion });
-      else if (this.systemIndex === 7) gameSettingsStore.update({ soundEnabled: !settings.soundEnabled });
+      if (this.systemIndex === 7) gameSettingsStore.update({ highContrast: !settings.highContrast });
+      else if (this.systemIndex === 8) gameSettingsStore.update({ reducedMotion: !settings.reducedMotion });
+      else if (this.systemIndex === 9) gameSettingsStore.update({ soundEnabled: !settings.soundEnabled });
       else gameSettingsStore.update({ soundVolume: settings.soundVolume >= 1 ? 0 : Math.min(1, settings.soundVolume + 0.1) });
       playSound(this, "sfx.confirm");
       this.drawSystemOverlay();
       return;
     }
-    if (this.systemIndex === 9) {
+    if (this.systemIndex === 11) {
       // Report what actually happened: resting can now be refused for want of
       // coin or camp supplies, and the two forms restore different things.
       const result = await this.bridge.rest();
@@ -1736,7 +1882,7 @@ export class WorldScene extends Phaser.Scene {
       this.showToast(result.message);
       return;
     }
-    if (this.systemIndex === 10) {
+    if (this.systemIndex === 12) {
       this.closeOverlay();
       this.codexIndex = 0;
       this.toggleOverlay("codex");
@@ -1745,10 +1891,63 @@ export class WorldScene extends Phaser.Scene {
     this.returnToTitle();
   }
 
-  private async exportAutosave(): Promise<void> {
+  private async refreshBackupChoices(): Promise<void> {
+    this.backupChoices = await this.bridge.listBackups();
+  }
+
+  private async confirmSlotPicker(picker: NonNullable<WorldScene["systemPicker"]>): Promise<void> {
+    if (picker.action === "restore") {
+      const backup = this.backupChoices[picker.index];
+      if (!backup) return;
+      if (picker.armed !== backup.id) {
+        picker.armed = backup.id;
+        this.drawSystemOverlay();
+        return;
+      }
+      this.systemPicker = undefined;
+      const result = await this.bridge.restoreBackup(backup.id);
+      await this.refreshBackupChoices();
+      this.showToast(result.message);
+      this.drawSystemOverlay();
+      return;
+    }
+    const slot = this.pickerSlots(picker.action)[picker.index];
+    if (!slot) return;
+    const occupied = (this.snapshot.saveSlots ?? []).includes(slot);
+    if (DESTRUCTIVE_SLOT_ACTIONS.has(picker.action) && occupied && picker.armed !== slot) {
+      picker.armed = slot;
+      this.drawSystemOverlay();
+      return;
+    }
+    if (picker.action === "export") {
+      this.systemPicker = undefined;
+      await this.exportSlot(slot);
+      this.drawSystemOverlay();
+      return;
+    }
+    if (picker.action === "import") {
+      this.systemPicker = undefined;
+      this.importIntoSlot(slot);
+      return;
+    }
+    if (picker.action === "delete") {
+      this.systemPicker = undefined;
+      const result = await this.bridge.deleteSave(slot);
+      await this.refreshBackupChoices();
+      this.showToast(result.message);
+      this.drawSystemOverlay();
+      return;
+    }
+    this.systemPicker = undefined;
+    await this.bridge.save(slot);
+    this.showToast(`Chronicle saved to ${SAVE_SLOT_LABELS[slot]}.`);
+    this.drawSystemOverlay();
+  }
+
+  private async exportSlot(slot: GameSaveSlot): Promise<void> {
     this.systemBusy = true;
     try {
-      const json = await this.bridge.exportSave("autosave");
+      const json = await this.bridge.exportSave(slot);
       const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -1758,7 +1957,7 @@ export class WorldScene extends Phaser.Scene {
       anchor.click();
       anchor.remove();
       URL.revokeObjectURL(url);
-      this.showToast("Autosave exported to yggdrasil-chronicles-save.json.");
+      this.showToast(`${SAVE_SLOT_LABELS[slot]} exported to yggdrasil-chronicles-save.json.`);
     } catch (error) {
       this.showToast(error instanceof Error ? `Export failed: ${error.message}` : "Export failed.");
     } finally {
@@ -1766,7 +1965,7 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  private importAutosave(): void {
+  private importIntoSlot(slot: GameSaveSlot): void {
     this.systemBusy = true;
     const input = document.createElement("input");
     input.type = "file";
@@ -1794,7 +1993,7 @@ export class WorldScene extends Phaser.Scene {
       cleanup();
     }, { once: true });
     input.addEventListener("change", () => {
-      void this.importSelectedAutosave(input, cleanup);
+      void this.importSelectedSave(slot, input, cleanup);
     }, { once: true });
     window.addEventListener("focus", onWindowFocus, { once: true });
     try {
@@ -1805,15 +2004,21 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  private async importSelectedAutosave(input: HTMLInputElement, cleanup: () => void): Promise<void> {
+  private async importSelectedSave(
+    slot: GameSaveSlot,
+    input: HTMLInputElement,
+    cleanup: () => void
+  ): Promise<void> {
     try {
       const file = input.files?.[0];
       if (!file) {
         this.showToast("Import cancelled.");
         return;
       }
-      const result = await this.bridge.importSave("autosave", await file.text());
+      const result = await this.bridge.importSave(slot, await file.text());
+      await this.refreshBackupChoices();
       this.showToast(result.message);
+      this.drawSystemOverlay();
     } catch (error) {
       this.showToast(error instanceof Error ? `Import failed: ${error.message}` : "Import failed.");
     } finally {

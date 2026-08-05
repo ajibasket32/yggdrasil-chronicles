@@ -93,6 +93,7 @@ describe("quests and relationships", () => {
       factionStanding: {},
       relationships: [],
       chronicle: [],
+      playSeconds: 0,
       worldMinutes: 0
     };
     const next = applyQuestConsequences(world, [

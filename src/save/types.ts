@@ -27,7 +27,10 @@ export interface SaveSummary {
   readonly updatedAt: string;
   readonly locationId: string;
   readonly partyLevel: number;
+  /** Real time at the controls. */
   readonly playTimeMinutes: number;
+  /** In-fiction clock, which rest and fast travel advance in leaps. */
+  readonly worldMinutes: number;
 }
 
 export interface SaveBackup {

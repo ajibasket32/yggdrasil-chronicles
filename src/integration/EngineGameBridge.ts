@@ -20,6 +20,7 @@ import {
   grantExperience,
   inventoryQuantity,
   randomInt,
+  reconcileContentPacks,
   refreshQuestAvailability,
   removeItem,
   resolveCombatAction,
@@ -56,6 +57,7 @@ import {
   type SceneTrigger
 } from "../content";
 import type {
+  BackupView,
   BattleAction,
   BattleView,
   CharacterCreationDraft,
@@ -105,6 +107,10 @@ function curioFlagFor(locationId: string): string {
   return `content.curio.${locationId}`;
 }
 const CORE_PACK_VERSION = "0.1.0";
+/** What this build actually ships, for reconciliation against what a save was written with. */
+const RUNNING_CONTENT_PACKS: Readonly<Record<string, string>> = {
+  "core.yggdrasil-chronicles": CORE_PACK_VERSION
+};
 const FIRST_QUEST = "quest.first-silence";
 const CONCORD_QUEST = "quest.a-new-concord";
 const CONCORD_FINAL_NPC = "npc.sable-voss";
@@ -757,6 +763,9 @@ export class EngineGameBridge implements GameBridge {
   #storageAvailable = true;
   readonly #saveSlots = new Set<GameSaveSlot>();
   readonly #newSeed: () => string;
+  /** Injectable so play-time accrual is testable without sleeping. */
+  readonly #now: () => number;
+  #lastPlayClockMs: number;
   #saveSummaries: SaveSlotSummaryView[] = [];
   /** A scripted scene waiting for the presentation layer to play it. */
   #pendingScene?: PendingSceneView;
@@ -779,9 +788,15 @@ export class EngineGameBridge implements GameBridge {
    * chronicles is comparing two different RNG streams and cannot isolate the
    * variable it means to measure.
    */
-  constructor(saves = new SaveRepository(), newSeed: () => string = () => crypto.randomUUID()) {
+  constructor(
+    saves = new SaveRepository(),
+    newSeed: () => string = () => crypto.randomUUID(),
+    now: () => number = () => Date.now()
+  ) {
     this.#saves = saves;
     this.#newSeed = newSeed;
+    this.#now = now;
+    this.#lastPlayClockMs = now();
   }
 
   /**
@@ -801,6 +816,19 @@ export class EngineGameBridge implements GameBridge {
     }
   }
 
+  /**
+   * Folds the wall-clock time since the last call into `world.playSeconds`.
+   * Called on every persist, so the counter is accurate to the last save
+   * without a per-frame tick, and a session that is never saved costs nothing.
+   */
+  private accrualPlaySeconds(state: GameState): GameState {
+    const now = this.#now();
+    const elapsed = Math.max(0, Math.floor((now - this.#lastPlayClockMs) / 1000));
+    this.#lastPlayClockMs = now;
+    if (elapsed === 0) return state;
+    return { ...state, world: { ...state.world, playSeconds: state.world.playSeconds + elapsed } };
+  }
+
   private async refreshSaveIndex(): Promise<void> {
     const records = await this.#saves.list();
     this.#saveSlots.clear();
@@ -810,7 +838,8 @@ export class EngineGameBridge implements GameBridge {
       updatedAt: record.updatedAt,
       locationName: locations.find(({ id }) => id === record.locationId)?.name ?? record.locationId,
       partyLevel: record.partyLevel,
-      playTimeMinutes: record.playTimeMinutes
+      playTimeMinutes: record.playTimeMinutes,
+      worldMinutes: record.worldMinutes
     }));
     this.#hasSave = this.#saveSlots.has("autosave");
   }
@@ -941,7 +970,7 @@ export class EngineGameBridge implements GameBridge {
       seed: `${draft.name || "Rowan"}-${this.#newSeed()}`,
       startingLocationId: STARTING_LOCATION,
       party: [playerFromDraft(draft)],
-      contentPackVersions: { "core.yggdrasil-chronicles": CORE_PACK_VERSION },
+      contentPackVersions: { ...RUNNING_CONTENT_PACKS },
       quests
     });
     let startingInventory = addItem(addItem(state.inventory, "item.vesleaf", 3), "item.root-tonic", 2);
@@ -1071,10 +1100,18 @@ export class EngineGameBridge implements GameBridge {
     this.#state = loaded;
     this.#saveSlots.add(slot);
     this.#hasSave = true;
+    this.#lastPlayClockMs = this.#now();
     const recoveredCanonicalState = this.applyCompletedQuestRewards();
     const recoveredLegacyEnding = this.backfillLegacyEndingChoice();
     if (recoveredCanonicalState || recoveredLegacyEnding) await this.persist(slot);
     else this.emit();
+    // The save records which content pack it was written against. Until now
+    // that was compared only against a copy of itself, so a chronicle written
+    // by an older build loaded silently and failed later, somewhere unrelated.
+    const packs = reconcileContentPacks(loaded.contentPackVersions, RUNNING_CONTENT_PACKS);
+    if (packs.verdict !== "compatible") {
+      return { success: true, message: `${slotLabel(slot)} loaded. ${packs.message}` };
+    }
     return { success: true, message: `${slotLabel(slot)} loaded.` };
   }
 
@@ -2186,6 +2223,41 @@ export class EngineGameBridge implements GameBridge {
     return this.#saves.exportJson(slot);
   }
 
+  /**
+   * Archived records, newest first. The storage layer has kept these since the
+   * first import; nothing has ever been able to look at them.
+   */
+  async listBackups(): Promise<BackupView[]> {
+    try {
+      const backups = await this.#saves.backups();
+      return backups
+        .map((backup) => ({
+          id: backup.id,
+          slot: backup.sourceSlot,
+          slotLabel: slotLabel(backup.sourceSlot),
+          backedUpAt: backup.backedUpAt,
+          locationName: locations.find(({ id }) => id === backup.record.state.world.currentLocationId)?.name
+            ?? backup.record.state.world.currentLocationId,
+          partyLevel: Math.max(...backup.record.state.party.map((member) => member.level))
+        }))
+        .sort((left, right) => right.backedUpAt.localeCompare(left.backedUpAt));
+    } catch (error) {
+      console.error("Could not read save backups.", error);
+      return [];
+    }
+  }
+
+  /** Puts an archived record back in its slot and loads it. */
+  async restoreBackup(backupId: string): Promise<GameCommandResult> {
+    try {
+      const record = await this.#saves.restoreBackup(backupId);
+      await this.refreshSaveIndex();
+      return await this.load(record.slot);
+    } catch (error) {
+      return commandFailure(`Restore failed: ${errorMessage(error)}`);
+    }
+  }
+
   async importSave(slot: GameSaveSlot, json: string): Promise<GameCommandResult> {
     try {
       await this.#saves.importJson(slot, json);
@@ -2735,6 +2807,7 @@ export class EngineGameBridge implements GameBridge {
    */
   private async persist(slot: SaveSlot): Promise<boolean> {
     if (!this.#state) return false;
+    this.#state = this.accrualPlaySeconds(this.#state);
     this.#autosave = "saving";
     this.#autosaveSlot = slot;
     this.emit();
@@ -2749,7 +2822,8 @@ export class EngineGameBridge implements GameBridge {
           locationName: locations.find(({ id }) => id === this.#state?.world.currentLocationId)?.name
             ?? this.#state.world.currentLocationId,
           partyLevel: Math.max(...this.#state.party.map((member) => member.level)),
-          playTimeMinutes: this.#state.world.worldMinutes
+          playTimeMinutes: Math.floor(this.#state.world.playSeconds / 60),
+          worldMinutes: this.#state.world.worldMinutes
         }
       ];
       this.#hasSave = this.#saveSlots.has("autosave");

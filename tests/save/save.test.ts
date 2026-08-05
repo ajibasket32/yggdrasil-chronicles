@@ -91,6 +91,19 @@ describe("save schema and migrations", () => {
     expect(migrated.seed).toBe("ladder");
   });
 
+  it("starts a v2 save's play clock at zero rather than inheriting the in-fiction one", () => {
+    const current = makeState("clock");
+    const v2: Record<string, unknown> = structuredClone(current) as unknown as Record<string, unknown>;
+    v2.schemaVersion = 2;
+    const world = v2.world as Record<string, unknown>;
+    world.worldMinutes = 4320;
+    delete world.playSeconds;
+    const migrated = migrateGameState(v2);
+    expect(migrated.schemaVersion).toBe(CURRENT_GAME_SCHEMA_VERSION);
+    expect(migrated.world.worldMinutes).toBe(4320);
+    expect(migrated.world.playSeconds).toBe(0);
+  });
+
   it("refuses a save from a future schema version instead of misreading it", () => {
     const state = makeState();
     const future = { ...state, schemaVersion: CURRENT_GAME_SCHEMA_VERSION + 1 };
@@ -105,5 +118,50 @@ describe("save schema and migrations", () => {
       inventory: [{ itemId: "potion", quantity: 1 }, { itemId: "potion", quantity: 2 }]
     };
     expect(() => validateGameState(invalid)).toThrow();
+  });
+});
+
+describe("save management", () => {
+  it("keeps the displaced record when a manual slot is overwritten, and can put it back", async () => {
+    const repository = new SaveRepository(new MemorySaveStorage());
+    await repository.save("manual-1", makeState("first"));
+    await repository.save("manual-1", makeState("second"));
+
+    const backups = await repository.backups("manual-1");
+    expect(backups).toHaveLength(1);
+    expect(backups[0]?.record.state.seed).toBe("first");
+    expect((await repository.load("manual-1"))?.seed).toBe("second");
+
+    const restored = await repository.restoreBackup(backups[0]!.id);
+    expect(restored.slot).toBe("manual-1");
+    expect((await repository.load("manual-1"))?.seed).toBe("first");
+    // Restoring is itself undoable: what it displaced is archived in turn.
+    expect((await repository.backups("manual-1")).map(({ record }) => record.state.seed)).toContain("second");
+  });
+
+  it("does not archive autosave or quick-save churn", async () => {
+    const repository = new SaveRepository(new MemorySaveStorage());
+    for (const slot of ["autosave", "quick"] as const) {
+      await repository.save(slot, makeState(`${slot}-1`));
+      await repository.save(slot, makeState(`${slot}-2`));
+    }
+    expect(await repository.backups()).toHaveLength(0);
+  });
+
+  it("reports real play time and in-fiction time as separate numbers", async () => {
+    const repository = new SaveRepository(new MemorySaveStorage());
+    const state = makeState();
+    await repository.save("manual-1", {
+      ...state,
+      world: { ...state.world, playSeconds: 3 * 3600 + 25 * 60, worldMinutes: 4 * 1440 }
+    });
+    const [summary] = await repository.list();
+    expect(summary?.playTimeMinutes).toBe(205);
+    expect(summary?.worldMinutes).toBe(5760);
+  });
+
+  it("refuses to restore a backup that no longer exists", async () => {
+    const repository = new SaveRepository(new MemorySaveStorage());
+    await expect(repository.restoreBackup("missing")).rejects.toThrow(/no longer exists/);
   });
 });

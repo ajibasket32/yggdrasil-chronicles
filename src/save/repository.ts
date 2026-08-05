@@ -44,6 +44,12 @@ async function createRecord(
   return { ...payload, checksum: await sha256(payload) };
 }
 
+/**
+ * Slots whose overwrite is archived. Deliberate player saves only — see
+ * `SaveRepository.save`.
+ */
+const BACKED_UP_SLOTS: ReadonlySet<SaveSlot> = new Set<SaveSlot>(["manual-1", "manual-2", "manual-3"]);
+
 export class SaveRepository {
   readonly #storage: SaveStorage;
 
@@ -55,8 +61,34 @@ export class SaveRepository {
     const previous = await this.#storage.get(slot);
     const timestamp = now.toISOString();
     const record = await createRecord(slot, state, previous?.createdAt ?? timestamp, timestamp);
-    await this.#storage.put(record);
+    // Overwriting a slot the player deliberately parked something in keeps the
+    // displaced record, so a mis-aimed save is recoverable. Autosave and quick
+    // save churn every few seconds and are deliberately excluded: archiving
+    // them would grow without bound and bury the backups that matter.
+    if (previous && BACKED_UP_SLOTS.has(slot)) await this.#storage.replaceWithBackup(record, previous);
+    else await this.#storage.put(record);
     return record;
+  }
+
+  /**
+   * Puts an archived record back in the slot it came from, keeping whatever is
+   * currently there as a new backup so restoring is itself undoable.
+   */
+  async restoreBackup(backupId: string, now = new Date()): Promise<SaveRecord> {
+    const backup = (await this.#storage.getBackups()).find((entry) => entry.id === backupId);
+    if (!backup) throw new Error("That backup no longer exists");
+    await this.assertChecksum(backup.record);
+    const state = migrateGameState(backup.record.state);
+    this.assertMetadataMatchesState(backup.record, state);
+    const previous = await this.#storage.get(backup.sourceSlot);
+    const replacement = await createRecord(
+      backup.sourceSlot,
+      state,
+      backup.record.createdAt,
+      now.toISOString()
+    );
+    await this.#storage.replaceWithBackup(replacement, previous);
+    return replacement;
   }
 
   async load(slot: SaveSlot): Promise<GameState | undefined> {
@@ -79,7 +111,8 @@ export class SaveRepository {
         updatedAt: record.updatedAt,
         locationId: record.state.world.currentLocationId,
         partyLevel: Math.max(...record.state.party.map((character) => character.level)),
-        playTimeMinutes: record.state.world.worldMinutes
+        playTimeMinutes: Math.floor(record.state.world.playSeconds / 60),
+        worldMinutes: record.state.world.worldMinutes
       }))
       .sort((left, right) => SAVE_SLOTS.indexOf(left.slot) - SAVE_SLOTS.indexOf(right.slot));
   }

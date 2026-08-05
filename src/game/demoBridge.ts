@@ -1,5 +1,6 @@
 import { encounters, getDialogue, items, locations, quests } from "../content";
 import type {
+  BackupView,
   BattleAction,
   BuildPreview,
   CharacterCreationDraft,
@@ -337,6 +338,14 @@ export class DemoGameBridge implements GameBridge {
 
   importSave(_slot: GameSaveSlot, _json: string): GameCommandResult {
     return { success: false, message: "Save import is unavailable in the demo bridge." };
+  }
+
+  listBackups(): BackupView[] {
+    return [];
+  }
+
+  restoreBackup(_backupId: string): GameCommandResult {
+    return { success: false, message: "Backup restore is unavailable in the demo bridge." };
   }
 
   private emit(): void {

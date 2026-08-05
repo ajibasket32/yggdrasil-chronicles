@@ -110,7 +110,7 @@ test("system menu exposes all manual save slots and can return to the title", as
   // there. Update both walks in this file together.
   await pressRepeatedly(page, "ArrowDown", 2);
   await page.keyboard.press("Enter");
-  await pressRepeatedly(page, "ArrowDown", 9);
+  await pressRepeatedly(page, "ArrowDown", 11);
   await page.keyboard.press("Enter");
   await expect(page.locator("#app")).toHaveAttribute("data-scene", "title");
 });
@@ -137,7 +137,7 @@ test("manual load restores the selected chronicle from the title", async ({ page
 
   // Return to the title through the system menu, then load Manual Slot 1.
   await page.keyboard.press("Escape");
-  await pressRepeatedly(page, "ArrowDown", 11);
+  await pressRepeatedly(page, "ArrowDown", 13);
   await page.keyboard.press("Enter");
   await expect(app).toHaveAttribute("data-scene", "title");
   await pressRepeatedly(page, "ArrowDown", 2);
@@ -200,8 +200,12 @@ test("system menu exports the autosave as a named JSON download", async ({ page 
   await startNewChronicle(page);
   await expect(app).toHaveAttribute("data-scene", "world");
 
+  // "Export a Save…" opens a slot picker rather than assuming the autosave;
+  // the autosave is the first occupied slot, so it is already selected.
   await page.keyboard.press("Escape");
   await pressRepeatedly(page, "ArrowDown", 3);
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(300);
   const downloadPromise = page.waitForEvent("download");
   await page.keyboard.press("Enter");
   const download = await downloadPromise;

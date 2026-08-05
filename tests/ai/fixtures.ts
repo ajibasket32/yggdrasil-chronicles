@@ -96,7 +96,8 @@ export function emptyGameState(): GameState {
         fear: 0
       }],
       chronicle: [],
-      worldMinutes: 120
+      playSeconds: 0,
+    worldMinutes: 120
     },
     generatedPatches: [],
     pendingTriggers: [narrativeContext().trigger]

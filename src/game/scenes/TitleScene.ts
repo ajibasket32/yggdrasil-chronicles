@@ -314,7 +314,11 @@ export class TitleScene extends Phaser.Scene {
     const stamp = Number.isNaN(saved.getTime())
       ? ""
       : `  ${saved.toLocaleDateString()} ${saved.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-    return `Lv ${summary.partyLevel}  ${summary.locationName}${stamp}`;
+    // Play time is real time at the controls, not the in-fiction clock: a
+    // night of camping advances the world by eight hours and the player by none.
+    const hours = Math.floor(summary.playTimeMinutes / 60);
+    const played = hours > 0 ? `${hours}h ${summary.playTimeMinutes % 60}m` : `${summary.playTimeMinutes}m`;
+    return `Lv ${summary.partyLevel}  ${summary.locationName}  ·  ${played} played${stamp}`;
   }
 
   private hasSlot(slot: (typeof MANUAL_SLOTS)[number]): boolean {

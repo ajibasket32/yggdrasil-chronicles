@@ -11,7 +11,7 @@ import { createQuestProgress } from "./quests";
  * status ids. Every shared-contract change in that wave lands in this single
  * step — see MIGRATIONS in src/save/schema.ts.
  */
-export const CURRENT_GAME_SCHEMA_VERSION = 2;
+export const CURRENT_GAME_SCHEMA_VERSION = 3;
 
 export interface InitialGameStateOptions {
   readonly seed: string;
@@ -67,7 +67,8 @@ export function createInitialGameState(options: InitialGameStateOptions): GameSt
       factionStanding: {},
       relationships: [],
       chronicle: [],
-      worldMinutes: 0
+      worldMinutes: 0,
+      playSeconds: 0
     },
     generatedPatches: [],
     pendingTriggers: []
