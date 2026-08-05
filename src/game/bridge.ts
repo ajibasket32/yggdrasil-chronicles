@@ -1,7 +1,7 @@
 import type { Element, QuestState, QuestStepKind, StatusId } from "../shared/types";
 
 export type Direction = "up" | "down" | "left" | "right";
-export type OverlayKind = "journal" | "inventory" | "party" | "system" | "shop" | "ending" | "codex";
+export type OverlayKind = "journal" | "inventory" | "party" | "system" | "shop" | "ending" | "codex" | "map";
 export type BattleAction = "attack" | "skill" | "item" | "guard" | "escape";
 export type GameSaveSlot = "autosave" | "quick" | "manual-1" | "manual-2" | "manual-3";
 
@@ -284,6 +284,18 @@ export interface GameSnapshot {
   reserve?: PartyMemberView[];
   /** A scripted scene waiting to play; cleared by `acknowledgeScene`. */
   pendingScene?: PendingSceneView;
+  /** Every location the party has reached, in discovery order, for the map overlay. */
+  discoveredLocations?: Array<{
+    id: string;
+    name: string;
+    regionName: string;
+    kind: "town" | "wilderness" | "dungeon";
+    current: boolean;
+  }>;
+  /** True once this location's searchable curio has been claimed. */
+  curioSearched?: boolean;
+  /** Species the party has felled, with what has been learned of each. */
+  bestiary?: Array<{ name: string; defeated: number; weaknesses: string[]; resistances: string[] }>;
   saveSlots?: GameSaveSlot[];
   /** Per-slot detail the repository already computes, so the load menu can show more than AVAILABLE/EMPTY. */
   saveSummaries?: SaveSlotSummaryView[];
@@ -357,6 +369,10 @@ export interface GameBridge {
   swapPartyMember(reserveMemberId: string, activeMemberId?: string): GameCommandResult | Promise<GameCommandResult>;
   /** Marks the pending scene as seen so it does not play again. */
   acknowledgeScene(sceneId: string): void | Promise<void>;
+  /** Travels to any discovered location; costs world time per hop, not the walk. */
+  fastTravel(locationId: string): GameCommandResult | Promise<GameCommandResult>;
+  /** Claims the current location's once-per-chronicle curio. */
+  searchLocation(): GameCommandResult | Promise<GameCommandResult>;
   buyItem(itemId: string): GameCommandResult | Promise<GameCommandResult>;
   sellItem(itemId: string): GameCommandResult | Promise<GameCommandResult>;
   leaveShop(): void | Promise<void>;

@@ -298,6 +298,14 @@ export class DemoGameBridge implements GameBridge {
     // The demo road stages no scripted scenes.
   }
 
+  fastTravel(_locationId: string): GameCommandResult {
+    return { success: false, message: "The demo road is walked, not skipped." };
+  }
+
+  searchLocation(): GameCommandResult {
+    return { success: false, message: "The demo road hides nothing." };
+  }
+
   swapPartyMember(_reserveMemberId: string, _activeMemberId?: string): GameCommandResult {
     return { success: false, message: "The demo road travels with a fixed company." };
   }

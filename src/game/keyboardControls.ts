@@ -19,7 +19,8 @@ const ACTION_LABELS: Readonly<Record<KeyboardAction, string>> = {
   encounter: "Quick Encounter",
   quickSave: "Quick Save",
   quickLoad: "Quick Load",
-  codex: "Help / Codex"
+  codex: "Help / Codex",
+  map: "World Map"
 };
 
 /** True when the browser itself acts on this key, so the game must not claim it. */

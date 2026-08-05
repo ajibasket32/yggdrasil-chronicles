@@ -7,6 +7,7 @@ import {
   calculateBattleReward,
   chooseEnemyAction,
   createCombatState,
+  createRng,
   createEquipmentCatalog,
   createInitialGameState,
   deriveCharacterCombatStats,
@@ -18,6 +19,7 @@ import {
   getJobUnlockBlockers,
   grantExperience,
   inventoryQuantity,
+  randomInt,
   refreshQuestAvailability,
   removeItem,
   resolveCombatAction,
@@ -47,6 +49,7 @@ import {
   skillsLearnedBetween,
   quests,
   recruitProfiles,
+  regions,
   startingBuildLoadouts,
   vendorProfiles,
   type RecruitProfile,
@@ -95,6 +98,11 @@ const ACTIVE_PARTY_LIMIT = 4;
 const REST_PRICE = 30;
 /** Consumed to camp outside a settlement; the anti-softlock floor for a stranded party. */
 const CAMP_SUPPLY_ITEM = "item.trail-rations";
+
+/** World flag recording that a location's curio has been claimed. */
+function curioFlagFor(locationId: string): string {
+  return `content.curio.${locationId}`;
+}
 const CORE_PACK_VERSION = "0.1.0";
 const FIRST_QUEST = "quest.first-silence";
 const CONCORD_QUEST = "quest.a-new-concord";
@@ -845,6 +853,18 @@ export class EngineGameBridge implements GameBridge {
       party: party.map((member, index) => this.toPartyView(member, index)),
       reserve: this.#state.reserve.map((member, index) => this.toPartyView(member, party.length + index)),
       pendingScene: this.#pendingScene,
+      discoveredLocations: this.#state.world.discoveredLocationIds
+        .map((id) => locations.find((candidate) => candidate.id === id))
+        .filter((candidate): candidate is (typeof locations)[number] => candidate !== undefined)
+        .map((candidate) => ({
+          id: candidate.id,
+          name: candidate.name,
+          regionName: regions.find(({ id }) => id === candidate.regionId)?.name ?? candidate.regionId,
+          kind: candidate.kind,
+          current: candidate.id === this.#state?.world.currentLocationId
+        })),
+      curioSearched: this.#state.world.flags[curioFlagFor(this.#state.world.currentLocationId)] === true,
+      bestiary: this.buildBestiary(),
       inventory: this.#state.inventory.flatMap((stack) => {
         const definition = items.find(({ id }) => id === stack.itemId);
         const equippedBy = party
@@ -1075,6 +1095,116 @@ export class EngineGameBridge implements GameBridge {
     if (slot === "autosave") this.#hasSave = false;
     this.emit();
     return { success: true, message: `${slotLabel(slot)} deleted.` };
+  }
+
+  /**
+   * Jumps to any already-discovered location. `discoveredLocationIds` was
+   * written on every save and read by nothing, so the player paid the walk in
+   * both directions for every errand across three regions. The hours are still
+   * paid — fast travel skips the keystrokes, not the clock.
+   */
+  async fastTravel(locationId: string): Promise<GameCommandResult> {
+    const state = this.requireState();
+    if (this.#battle) return commandFailure("The party cannot travel during a battle.");
+    if (locationId === state.world.currentLocationId) {
+      return commandFailure("The party is already there.");
+    }
+    if (!state.world.discoveredLocationIds.includes(locationId)) {
+      return commandFailure("That road has not been walked yet.");
+    }
+    const hops = this.hopsBetween(state.world.currentLocationId, locationId);
+    if (hops === undefined) return commandFailure("No road connects there.");
+
+    this.#openVendorId = undefined;
+    this.#state = {
+      ...state,
+      quests: this.applyObjectiveToActiveQuests(state.quests, "travel", locationId),
+      world: {
+        ...state.world,
+        currentLocationId: locationId,
+        worldMinutes: state.world.worldMinutes + 45 * hops
+      }
+    };
+    this.applyInventoryObjectives();
+    this.advanceCampaign();
+    this.applyCompletedQuestRewards();
+    await this.persist("autosave");
+    const name = locations.find(({ id }) => id === locationId)?.name ?? locationId;
+    return { success: true, message: `The party takes the known roads to ${name}.` };
+  }
+
+  /** Shortest route length over the authored road graph. */
+  private hopsBetween(fromId: string, toId: string): number | undefined {
+    const pending: Array<{ id: string; depth: number }> = [{ id: fromId, depth: 0 }];
+    const visited = new Set<string>();
+    while (pending.length > 0) {
+      const current = pending.shift();
+      if (!current || visited.has(current.id)) continue;
+      if (current.id === toId) return current.depth;
+      visited.add(current.id);
+      const connections = locations.find(({ id }) => id === current.id)?.connections ?? [];
+      for (const next of connections) {
+        if (!visited.has(next)) pending.push({ id: next, depth: current.depth + 1 });
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Claims the current location's once-per-chronicle curio. The reward is
+   * deterministic from the chronicle seed, so reloading cannot reroll it.
+   */
+  async searchLocation(): Promise<GameCommandResult> {
+    const state = this.requireState();
+    if (this.#battle) return commandFailure("Not while a battle is underway.");
+    const locationId = state.world.currentLocationId;
+    const flag = curioFlagFor(locationId);
+    if (state.world.flags[flag] === true) {
+      return commandFailure("Nothing more is hidden here.");
+    }
+
+    let rng = createRng(`${state.seed}:curio:${locationId}`);
+    const marksRoll = randomInt(rng, 18, 48);
+    rng = marksRoll.rng;
+    const itemRoll = randomInt(rng, 0, 99);
+    const grantsItem = itemRoll.value < 45;
+    const itemId = itemRoll.value < 20 ? "item.vesleaf" : "item.trail-rations";
+    const currency = Number(state.world.flags.currency ?? 0) + marksRoll.value;
+
+    this.#state = {
+      ...state,
+      inventory: grantsItem ? this.addWithinStackLimit(state.inventory, itemId, 1) : state.inventory,
+      world: {
+        ...state.world,
+        flags: { ...state.world.flags, [flag]: true, currency }
+      }
+    };
+    await this.persist("autosave");
+    const itemName = grantsItem ? items.find(({ id }) => id === itemId)?.name : undefined;
+    return {
+      success: true,
+      message: itemName
+        ? `Tucked away: ${marksRoll.value} marks and ${itemName}.`
+        : `Tucked away: ${marksRoll.value} marks.`
+    };
+  }
+
+  /** Every species the party has felled, with whatever has been learned of it. */
+  private buildBestiary(): Array<{ name: string; defeated: number; weaknesses: string[]; resistances: string[] }> {
+    const flags = this.#state?.world.flags ?? {};
+    return Object.entries(flags)
+      .filter(([key, value]) => key.startsWith("progress.defeat.") && Number(value) > 0)
+      .map(([key, value]) => {
+        const contentId = key.replace("progress.defeat.", "");
+        const known = this.knownElementsFor(contentId);
+        return {
+          name: contentId.replace("enemy.", "").replaceAll("-", " "),
+          defeated: Number(value),
+          weaknesses: known.weaknesses,
+          resistances: known.resistances
+        };
+      })
+      .sort((left, right) => right.defeated - left.defeated);
   }
 
   async travel(locationId: string): Promise<void> {

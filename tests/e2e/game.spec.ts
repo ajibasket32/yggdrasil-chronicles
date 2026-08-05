@@ -42,6 +42,9 @@ test("new chronicle reaches exploration and deterministic battle", async ({ page
   await pressRepeatedly(page, "ArrowUp", 2);
   await pressRepeatedly(page, "ArrowRight", 17);
   await expect(app).toHaveAttribute("data-location-id", "location.mossroad");
+  // The encounter key now engages only a nearby foe; walk to the visible
+  // encounter at (14,8) — arrival from the west edge lands at (1,7).
+  await pressRepeatedly(page, "ArrowRight", 13);
   const road = await canvas.screenshot();
   await page.keyboard.press("b");
   await expect(app).toHaveAttribute("data-battle-state", "choosing");
@@ -137,6 +140,7 @@ test("inventory targets a party member and visibly consumes a restorative", asyn
   // Take one hit so the selected restorative has a meaningful target.
   await pressRepeatedly(page, "ArrowUp", 2);
   await pressRepeatedly(page, "ArrowRight", 17);
+  await pressRepeatedly(page, "ArrowRight", 13);
   await page.keyboard.press("b");
   await expect(app).toHaveAttribute("data-scene", "battle");
   await page.keyboard.press("Enter");

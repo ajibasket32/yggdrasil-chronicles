@@ -64,7 +64,10 @@ export const locations: LocationDefinition[] = [
     regionId: "region.verdant-reach",
     name: "Hollow Root",
     kind: "dungeon",
-    connections: ["location.mossroad"],
+    // The deep tunnels reach the Silent Kiln, turning the world graph from a
+    // straight line into a loop: a party can go out one way and come home the
+    // other, and an under-levelled region can be approached from either side.
+    connections: ["location.mossroad", "location.silent-kiln"],
     mapKey: "map.hollow-root"
   },
   {
@@ -88,7 +91,7 @@ export const locations: LocationDefinition[] = [
     regionId: "region.cinder-march",
     name: "The Silent Kiln",
     kind: "dungeon",
-    connections: ["location.ashfall-trail"],
+    connections: ["location.ashfall-trail", "location.hollow-root"],
     mapKey: "map.silent-kiln"
   },
   {
@@ -136,6 +139,9 @@ export const worldRoutes: readonly WorldRoute[] = [
   { fromId: "location.ashfall-trail", toId: "location.emberwake", direction: "west" },
   { fromId: "location.ashfall-trail", toId: "location.silent-kiln", direction: "north" },
   { fromId: "location.silent-kiln", toId: "location.ashfall-trail", direction: "south" },
+  // The kiln tunnels break west into the Hollow Root, closing the loop.
+  { fromId: "location.hollow-root", toId: "location.silent-kiln", direction: "east" },
+  { fromId: "location.silent-kiln", toId: "location.hollow-root", direction: "west" },
   { fromId: "location.ashfall-trail", toId: "location.larkspire", direction: "east" },
   { fromId: "location.larkspire", toId: "location.ashfall-trail", direction: "west" },
   { fromId: "location.larkspire", toId: "location.whitebough", direction: "east" },

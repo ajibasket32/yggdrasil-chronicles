@@ -24,6 +24,32 @@ import {
 const TILE = 32;
 const MAP_COLUMNS = 23;
 const MAP_ROWS = 17;
+
+/**
+ * Where the field encounter stands, per location. Every location previously
+ * used the same hardcoded tile, so every map had its enemy in the same place.
+ */
+const ENCOUNTER_POINTS: Readonly<Record<string, Point>> = {
+  "location.mossroad": { x: 14, y: 8 },
+  "location.hollow-root": { x: 8, y: 5 },
+  "location.ashfall-trail": { x: 17, y: 12 },
+  "location.silent-kiln": { x: 6, y: 13 },
+  "location.whitebough": { x: 12, y: 4 },
+  "location.starless-vault": { x: 16, y: 11 }
+};
+
+/** Where each location's searchable curio sits. Kept clear of NPC spawn points. */
+const CURIO_POINTS: Readonly<Record<string, Point>> = {
+  "location.hearthcross": { x: 20, y: 5 },
+  "location.mossroad": { x: 5, y: 13 },
+  "location.hollow-root": { x: 15, y: 4 },
+  "location.emberwake": { x: 2, y: 13 },
+  "location.ashfall-trail": { x: 4, y: 4 },
+  "location.silent-kiln": { x: 18, y: 6 },
+  "location.larkspire": { x: 2, y: 4 },
+  "location.whitebough": { x: 19, y: 13 },
+  "location.starless-vault": { x: 3, y: 12 }
+};
 const HUD_X = MAP_COLUMNS * TILE;
 const EQUIPMENT_SLOTS = ["weapon", "armor", "accessory"] as const;
 /** Must match the length of the `commands` array built in overlayContent's "system" branch. */
@@ -76,6 +102,14 @@ export class WorldScene extends Phaser.Scene {
   };
   /** A scripted scene currently playing, and how far through it the player is. */
   private activeScene?: { id: string; index: number };
+  /** Which edge the party crossed to get here; decides where they appear. */
+  private entryDirection?: ExitDirection;
+  /** Cursor for the world-map overlay. */
+  private mapIndex = 0;
+  /** The searchable curio in this location, when it has not been claimed yet. */
+  private curio?: { point: Point; sprite: Phaser.GameObjects.Text };
+  /** Day/night wash over the map; updated when world time advances. */
+  private dayTint?: Phaser.GameObjects.Rectangle;
   private endingShown = false;
 
   constructor() {
@@ -100,6 +134,9 @@ export class WorldScene extends Phaser.Scene {
       if (changedLocation) this.renderLocation();
       else {
         this.renderHud();
+        // Resting and long errands advance the clock without moving; the light
+        // should follow the time either way.
+        this.applyDayTint();
         if (this.overlayKind === "inventory" || this.overlayKind === "party") this.drawInteractiveOverlay();
       }
     });
@@ -210,6 +247,7 @@ export class WorldScene extends Phaser.Scene {
     else if (action === "quickSave") void this.quickSave();
     else if (action === "quickLoad") void this.quickLoad();
     else if (action === "codex") this.toggleOverlay("codex");
+    else if (action === "map") this.toggleOverlay("map");
   }
 
   private onGamepadButton(_pad: Phaser.Input.Gamepad.Gamepad, button: Phaser.Input.Gamepad.Button): void {
@@ -251,6 +289,10 @@ export class WorldScene extends Phaser.Scene {
       this.moveCodex(direction === "up" || direction === "left" ? -1 : 1);
       return;
     }
+    if (this.overlayKind === "map") {
+      this.moveMap(direction === "up" || direction === "left" ? -1 : 1);
+      return;
+    }
     if (this.overlayKind === "inventory") {
       this.moveInventory(direction === "up" || direction === "left" ? -1 : 1);
       return;
@@ -279,7 +321,7 @@ export class WorldScene extends Phaser.Scene {
     this.prompt = undefined;
     this.encounterSprite = undefined;
     this.locked = false;
-    if (resetPlayerPosition) this.playerGrid = { x: 5, y: 9 };
+    if (resetPlayerPosition) this.playerGrid = this.arrivalPoint();
     const location = locations.find(({ id }) => id === this.snapshot.locationId) ?? locations[0];
     if (!location) return;
 
@@ -300,8 +342,10 @@ export class WorldScene extends Phaser.Scene {
     this.paintExits(location.id);
     this.spawnNpcs(location.id);
     if (kind !== "town") this.spawnEncounter(location.id, kind);
+    this.spawnCurio(location.id);
     this.player = this.add.image(this.playerGrid.x * TILE + 16, this.playerGrid.y * TILE + 16, "sprite.player");
     this.player.setDepth(10);
+    this.applyDayTint();
     this.renderHud();
     this.prompt = this.add.text(18, 496, "", {
       ...TEXT.body,
@@ -451,7 +495,7 @@ export class WorldScene extends Phaser.Scene {
     const residents = npcs
       .filter((npc) => npc.locationId === locationId)
       .filter((npc) => !travelling.has(npc.id.replace("npc.", "party.")))
-      .slice(0, 6);
+      .slice(0, 12);
     const points = getNpcSpawnPoints(residents.length);
     const guidance = getObjectiveGuidance(this.snapshot);
     residents.forEach((npc, index) => {
@@ -485,12 +529,13 @@ export class WorldScene extends Phaser.Scene {
     const activeQuest = this.snapshot.quests.find(({ state }) => state === "active");
     const encounter = selectEncounterForLocation(locationId, activeQuest);
     if (!encounter) return;
-    this.encounterSprite = this.add.image(14 * TILE + 16, 8 * TILE + 16, "sprite.enemy").setDepth(8);
+    const point = ENCOUNTER_POINTS[locationId] ?? { x: 14, y: 8 };
+    this.encounterSprite = this.add.image(point.x * TILE + 16, point.y * TILE + 16, "sprite.enemy").setDepth(8);
     this.encounterSprite.setData("encounterId", encounter);
     if (kind === "dungeon") this.encounterSprite.setTint(0xd98c73);
     const guidance = getObjectiveGuidance(this.snapshot);
     if (guidance?.local && (activeQuest?.objectiveKind === "defeat" || activeQuest?.objectiveKind === "collect")) {
-      this.add.text(14 * TILE + 16, 8 * TILE - 15, "◆ OBJECTIVE", {
+      this.add.text(point.x * TILE + 16, point.y * TILE - 15, "◆ OBJECTIVE", {
         ...TEXT.small,
         fontSize: "9px",
         color: COLORS.gold,
@@ -581,9 +626,28 @@ export class WorldScene extends Phaser.Scene {
    * skip the fade back in: the player would be left on a black screen where even
    * the system-menu recovery is invisible.
    */
+  /**
+   * Crossing east means arriving from the west, and so on. The party used to
+   * materialise at the same central tile regardless of which way they came in,
+   * which broke any sense that the maps are joined.
+   */
+  private arrivalPoint(): Point {
+    const previous = this.playerGrid;
+    const clampX = (x: number): number => Phaser.Math.Clamp(x, 1, MAP_COLUMNS - 2);
+    const clampY = (y: number): number => Phaser.Math.Clamp(y, 1, MAP_ROWS - 2);
+    switch (this.entryDirection) {
+      case "right": return { x: 1, y: clampY(previous.y) };
+      case "left": return { x: MAP_COLUMNS - 2, y: clampY(previous.y) };
+      case "down": return { x: clampX(previous.x), y: 1 };
+      case "up": return { x: clampX(previous.x), y: MAP_ROWS - 2 };
+      default: return { x: 5, y: 9 };
+    }
+  }
+
   private async travelFromEdge(direction: ExitDirection): Promise<void> {
     const exit = getLocationExits(this.snapshot.locationId).find((candidate) => candidate.direction === direction);
     if (!exit) return;
+    this.entryDirection = direction;
     this.locked = true;
     this.transitioning = true;
     this.cameras.main.fadeOut(motionDuration(180), 10, 18, 24);
@@ -601,6 +665,67 @@ export class WorldScene extends Phaser.Scene {
       this.showToast("The road ahead could not be reached.");
     } finally {
       this.transitioning = false;
+    }
+  }
+
+  /**
+   * The world clock finally changes something visible: a wash over the map
+   * that follows the time of day. Purely presentational — spawns and dialogue
+   * are governed by the deterministic systems, not by lighting.
+   */
+  private applyDayTint(): void {
+    this.dayTint?.destroy();
+    const minutes = this.snapshot.worldMinutes % 1440;
+    const hour = minutes / 60;
+    let color = 0x000000;
+    let alpha = 0;
+    if (hour >= 21 || hour < 5) {
+      color = 0x0a1230;
+      alpha = 0.34;
+    } else if (hour >= 18) {
+      color = 0x542a16;
+      alpha = 0.18;
+    } else if (hour < 7) {
+      color = 0x2a2246;
+      alpha = 0.16;
+    }
+    if (alpha === 0) {
+      this.dayTint = undefined;
+      return;
+    }
+    this.dayTint = this.add.rectangle(0, 0, MAP_COLUMNS * TILE, MAP_ROWS * TILE, color, alpha)
+      .setOrigin(0)
+      .setDepth(12);
+  }
+
+  /** A once-per-chronicle searchable object, so the world has something to find besides people. */
+  private spawnCurio(locationId: string): void {
+    this.curio?.sprite.destroy();
+    this.curio = undefined;
+    if (this.snapshot.curioSearched) return;
+    const point = CURIO_POINTS[locationId];
+    if (!point) return;
+    const sprite = this.add.text(point.x * TILE + 16, point.y * TILE + 16, "◈", {
+      ...TEXT.heading,
+      fontSize: "18px",
+      color: "#d8c27a"
+    }).setOrigin(0.5).setDepth(8);
+    this.curio = { point, sprite };
+  }
+
+  private isNearCurio(): boolean {
+    if (!this.curio) return false;
+    return Math.abs(this.curio.point.x - this.playerGrid.x) + Math.abs(this.curio.point.y - this.playerGrid.y) <= 1;
+  }
+
+  private async searchCurio(): Promise<void> {
+    if (!this.curio) return;
+    const result = await this.bridge.searchLocation();
+    this.showToast(result.message);
+    if (result.success) {
+      this.curio.sprite.destroy();
+      this.curio = undefined;
+      this.refreshPrompt();
     }
   }
 
@@ -625,10 +750,12 @@ export class WorldScene extends Phaser.Scene {
       this.prompt.setText(`${keyboardCodeLabel(bindings.interact)} / A  Talk`);
     } else if (this.isNearEncounter()) {
       this.prompt.setText(`${keyboardCodeLabel(bindings.interact)} / A  Engage`);
+    } else if (this.isNearCurio()) {
+      this.prompt.setText(`${keyboardCodeLabel(bindings.interact)} / A  Search`);
     } else {
       this.prompt.setText(
         `${keyboardCodeLabel(bindings.journal)} Journal   ${keyboardCodeLabel(bindings.party)} Party   `
-        + `${keyboardCodeLabel(bindings.inventory)} Pack   ${keyboardCodeLabel(bindings.cancel)} Menu`
+        + `${keyboardCodeLabel(bindings.map)} Map   ${keyboardCodeLabel(bindings.cancel)} Menu`
       );
     }
   }
@@ -659,6 +786,10 @@ export class WorldScene extends Phaser.Scene {
       await this.confirmShop();
       return;
     }
+    if (this.overlayKind === "map") {
+      await this.confirmMapTravel();
+      return;
+    }
     if (this.overlay) return;
     const npc = this.nearestNpc();
     if (npc) {
@@ -668,7 +799,11 @@ export class WorldScene extends Phaser.Scene {
       this.drawDialogue();
       return;
     }
-    if (this.isNearEncounter()) await this.launchEncounter();
+    if (this.isNearEncounter()) {
+      await this.launchEncounter();
+      return;
+    }
+    if (this.isNearCurio()) await this.searchCurio();
   }
 
   private drawDialogue(): void {
@@ -900,34 +1035,112 @@ export class WorldScene extends Phaser.Scene {
         ? "Arrows / D-pad  Select     Enter / A  Confirm     Esc / B  Close"
         : kind === "codex"
           ? "↑↓  Turn page     Esc / B  Close"
-          : "Esc / B  Close",
+          : kind === "map"
+            ? "↑↓  Select     Enter / A  Travel     Esc / B  Close"
+            : "Esc / B  Close",
       TEXT.small
     );
     this.overlay = this.add.container(0, 0, [panel, title, rule, body, hint]).setDepth(50);
   }
 
-  /** Pages the codex a section at a time; wrapping keeps it reachable in both directions. */
-  private moveCodex(delta: number): void {
-    this.codexIndex = Phaser.Math.Wrap(this.codexIndex + delta, 0, codexSections.length);
+  private moveMap(delta: number): void {
+    const count = this.snapshot.discoveredLocations?.length ?? 0;
+    if (count === 0) return;
+    this.mapIndex = Phaser.Math.Wrap(this.mapIndex + delta, 0, count);
+    this.redrawStaticOverlay("map");
+  }
+
+  /**
+   * Travels to the selected discovered location. Fast travel exists because
+   * `discoveredLocationIds` was tracked on every save and read by nothing:
+   * the player paid the walk both ways for every errand across three regions.
+   */
+  private async confirmMapTravel(): Promise<void> {
+    const target = this.snapshot.discoveredLocations?.[this.mapIndex];
+    if (!target || target.current) return;
+    this.closeOverlay();
+    this.locked = true;
+    this.transitioning = true;
+    this.entryDirection = undefined;
+    this.cameras.main.fadeOut(motionDuration(180), 10, 18, 24);
+    try {
+      const result = await this.bridge.fastTravel(target.id);
+      if (!result.success) this.showToast(result.message);
+      this.time.delayedCall(motionDuration(200), () => {
+        this.cameras.main.fadeIn(motionDuration(180), 10, 18, 24);
+        playSound(this, "sfx.door");
+        this.locked = false;
+      });
+    } catch (error) {
+      console.error("Fast travel failed", error);
+      this.cameras.main.fadeIn(motionDuration(180), 10, 18, 24);
+      this.locked = false;
+    } finally {
+      this.transitioning = false;
+    }
+  }
+
+  /** Redraws a non-interactive overlay in place (codex pages, map cursor). */
+  private redrawStaticOverlay(kind: OverlayKind): void {
     this.overlay?.destroy();
     this.overlay = undefined;
     this.overlayKind = undefined;
     this.locked = false;
-    this.toggleOverlay("codex");
+    this.toggleOverlay(kind);
+  }
+
+  /** Pages the codex a section at a time; wrapping keeps it reachable in both directions. */
+  private moveCodex(delta: number): void {
+    this.codexIndex = Phaser.Math.Wrap(this.codexIndex + delta, 0, codexSections.length + 1);
+    this.redrawStaticOverlay("codex");
   }
 
   private overlayContent(kind: OverlayKind): string {
     if (kind === "codex") {
+      const pageCount = codexSections.length + 1;
+      // The final page is the bestiary, built from the per-species defeat
+      // counts the save has always carried and never shown.
+      if (this.codexIndex >= codexSections.length) {
+        const bestiary = this.snapshot.bestiary ?? [];
+        const rows = bestiary.length
+          ? bestiary.map((entry) => {
+            const known = [
+              entry.weaknesses.length ? `weak: ${entry.weaknesses.join(", ")}` : "",
+              entry.resistances.length ? `resists: ${entry.resistances.join(", ")}` : ""
+            ].filter(Boolean).join("  ·  ");
+            return `◆ ${entry.name}  ×${entry.defeated}${known ? `\n   ${known}` : "\n   Nothing learned of its nature yet."}`;
+          }).join("\n\n")
+          : "No foes have been felled yet. The bestiary fills as the road does.";
+        return [`Bestiary   (${pageCount} of ${pageCount})`, "", rows].join("\n");
+      }
       const section = codexSections[this.codexIndex] ?? codexSections[0];
       if (!section) return "The codex is empty.";
       const entries = section.entries
         .map(({ title, body }) => `◆ ${title}\n   ${body}`)
         .join("\n\n");
       return [
-        `${section.title}   (${this.codexIndex + 1} of ${codexSections.length})`,
+        `${section.title}   (${this.codexIndex + 1} of ${pageCount})`,
         "",
         entries
       ].join("\n");
+    }
+    if (kind === "map") {
+      const discovered = this.snapshot.discoveredLocations ?? [];
+      if (discovered.length === 0) return "No roads are known yet.";
+      const view = windowAround(discovered, this.mapIndex, 8);
+      const rows = view.items.map((entry, index) => {
+        const marker = index === view.cursor ? "›" : " ";
+        const here = entry.current ? "  — the party is here" : "";
+        return `${marker} ${entry.name}  [${entry.kind.toUpperCase()}]\n   ${entry.regionName}${here}`;
+      });
+      return [
+        "Known roads. Travel skips the walk but not the hours.",
+        "",
+        view.hasBefore ? "  ▲ more above" : "",
+        rows.join("\n\n"),
+        view.hasAfter ? "  ▼ more below" : "",
+        windowFooter(view)
+      ].filter(Boolean).join("\n");
     }
     if (kind === "journal") {
       const active = this.snapshot.quests.filter(({ state }) => state === "active");
@@ -1466,6 +1679,13 @@ export class WorldScene extends Phaser.Scene {
     if (this.locked) return;
     const id = this.encounterSprite?.getData("encounterId") as string | undefined;
     if (!id) return;
+    // The encounter key engages the visible foe, not a battle from thin air:
+    // it previously started the fight from anywhere on the map, which made
+    // the whole visible-encounter design decorative.
+    if (!this.isNearEncounter()) {
+      this.showToast("No foe is close enough to engage.");
+      return;
+    }
     this.locked = true;
     this.transitioning = true;
     try {

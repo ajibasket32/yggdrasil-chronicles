@@ -14,7 +14,8 @@ export const REBINDABLE_ACTIONS = [
   "encounter",
   "quickSave",
   "quickLoad",
-  "codex"
+  "codex",
+  "map"
 ] as const;
 
 export type KeyboardAction = (typeof REBINDABLE_ACTIONS)[number];
@@ -37,7 +38,8 @@ export const DEFAULT_KEYBOARD_BINDINGS: Readonly<KeyboardBindings> = {
   // the session the player was trying to protect.
   quickSave: "F9",
   quickLoad: "F8",
-  codex: "KeyH"
+  codex: "KeyH",
+  map: "KeyM"
 };
 
 /**
