@@ -89,3 +89,51 @@ body {
     border: 0;
   }
 }
+
+/*
+ * On-screen controls, mounted only on touch devices (see touchControls.ts).
+ * They sit over the canvas corners rather than beside it, because the phone
+ * breakpoint gives the canvas the whole viewport.
+ */
+.touch-controls {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+  touch-action: none;
+}
+
+.touch-button {
+  position: absolute;
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border: 2px solid #8aa394;
+  border-radius: 50%;
+  background: rgb(16 22 34 / 62%);
+  color: #f5e7c6;
+  font: 600 1.1rem/1 system-ui, sans-serif;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.touch-button:active {
+  background: rgb(36 54 74 / 88%);
+  border-color: #f2c66d;
+}
+
+.pad-up { left: 4.75rem; bottom: 8.5rem; }
+.pad-left { left: 1rem; bottom: 5rem; }
+.pad-right { left: 8.5rem; bottom: 5rem; }
+.pad-down { left: 4.75rem; bottom: 1.5rem; }
+.pad-a { right: 1.25rem; bottom: 5rem; }
+.pad-b { right: 5rem; bottom: 2rem; }
+.pad-j { right: 1.25rem; bottom: 10rem; width: 2.75rem; height: 2.75rem; font-size: 0.95rem; }
+
+/* A pointer-driven browser never mounts the pad, but hide it if one is forced. */
+@media (pointer: fine) and (min-width: 721px) {
+  .touch-controls { display: none; }
+}

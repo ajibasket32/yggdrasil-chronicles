@@ -1,5 +1,5 @@
 import "./styles.css";
-import { applyPresentationSettings, createYggdrasilGame } from "./game";
+import { applyPresentationSettings, createYggdrasilGame, mountTouchControls, prefersTouchControls } from "./game";
 import { EngineGameBridge } from "./integration/EngineGameBridge";
 import { applySettingsToPhaserGame, gameSettingsStore } from "./settings";
 
@@ -36,6 +36,13 @@ if (app) {
   bridge.subscribe(reflectSnapshot);
 }
 const game = createYggdrasilGame({ parent: "app", bridge });
+// The 720px breakpoint in styles.css has always promised a phone build. On a
+// touch device the game now has controls to match it; on a desktop pointer
+// nothing is mounted, so the pad never covers a canvas nobody is tapping.
+if (app && prefersTouchControls()) {
+  app.dataset.touchControls = "on";
+  mountTouchControls(app);
+}
 // The canvas palette and type scale are preferences too, and they have to be
 // in place before the first scene draws.
 applyPresentationSettings(gameSettingsStore.get());
