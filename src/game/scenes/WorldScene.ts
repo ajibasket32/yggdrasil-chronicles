@@ -538,7 +538,9 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private paintLandmarks(kind: "town" | "wilderness" | "dungeon", regionId: string): void {
-    const graphics = this.add.graphics().setDepth(2);
+    // Depth 3: the accents (kiln glow, dome) sit over the settlement images at
+    // depth 2 — at equal depth the buildings, added later, covered them.
+    const graphics = this.add.graphics().setDepth(3);
     if (kind === "town") {
       this.paintSettlement(regionId);
       if (regionId === "region.cinder-march") {
@@ -1430,12 +1432,21 @@ export class WorldScene extends Phaser.Scene {
     if (kind === "remedies") {
       const remedies = this.snapshot.remedies;
       if (!remedies?.unlocked) return "The party has not learned trail remedies yet.";
-      const rows = remedies.recipes.map((recipe, index) => {
+      // Windowed like the journal: each entry takes three lines, and the
+      // ledger may grow past what the panel holds.
+      const view = windowAround(remedies.recipes, this.remedyIndex, 2);
+      const rows = view.items.map((recipe, index) => {
         const parts = recipe.inputs.map((input) => `${input.name} ${Math.min(input.have, 99)}/${input.need}`).join("  ·  ");
         const ready = recipe.craftable ? "" : "   (short)";
-        return `${index === this.remedyIndex ? "›" : " "} ${recipe.name} — ${recipe.outputQuantity} × ${recipe.outputName}${ready}\n   ${recipe.description}\n   Needs: ${parts}`;
+        return `${index === view.cursor ? "›" : " "} ${recipe.name} — ${recipe.outputQuantity} × ${recipe.outputName}${ready}\n   ${recipe.description}\n   Needs: ${parts}`;
       });
-      return `The delvers' ledger. Craft anywhere; the pack pays.\n\n${rows.join("\n\n")}`;
+      return [
+        "The delvers' ledger. Craft anywhere; the pack pays.",
+        view.hasBefore ? "  ▲ more above" : "",
+        rows.join("\n\n"),
+        view.hasAfter ? "  ▼ more below" : "",
+        windowFooter(view)
+      ].filter(Boolean).join("\n\n");
     }
     if (kind === "codex") {
       const pageCount = codexSections.length + 1;
