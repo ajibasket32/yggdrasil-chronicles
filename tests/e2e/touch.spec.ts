@@ -9,6 +9,10 @@ test.use({ hasTouch: true, viewport: { width: 390, height: 780 } });
  * build with taps only — no keyboard — to prove the promise is kept.
  */
 test("a touch device can start and play a chronicle with taps alone", async ({ page }) => {
+  // A full tap-only session is long by design — sixty-plus paced taps plus a
+  // boot that decodes the score. CI runners run it near the global 60s
+  // ceiling; give this walk its own.
+  test.setTimeout(180_000);
   await page.goto("/");
   const app = page.locator("#app");
   await expect(page.locator("canvas")).toBeVisible();
