@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Manual runs, for re-verifying after GitHub-side runner outages without
+  # resorting to empty commits — three runs tonight died in the runner queue
+  # ("job was not acquired") with the code never executing.
+  workflow_dispatch:
 
 permissions:
   contents: read
