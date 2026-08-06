@@ -217,17 +217,22 @@ export class TitleScene extends Phaser.Scene {
       `SOUND VOLUME        ${Math.round(settings.soundVolume * 100)}%`,
       "KEYBOARD BINDINGS"
     ];
+    // The list flows from measured heights: the Text Size row made six rows,
+    // and 40px fixed spacing ran the last one into the hint text below.
     const heading = this.add.text(72, 210, "SETTINGS", { ...TEXT.heading, color: COLORS.gold });
-    const rows = choices.map((label, index) =>
-      this.add.text(72, 250 + index * 40, `${index === this.settingsIndex ? "›" : " "} ${label}`, {
+    let rowY = 248;
+    const rows = choices.map((label, index) => {
+      const row = this.add.text(72, rowY, `${index === this.settingsIndex ? "›" : " "} ${label}`, {
         ...TEXT.heading,
         color: index === this.settingsIndex ? COLORS.gold : COLORS.cream
-      })
-    );
+      });
+      rowY += row.height + 9;
+      return row;
+    });
     this.menuTexts = [heading, ...rows];
     this.detailText = this.add.text(
       72,
-      442,
+      rowY + 12,
       "Enter / A toggles options. Left / Right changes volume. Esc / B returns.",
       TEXT.small
     );

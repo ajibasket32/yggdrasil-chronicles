@@ -212,6 +212,7 @@ export class WorldScene extends Phaser.Scene {
     if (!scene || this.activeScene || this.activeInteraction) return;
     this.activeScene = { id: scene.id, index: 0 };
     this.locked = true;
+    this.publishUiState();
     this.drawSceneLine();
   }
 
@@ -261,9 +262,10 @@ export class WorldScene extends Phaser.Scene {
     }
 
     this.overlay?.destroy();
-    const panel = this.add.rectangle(0, 340, 960, 200, COLORS.panel, 0.98).setOrigin(0);
+    const scrim = this.add.rectangle(0, 0, 960, 540, COLORS.ink, 0.45).setOrigin(0);
+    const panel = this.add.rectangle(0, 340, 960, 200, COLORS.panel, 1).setOrigin(0);
     const edge = this.add.rectangle(0, 340, 960, 2, 0x6f8f82).setOrigin(0);
-    const children: Phaser.GameObjects.GameObject[] = [panel, edge];
+    const children: Phaser.GameObjects.GameObject[] = [scrim, panel, edge];
 
     // Narration has no speaker; style it apart from spoken lines so the two
     // never read as the same voice.
@@ -918,7 +920,13 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private refreshPrompt(): void {
-    if (!this.prompt || this.locked) return;
+    if (!this.prompt) return;
+    // Anything that owns the screen also owns the bottom-left corner: the
+    // prompt chip previously stayed lit over dialogue and menus.
+    const occupied = this.locked || this.overlay !== undefined
+      || this.activeInteraction !== undefined || this.activeScene !== undefined;
+    this.prompt.setVisible(!occupied);
+    if (occupied) return;
     const npc = this.nearestNpc();
     const bindings = gameSettingsStore.get().keyBindings;
     if (npc) {
@@ -992,6 +1000,9 @@ export class WorldScene extends Phaser.Scene {
   private publishUiState(): void {
     setSceneFlag("dialogue", this.activeInteraction ? "open" : "none");
     setSceneFlag("overlay", this.overlayKind ?? (this.overlay ? "other" : "none"));
+    // Every open/close path passes through here, which makes it the one place
+    // the prompt chip reliably learns it should step aside.
+    this.refreshPrompt();
   }
 
   private drawDialogue(): void {
@@ -1002,7 +1013,8 @@ export class WorldScene extends Phaser.Scene {
     const choices = active.index >= active.view.lines.length - 1 ? active.view.choices : undefined;
     const panelY = choices?.length ? 278 : 348;
     const panelHeight = choices?.length ? 234 : 168;
-    const panel = this.add.rectangle(28, panelY, 680, panelHeight, 0x101622, 0.96)
+    const scrim = this.add.rectangle(0, 0, 960, 540, COLORS.ink, 0.35).setOrigin(0);
+    const panel = this.add.rectangle(28, panelY, 680, panelHeight, 0x101622, 1)
       .setOrigin(0)
       .setStrokeStyle(2, 0x8aa394);
     const plate = this.buildNamePlate(
@@ -1019,7 +1031,7 @@ export class WorldScene extends Phaser.Scene {
       lineSpacing: 5
     });
     this.startReveal(line, active.view.lines[active.index] ?? "");
-    const children: Phaser.GameObjects.GameObject[] = [panel, ...plate, line];
+    const children: Phaser.GameObjects.GameObject[] = [scrim, panel, ...plate, line];
     if (choices?.length) {
       const selectedChoice = choices[active.choiceIndex];
       if (selectedChoice) {
@@ -1250,7 +1262,8 @@ export class WorldScene extends Phaser.Scene {
       this.drawInteractiveOverlay();
       return;
     }
-    const panel = this.add.rectangle(60, 42, 640, 456, COLORS.panel, 0.98).setOrigin(0).setStrokeStyle(2, 0x6f8f82);
+    const scrim = this.add.rectangle(0, 0, 960, 540, COLORS.ink, 0.45).setOrigin(0);
+    const panel = this.add.rectangle(60, 42, 640, 456, COLORS.panel, 1).setOrigin(0).setStrokeStyle(2, 0x6f8f82);
     const title = this.add.text(88, 70, kind.toUpperCase(), { ...TEXT.heading, color: COLORS.gold });
     const rule = this.add.rectangle(88, 105, 584, 1, COLORS.panelLight).setOrigin(0);
     const content = this.overlayContent(kind);
@@ -1259,6 +1272,11 @@ export class WorldScene extends Phaser.Scene {
       wordWrap: { width: 570 },
       lineSpacing: 8
     });
+    // The hint row starts at y 462; anything longer than the window clips
+    // rather than spilling over the panel edge onto the map.
+    const bodyClip = this.add.graphics().fillStyle(0xffffff).fillRect(88, 126, 584, 330);
+    bodyClip.setVisible(false);
+    body.setMask(bodyClip.createGeometryMask());
     const hint = this.add.text(
       88,
       462,
@@ -1275,7 +1293,7 @@ export class WorldScene extends Phaser.Scene {
               : "Esc / B  Close",
       TEXT.small
     );
-    this.overlay = this.add.container(0, 0, [panel, title, rule, body, hint]).setDepth(50);
+    this.overlay = this.add.container(0, 0, [scrim, panel, title, rule, body, bodyClip, hint]).setDepth(50);
   }
 
   private moveJournal(delta: number): void {
@@ -1384,7 +1402,7 @@ export class WorldScene extends Phaser.Scene {
     if (kind === "map") {
       const discovered = this.snapshot.discoveredLocations ?? [];
       if (discovered.length === 0) return "No roads are known yet.";
-      const view = windowAround(discovered, this.mapIndex, 8);
+      const view = windowAround(discovered, this.mapIndex, 4);
       const rows = view.items.map((entry, index) => {
         const marker = index === view.cursor ? "›" : " ";
         const here = entry.current ? "  — the party is here" : "";
@@ -1405,7 +1423,7 @@ export class WorldScene extends Phaser.Scene {
       // summary line were invisible.
       const entries = this.snapshot.quests;
       if (entries.length === 0) return "The journal is empty.";
-      const view = windowAround(entries, this.journalIndex, 5);
+      const view = windowAround(entries, this.journalIndex, 3);
       const marker = (state: string, first: boolean): string => {
         if (state === "active") return first ? "▸" : "◆";
         if (state === "available") return "◇";
@@ -1458,13 +1476,21 @@ export class WorldScene extends Phaser.Scene {
       "Help & Codex",
       "Return to Title"
     ];
-    return `${this.snapshot.chronicleHint}\n\n${commands.map((label, index) => `${index === this.systemIndex ? "›" : " "} ${label}`).join("\n")}`;
+    // Windowed so fifteen commands fit the panel at any text size; the
+    // chronicle hint paragraph stepped aside — the HUD already carries it.
+    const view = windowAround(commands.map((label, index) => ({ label, index })), this.systemIndex, 11);
+    return [
+      view.hasBefore ? "  ▲ more above" : "",
+      ...view.items.map(({ label, index }) => `${index === this.systemIndex ? "›" : " "} ${label}`),
+      view.hasAfter ? "  ▼ more below" : ""
+    ].filter(Boolean).join("\n");
   }
 
   private drawInteractiveOverlay(): void {
     if (this.overlayKind !== "inventory" && this.overlayKind !== "party" && this.overlayKind !== "shop") return;
     this.overlay?.destroy();
-    const panel = this.add.rectangle(60, 42, 640, 456, COLORS.panel, 0.98).setOrigin(0).setStrokeStyle(2, 0x6f8f82);
+    const scrim = this.add.rectangle(0, 0, 960, 540, COLORS.ink, 0.45).setOrigin(0);
+    const panel = this.add.rectangle(60, 42, 640, 456, COLORS.panel, 1).setOrigin(0).setStrokeStyle(2, 0x6f8f82);
     const title = this.add.text(
       88,
       70,
@@ -1477,8 +1503,12 @@ export class WorldScene extends Phaser.Scene {
       wordWrap: { width: 570 },
       lineSpacing: 6
     });
+    // Same clip as the static overlays: long lists page, they do not spill.
+    const bodyClip = this.add.graphics().fillStyle(0xffffff).fillRect(88, 126, 584, 330);
+    bodyClip.setVisible(false);
+    body.setMask(bodyClip.createGeometryMask());
     const hint = this.add.text(88, 462, this.interactiveOverlayHint(), TEXT.small);
-    this.overlay = this.add.container(0, 0, [panel, title, rule, body, hint]).setDepth(50);
+    this.overlay = this.add.container(0, 0, [scrim, panel, title, rule, body, bodyClip, hint]).setDepth(50);
   }
 
   private interactiveOverlayContent(): string {
@@ -2126,7 +2156,12 @@ export class WorldScene extends Phaser.Scene {
   private async launchEncounter(): Promise<void> {
     if (this.locked) return;
     const id = this.encounterSprite?.getData("encounterId") as string | undefined;
-    if (!id) return;
+    if (!id) {
+      // The dedicated key answers even when this map has no foe left;
+      // a key that silently does nothing reads as broken.
+      this.showToast("Nothing to engage here.");
+      return;
+    }
     // The encounter key engages the visible foe, not a battle from thin air:
     // it previously started the fight from anywhere on the map, which made
     // the whole visible-encounter design decorative.

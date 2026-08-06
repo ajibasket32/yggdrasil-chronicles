@@ -200,7 +200,7 @@ export class BattleScene extends Phaser.Scene {
       const x = 690 + (index % 2) * 105;
       const y = 200 + Math.floor(index / 2) * 90;
       const key = actor.spriteKey && this.textures.exists(actor.spriteKey) ? actor.spriteKey : "sprite.enemy";
-      const sprite = this.add.image(x, y, key).setScale(actor.maxHp > 80 ? 2 : 1.45);
+      const sprite = this.add.image(x, y, key).setScale(actor.maxHp > 80 ? 3 : 2.25);
       if (actor.tint !== undefined) sprite.setTint(actor.tint);
       if (!actor.alive) sprite.setAlpha(0.25);
       this.actorPositions.set(actor.id, { x, y, sprite });

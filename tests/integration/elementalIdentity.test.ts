@@ -56,7 +56,7 @@ describe("enemies have distinct elemental identities", () => {
     await startAtLevel(bridge, saves, 20, "shaper");
     bridge.startEncounter("encounter.mossroad-foragers");
 
-    const wolf = bridge.getSnapshot().battle?.actors.find((actor) => !actor.isParty && actor.name.includes("briar"));
+    const wolf = bridge.getSnapshot().battle?.actors.find((actor) => !actor.isParty && actor.name.includes("Briar"));
     if (!wolf) throw new Error("expected a briar wolf");
 
     await bridge.chooseBattleAction("skill", "skill.ember-spark", wolf.id);
@@ -69,7 +69,7 @@ describe("enemies have distinct elemental identities", () => {
     const { bridge, saves } = createBridge();
     await startAtLevel(bridge, saves, 20, "shaper");
     bridge.startEncounter("encounter.mossroad-foragers");
-    const wolf = bridge.getSnapshot().battle?.actors.find((actor) => !actor.isParty && actor.name.includes("briar"));
+    const wolf = bridge.getSnapshot().battle?.actors.find((actor) => !actor.isParty && actor.name.includes("Briar"));
     if (!wolf) throw new Error("expected a briar wolf");
     await bridge.chooseBattleAction("skill", "skill.ember-spark", wolf.id);
 
@@ -82,7 +82,7 @@ describe("enemies have distinct elemental identities", () => {
     await bridge.leaveBattle();
 
     bridge.startEncounter("encounter.mossroad-foragers");
-    const remembered = bridge.getSnapshot().battle?.actors.find((actor) => !actor.isParty && actor.name.includes("briar"));
+    const remembered = bridge.getSnapshot().battle?.actors.find((actor) => !actor.isParty && actor.name.includes("Briar"));
     expect(remembered?.knownWeaknesses).toContain("fire");
   });
 
@@ -106,7 +106,7 @@ describe("enemies have distinct elemental identities", () => {
 
     // Rime stags resist ice, so landing it teaches a resistance rather than a
     // weakness — the same discovery channel, opposite sign.
-    const stag = bridge.getSnapshot().battle?.actors.find((actor) => !actor.isParty && actor.name.includes("rime"));
+    const stag = bridge.getSnapshot().battle?.actors.find((actor) => !actor.isParty && actor.name.includes("Rime"));
     if (!stag) throw new Error("expected a rime stag");
     await bridge.chooseBattleAction("skill", "skill.deep-resonance", stag.id);
 
@@ -119,8 +119,8 @@ describe("enemies have distinct elemental identities", () => {
     const { bridge, saves } = createBridge();
     await startAtLevel(bridge, saves, 20, "shaper");
     bridge.startEncounter("encounter.mossroad-foragers");
-    const wolf = bridge.getSnapshot().battle?.actors.find((actor) => !actor.isParty && actor.name.includes("briar"));
-    const gnawer = bridge.getSnapshot().battle?.actors.find((actor) => !actor.isParty && actor.name.includes("gnawer"));
+    const wolf = bridge.getSnapshot().battle?.actors.find((actor) => !actor.isParty && actor.name.includes("Briar"));
+    const gnawer = bridge.getSnapshot().battle?.actors.find((actor) => !actor.isParty && actor.name.includes("Gnawer"));
     if (!wolf || !gnawer) throw new Error("expected both species present");
 
     await bridge.chooseBattleAction("skill", "skill.ember-spark", wolf.id);

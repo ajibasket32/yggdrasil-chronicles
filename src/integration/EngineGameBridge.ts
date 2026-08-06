@@ -688,7 +688,7 @@ function enemyCombatant(
   const maxHp = Math.max(1, Math.round(enemyMaxHealth(level, bossTier, attackers) * scale));
   return {
     id: `${id}.${index}`,
-    name: id.replace("enemy.", "").replaceAll("-", " "),
+    name: id.replace("enemy.", "").split("-").map(titleCase).join(" "),
     level,
     stats: {
       maxHp,
@@ -2940,15 +2940,48 @@ export class EngineGameBridge implements GameBridge {
     };
   }
 
+  /**
+   * The objective as a sentence, not a serialized step. This used to render the
+   * raw kind and id — "talk orren pike", "travel mossroad" — which read as
+   * debug output in the HUD and journal, one line above properly written route
+   * text.
+   */
+  private describeObjective(objective: QuestDefinition["steps"][number]): string {
+    const fallback = objective.targetId
+      .replace(/^(npc|enemy|item|location|encounter)\./, "")
+      .split("-")
+      .map(titleCase)
+      .join(" ");
+    const counted = (name: string): string => (objective.count > 1 ? `${objective.count} × ${name}` : name);
+    switch (objective.kind) {
+      case "talk":
+        return `Speak with ${npcs.find(({ id }) => id === objective.targetId)?.name ?? fallback}`;
+      case "travel":
+        return `Travel to ${locations.find(({ id }) => id === objective.targetId)?.name ?? fallback}`;
+      case "collect":
+        return `Gather ${counted(items.find(({ id }) => id === objective.targetId)?.name ?? fallback)}`;
+      case "deliver": {
+        const item = items.find(({ id }) => id === objective.targetId)?.name ?? fallback;
+        const recipient = npcs.find(({ id }) => id === objective.recipientId)?.name;
+        return `Deliver ${counted(item)}${recipient ? ` to ${recipient}` : ""}`;
+      }
+      case "defeat":
+        return `Defeat ${counted(fallback)}`;
+      case "survive":
+        return `Survive ${encounters.find(({ id }) => id === objective.targetId)?.name ?? fallback}`;
+      default:
+        return `${titleCase(objective.kind)} ${counted(fallback)}`;
+    }
+  }
+
   private toQuestView(definition: QuestDefinition, currentStep: number, state: QuestView["state"]): QuestView {
     const objective = definition.steps[currentStep];
-    const target = objective?.targetId.replace(/^(npc|enemy|item|location)\./, "").replaceAll("-", " ");
     return {
       id: definition.id,
       title: definition.title,
       summary: definition.summary,
       state,
-      objective: objective ? `${objective.kind} ${objective.count > 1 ? `${objective.count} × ` : ""}${target}` : "Completed",
+      objective: objective ? this.describeObjective(objective) : "Completed",
       objectiveKind: objective?.kind,
       objectiveTargetId: objective?.targetId
     };
