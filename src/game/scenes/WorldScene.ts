@@ -14,7 +14,7 @@ import type {
 import { gamepadButtonAction, pollStickDirection, type StickRepeatState } from "../gamepadControls";
 import { keyboardActionForCode, keyboardCodeLabel } from "../keyboardControls";
 import { windowAround, windowFooter, type OverlayWindow } from "../overlayWindow";
-import { groundTile, tileVariant, treeAt, TREE_TILES } from "../tileset";
+import { BUILDING_TILES, groundTile, tileVariant, treeAt, TREE_TILES, type TileRef } from "../tileset";
 import { getNpcSpawnPoints } from "../npcPlacement";
 import { musicForLocation, playMusic, stopMusic } from "../music";
 import { announceGameStatus, announceScene, COLORS, fontPx, getBridge, motionDuration, playSound, setSceneFlag, TEXT } from "../runtime";
@@ -535,29 +535,20 @@ export class WorldScene extends Phaser.Scene {
   private paintLandmarks(kind: "town" | "wilderness" | "dungeon", regionId: string): void {
     const graphics = this.add.graphics().setDepth(2);
     if (kind === "town") {
+      this.paintSettlement(regionId);
       if (regionId === "region.cinder-march") {
-        // Emberwake: basalt foundry hall with a kiln chimney, no orchard trees.
-        graphics.fillStyle(0x3a3230).fillRect(3 * TILE, 3 * TILE, 6 * TILE, 4 * TILE);
-        graphics.fillStyle(0x5c443a).fillTriangle(2.5 * TILE, 3 * TILE, 9.5 * TILE, 3 * TILE, 6 * TILE, TILE);
-        graphics.fillStyle(0xd9762f).fillRect(5.5 * TILE, 5 * TILE, TILE, 2 * TILE);
-        graphics.fillStyle(0x2c2622).fillRect(13 * TILE, 5 * TILE, 6 * TILE, TILE);
-        graphics.fillStyle(0x413a36).fillRect(8.5 * TILE, 2 * TILE, TILE, 2 * TILE);
+        // Emberwake keeps its kiln: a chimney glow and the basalt spoil rocks.
+        graphics.fillStyle(0xd9762f, 0.8).fillRect(5.6 * TILE, 2.4 * TILE, 12, 20);
+        graphics.lineStyle(4, 0xff9d52, 0.4).strokeCircle(5.8 * TILE, 2.5 * TILE, 14);
         for (let rock = 0; rock < 6; rock += 1) {
           graphics.fillStyle(0x4a413c).fillCircle((3 + rock * 3) * TILE, 13 * TILE, 20);
         }
       } else if (regionId === "region.pale-canopy") {
-        // Larkspire: pale observatory hall beneath bare white-bough trees.
-        graphics.fillStyle(0xdde3e6).fillRect(3 * TILE, 3 * TILE, 6 * TILE, 4 * TILE);
-        graphics.fillStyle(0xaebac2).fillTriangle(2.5 * TILE, 3 * TILE, 9.5 * TILE, 3 * TILE, 6 * TILE, TILE);
-        graphics.fillStyle(0xf2ecd6).fillRect(5.5 * TILE, 5 * TILE, TILE, 2 * TILE);
-        graphics.fillStyle(0x8c98a2).fillRect(13 * TILE, 5 * TILE, 6 * TILE, TILE);
-        graphics.fillCircle(9 * TILE, 3 * TILE, 9);
+        // Larkspire keeps its observatory dome above the hall.
+        graphics.fillStyle(0xdde3e6).fillCircle(5.9 * TILE, 2.6 * TILE, 11);
+        graphics.lineStyle(2, 0x8c98a2, 0.8).strokeCircle(5.9 * TILE, 2.6 * TILE, 11);
         this.paintOrchard(0xd8e6f0);
       } else {
-        graphics.fillStyle(0x58463d).fillRect(3 * TILE, 3 * TILE, 6 * TILE, 4 * TILE);
-        graphics.fillStyle(0x8e5f4b).fillTriangle(2.5 * TILE, 3 * TILE, 9.5 * TILE, 3 * TILE, 6 * TILE, TILE);
-        graphics.fillStyle(0xcda86f).fillRect(5.5 * TILE, 5 * TILE, TILE, 2 * TILE);
-        graphics.fillStyle(0x735b47).fillRect(13 * TILE, 5 * TILE, 6 * TILE, TILE);
         this.paintOrchard(0xffffff);
       }
     } else if (kind === "wilderness") {
@@ -606,6 +597,39 @@ export class WorldScene extends Phaser.Scene {
         .setDepth(2)
         .setTint(tint);
     }
+  }
+
+  /**
+   * The settlement itself, from the tileset's complete building tiles: a hall,
+   * a row of houses, a shopfront where the vendor trades, and the village
+   * well. Scenery like the trees — the map has no collision — tinted by the
+   * regional wash so Emberwake runs warm and Larkspire cold.
+   */
+  private paintSettlement(regionId: string): void {
+    const wash = this.regionWash("town", regionId);
+    const place = (
+      ref: TileRef,
+      column: number,
+      row: number,
+      size = TILE
+    ): void => {
+      this.add.image((column + 0.5) * TILE, (row + 1) * TILE, ref.sheet, ref.frame)
+        .setOrigin(0.5, 1)
+        .setDisplaySize(size, size)
+        .setDepth(2)
+        .setTint(wash);
+    };
+    // The hall, half again the size of a house, where the old rectangle stood.
+    place(BUILDING_TILES.shopB, 5.5, 4, TILE * 3);
+    place(BUILDING_TILES.dormerA, 3, 4.5);
+    place(BUILDING_TILES.windowC, 8, 4.5);
+    // The east row the old bench rectangle sketched: three homes and a hut.
+    place(BUILDING_TILES.plainB, 13, 4);
+    place(BUILDING_TILES.dormerC, 15, 4.3);
+    place(BUILDING_TILES.greenHut, 17, 4);
+    place(BUILDING_TILES.windowA, 19, 4.3);
+    // The village well, off the walking lanes.
+    place(BUILDING_TILES.wellA, 10.5, 5.5);
   }
 
   private paintExits(locationId: string): void {

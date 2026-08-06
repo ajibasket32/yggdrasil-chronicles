@@ -52,6 +52,33 @@ export const DIRT_TILE = overworld(8, 1);
 export const SHALLOW_WATER_TILE = overworld(8, 11);
 export const DEEP_WATER_TILE = overworld(23, 11);
 
+/**
+ * Complete one-tile buildings on transparent backgrounds, verified by decoding
+ * the sheet (all 72-96% opaque with wood-and-roof colours). The audit note
+ * claiming this sheet only carried building *fragments* was wrong: rows 26-30,
+ * columns 4-9, are whole cottages, shopfronts, huts, wells and signs.
+ */
+export const BUILDING_TILES = {
+  hutTent: overworld(4, 26),
+  thatch: overworld(5, 26),
+  greenHut: overworld(6, 26),
+  dormerA: overworld(7, 26),
+  dormerB: overworld(8, 26),
+  dormerC: overworld(9, 26),
+  plainA: overworld(4, 27),
+  plainB: overworld(5, 27),
+  plainC: overworld(6, 27),
+  shopA: overworld(7, 27),
+  shopB: overworld(8, 27),
+  shopC: overworld(9, 27),
+  windowA: overworld(4, 28),
+  windowB: overworld(5, 28),
+  windowC: overworld(6, 28),
+  wellA: overworld(4, 30),
+  wellB: overworld(5, 30),
+  signA: overworld(7, 30)
+} as const;
+
 /** Free-standing trees on transparent backgrounds, drawn over grass. */
 export const TREE_TILES: readonly TileRef[] = [overworld(8, 7), overworld(8, 8), overworld(8, 9)];
 

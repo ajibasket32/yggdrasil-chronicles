@@ -382,6 +382,12 @@ Not deferred, not out of scope — found while landing the wave, and scheduled.
 
 ### #223 — Draw town buildings from the tileset, not from `graphics.fillRect`
 
+**DONE 2026-08-06.** The premise of the deferral was wrong: decoding rows 26-30,
+columns 4-9 shows complete one-tile buildings (72-96% opaque), not fragments.
+`BUILDING_TILES` names them and `paintSettlement` composes hall, houses, hut
+and well, tinted by the regional wash; Emberwake keeps its kiln glow and
+Larkspire its dome as accents over the same layout.
+
 #119 converted the ground: towns, wilderness and dungeons now draw from
 `punyworld-overworld.png` and `everrogue-tileset.png`, with a real orchard, a
 real dirt road, water that looks like water, and a stone-framed cavern. The
