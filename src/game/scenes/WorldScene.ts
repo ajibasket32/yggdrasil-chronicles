@@ -1614,7 +1614,7 @@ export class WorldScene extends Phaser.Scene {
       : "";
     // Progress toward the next level, which the game showed nowhere at all.
     const experienceLine = `EXP ${member.experienceIntoLevel}/${member.experienceForNextLevel} to level ${member.level + 1}`;
-    return `${this.snapshot.party.map((candidate, index) => `${index === this.partyIndex ? "›" : " "} ${candidate.name}  Lv ${candidate.level}  ${candidate.job}`).join("\n")}\n\n${member.name.toUpperCase()}\nHP ${member.hp}/${member.maxHp}    MP ${member.mp}/${member.maxMp}\n${experienceLine}\n${statLine}\n\nEQUIPPED\nWeapon: ${equipment.weapon?.name ?? "Empty"}\nArmor: ${equipment.armor?.name ?? "Empty"}\nAccessory: ${equipment.accessory?.name ?? "Empty"}\n\nRight to review jobs · Left to manage equipment`;
+    return `${this.snapshot.party.map((candidate, index) => `${index === this.partyIndex ? "›" : " "} ${candidate.name}  Lv ${candidate.level}  ${candidate.job}`).join("\n")}\n\n${member.name.toUpperCase()}\nHP ${member.hp}/${member.maxHp}    MP ${member.mp}/${member.maxMp}\n${experienceLine}\n${statLine}${member.trait ? `\n${member.trait}` : ""}\n\nEQUIPPED\nWeapon: ${equipment.weapon?.name ?? "Empty"}\nArmor: ${equipment.armor?.name ?? "Empty"}\nAccessory: ${equipment.accessory?.name ?? "Empty"}\n\nRight to review jobs · Left to manage equipment`;
   }
 
   private shopOverlayContent(): string {

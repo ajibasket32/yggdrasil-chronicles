@@ -27,6 +27,13 @@ export interface Stats {
   charisma: number;
 }
 
+/**
+ * Innate ancestry traits, applied by the engine during combat. Derived from
+ * `raceId` at battle assembly and carried on battle copies only — never
+ * persisted, so the save schema does not know the field.
+ */
+export type TraitId = "trait.hearthfire" | "trait.rootspeaker" | "trait.stoneguard" | "trait.wayfinder";
+
 export interface Combatant {
   id: EntityId;
   name: string;
@@ -44,6 +51,8 @@ export interface Combatant {
    * 40% stun could lock a boss out of its own fight.
    */
   statusResistance?: Partial<Record<StatusId, number>>;
+  /** See TraitId — battle-time only, derived from ancestry, never saved. */
+  traits?: readonly TraitId[];
   isPlayerControlled: boolean;
 }
 

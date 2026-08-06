@@ -370,6 +370,7 @@ export class TitleScene extends Phaser.Scene {
         `STR ${preview.stats.strength}  DEX ${preview.stats.dexterity}  AGI ${preview.stats.agility}  VIT ${preview.stats.vitality}`,
         `INT ${preview.stats.intellect}  WIS ${preview.stats.wisdom}  CHA ${preview.stats.charisma}`,
         `Forms: ${preview.startingSkillNames.join(", ")}`,
+        preview.trait ? `Trait: ${preview.trait}` : "",
         preview.resists.length ? `Resists: ${preview.resists.join(", ")}` : "",
         preview.vulnerableTo.length ? `Weak to: ${preview.vulnerableTo.join(", ")}` : "",
         "",

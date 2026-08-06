@@ -29,6 +29,8 @@ export interface PartyMemberView {
   id: string;
   name: string;
   ancestry: string;
+  /** The ancestry's innate trait, as "Name — what it does." Empty when none. */
+  trait?: string;
   job: string;
   level: number;
   hp: number;
@@ -96,6 +98,8 @@ export interface BuildPreview {
   /** The authored build notes — written for every loadout and never displayed. */
   strengths: string[];
   counters: string[];
+  /** The ancestry's innate trait, as "Name — what it does." Empty when the ancestry has none. */
+  trait: string;
   /** Elements this build resists, and elements it is weak to, in plain words. */
   resists: string[];
   vulnerableTo: string[];

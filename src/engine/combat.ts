@@ -3,7 +3,8 @@ import type {
   Element,
   EntityId,
   RewardTier,
-  StatusInstance
+  StatusInstance,
+  TraitId
 } from "../shared/types";
 import { createRng, nextRandom, randomChance, randomInt, type RngState } from "./rng";
 
@@ -152,6 +153,10 @@ export function damageOverTimeAmount(potency: number, targetMaxHp: number): numb
  * cuts what the target takes; both read the instance's own potency so a
  * stronger application is expressible without new status ids.
  */
+function hasTrait(combatant: Combatant, trait: TraitId): boolean {
+  return combatant.traits?.includes(trait) ?? false;
+}
+
 function offenceMultiplier(actor: Combatant): number {
   const weaken = statusPotency(actor, "weaken");
   return weaken === undefined ? 1 : Math.max(0.1, 1 - weaken);
@@ -159,7 +164,10 @@ function offenceMultiplier(actor: Combatant): number {
 
 function defenceMultiplier(target: Combatant): number {
   const fortify = statusPotency(target, "fortify");
-  const guard = target.statuses.some((status) => status.id === "guard") ? 0.5 : 1;
+  // Stoneguard makes the Guard action itself stronger — the trait rewards the
+  // stance, not passive existence, so it deepens a choice instead of a stat.
+  const guardStrength = hasTrait(target, "trait.stoneguard") ? 0.35 : 0.5;
+  const guard = target.statuses.some((status) => status.id === "guard") ? guardStrength : 1;
   const fortified = fortify === undefined ? 1 : Math.max(0.1, 1 - fortify);
   return guard * fortified;
 }
@@ -249,7 +257,10 @@ export function createCombatState(party: Combatant[], enemies: Combatant[], seed
 function initiativeAgility(combatant: Combatant): number {
   const haste = statusPotency(combatant, "haste") ?? 0;
   const slow = statusPotency(combatant, "slow") ?? 0;
-  return combatant.stats.agility * (1 + haste) * Math.max(0.1, 1 - slow);
+  // Wayfinder reads as speed without inflating the agility stat itself: it
+  // moves the character up the order but does not change evasion or damage.
+  const wayfinder = hasTrait(combatant, "trait.wayfinder") ? 3 : 0;
+  return (combatant.stats.agility + wayfinder) * (1 + haste) * Math.max(0.1, 1 - slow);
 }
 
 export function getInitiativeOrder(state: CombatState): EntityId[] {
@@ -405,9 +416,12 @@ export function resolveCombatAction(
   const varianceRoll = nextRandom(criticalRoll.rng);
   state = { ...state, rng: varianceRoll.rng };
   if (skill.healing) {
+    // Hearthfire is on the RECEIVER: any mender goes further on a hearthborn,
+    // which makes the trait matter in every party composition.
+    const hearthfire = hasTrait(targetMatch.combatant, "trait.hearthfire") ? 1.2 : 1;
     const amount = Math.max(
       1,
-      Math.round((skill.power + actorMatch.combatant.stats.wisdom * 1.5) * (0.95 + varianceRoll.value * 0.1))
+      Math.round((skill.power + actorMatch.combatant.stats.wisdom * 1.5) * (0.95 + varianceRoll.value * 0.1) * hearthfire)
     );
     const healed = {
       ...targetMatch.combatant,
@@ -446,9 +460,12 @@ export function resolveCombatAction(
     const statusRoll = randomChance(state.rng, effectiveChance);
     state = { ...state, rng: statusRoll.rng };
     if (statusRoll.value) {
+      // Rootspeaker shortens afflictions on the target by one round, floor of
+      // one — the status still lands, it just loses its grip sooner.
+      const rootspeaker = hasTrait(target, "trait.rootspeaker") ? 1 : 0;
       target = addOrRefreshStatus(target, {
         id: skill.status.id,
-        remainingTurns: Math.max(1, skill.status.turns),
+        remainingTurns: Math.max(1, skill.status.turns - rootspeaker),
         potency: Math.max(0, skill.status.potency)
       });
       events.push({ type: "status_applied", targetId: target.id, status: skill.status.id });

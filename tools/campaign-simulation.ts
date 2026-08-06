@@ -154,6 +154,11 @@ function grownStats(level: number, adjustment: Partial<Stats>): Stats {
   ) as Stats;
 }
 
+/**
+ * Ancestry traits are deliberately omitted here: the blueprints carry no
+ * ancestry, and a trait-less simulated party is a conservative floor — a real
+ * party with Hearthfire or Stoneguard only does better than these numbers.
+ */
 function createPartyCombatant(blueprint: PartyBlueprint): Combatant {
   const stats = grownStats(blueprint.level, blueprint.stats);
   return {

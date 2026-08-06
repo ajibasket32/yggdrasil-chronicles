@@ -38,7 +38,7 @@ import {
   statsForBuild
 } from "./characters";
 import { enemyCombatant, enemyContentId } from "./enemies";
-import { CONCORD_CHOICES, ENEMY_ELEMENTS, SKILLS } from "../content";
+import { CONCORD_CHOICES, ENEMY_ELEMENTS, SKILLS, traitForAncestry, traitIdsForAncestry } from "../content";
 import { actionEconomyScale, difficultyOf, DIFFICULTY_REWARD_MULTIPLIER } from "../engine";
 import {
   ANCESTRY_TINTS,
@@ -714,6 +714,9 @@ export class EngineGameBridge implements GameBridge {
       // Stated up front rather than discovered by dying to it. GAME_DESIGN.md
       // promises strategy "without hidden formulas"; a resistance the player
       // cannot see before committing to a build is exactly a hidden formula.
+      trait: traitForAncestry(ancestryId)
+        ? `${traitForAncestry(ancestryId)!.name} — ${traitForAncestry(ancestryId)!.description}`
+        : "",
       resists: Object.entries(loadout.elementalAffinities)
         .filter(([, value]) => value < 0)
         .map(([element]) => titleCase(element)),
@@ -1127,7 +1130,10 @@ export class EngineGameBridge implements GameBridge {
         ...member,
         stats,
         hp: Math.min(stats.maxHp, member.hp + Math.max(0, stats.maxHp - member.stats.maxHp)),
-        mp: Math.min(stats.maxMp, member.mp + Math.max(0, stats.maxMp - member.stats.maxMp))
+        mp: Math.min(stats.maxMp, member.mp + Math.max(0, stats.maxMp - member.stats.maxMp)),
+        // Ancestry traits ride the battle copy only: derived from raceId here,
+        // applied by the engine, never persisted into the save.
+        traits: traitIdsForAncestry(member.raceId)
       };
     });
     const active: ActiveBattle = {
@@ -2350,6 +2356,9 @@ export class EngineGameBridge implements GameBridge {
       id: member.id,
       name: member.name,
       ancestry: ancestryName,
+      trait: traitForAncestry(member.raceId)
+        ? `${traitForAncestry(member.raceId)!.name} — ${traitForAncestry(member.raceId)!.description}`
+        : undefined,
       job: jobName,
       level: member.level,
       // Progress toward the next level, which the game never showed anywhere.
