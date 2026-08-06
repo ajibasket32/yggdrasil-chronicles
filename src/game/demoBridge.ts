@@ -348,6 +348,10 @@ export class DemoGameBridge implements GameBridge {
     return { success: false, message: "Backup restore is unavailable in the demo bridge." };
   }
 
+  craftRemedy(_recipeId: string): GameCommandResult {
+    return { success: false, message: "Trail remedies are unavailable in the demo bridge." };
+  }
+
   private emit(): void {
     const snapshot = this.getSnapshot();
     for (const listener of this.listeners) listener(snapshot);

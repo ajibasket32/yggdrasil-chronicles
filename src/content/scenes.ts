@@ -95,7 +95,8 @@ export const scenes: readonly SceneDefinition[] = [
     trigger: { kind: "location_first_visit", locationId: "location.emberwake" },
     lines: [
       { speaker: "", text: "Emberwake works in shifts, and the sky above it has not been properly dark in a generation." },
-      { speaker: "", text: "Basalt, brass, and the low constant sound of something being refined out of something else." }
+      { speaker: "", text: "Basalt, brass, and the low constant sound of something being refined out of something else." },
+      { speaker: "", text: "Between shift bells, delvers trade road-lore for news: how to steep, bind and temper what a pack already carries. The party listens well. Trail remedies can now be worked from the system menu." }
     ]
   },
   {

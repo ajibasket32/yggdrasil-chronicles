@@ -57,7 +57,7 @@ const CURIO_POINTS: Readonly<Record<string, Point>> = {
 const HUD_X = MAP_COLUMNS * TILE;
 const EQUIPMENT_SLOTS = ["weapon", "armor", "accessory"] as const;
 /** Must match the length of the `commands` array built in overlayContent's "system" branch. */
-const SYSTEM_MENU_COMMAND_COUNT = 17;
+const SYSTEM_MENU_COMMAND_COUNT = 18;
 
 /** Load-menu ordering, matching SAVE_SLOTS in the save module. */
 const SAVE_SLOT_ORDER = ["autosave", "quick", "manual-1", "manual-2", "manual-3"] as const;
@@ -113,6 +113,7 @@ export class WorldScene extends Phaser.Scene {
   private systemIndex = 0;
   /** Which codex section is open; the codex pages a section at a time. */
   private codexIndex = 0;
+  private remedyIndex = 0;
   private inventoryIndex = 0;
   private partyIndex = 0;
   private partyJobIndex = 0;
@@ -426,6 +427,10 @@ export class WorldScene extends Phaser.Scene {
     }
     if (this.overlayKind === "codex") {
       this.moveCodex(direction === "up" || direction === "left" ? -1 : 1);
+      return;
+    }
+    if (this.overlayKind === "remedies") {
+      this.moveRemedy(direction === "up" || direction === "left" ? -1 : 1);
       return;
     }
     if (this.overlayKind === "map") {
@@ -1003,6 +1008,10 @@ export class WorldScene extends Phaser.Scene {
       await this.confirmJournalTrack();
       return;
     }
+    if (this.overlayKind === "remedies") {
+      await this.confirmRemedy();
+      return;
+    }
     if (this.overlayKind === "ending") {
       this.drawCredits();
       return;
@@ -1314,6 +1323,8 @@ export class WorldScene extends Phaser.Scene {
           : "Arrows / D-pad  Select     Enter / A  Confirm     Esc / B  Close"
         : kind === "codex"
           ? "↑↓  Turn page     Esc / B  Close"
+          : kind === "remedies"
+            ? "↑↓  Select     Enter / A  Craft     Esc / B  Close"
           : kind === "map"
             ? "↑↓  Select     Enter / A  Travel     Esc / B  Close"
             : kind === "journal"
@@ -1392,6 +1403,23 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /** Pages the codex a section at a time; wrapping keeps it reachable in both directions. */
+  private moveRemedy(delta: number): void {
+    playSound(this, "sfx.cursor");
+    const count = this.snapshot.remedies?.recipes.length ?? 0;
+    if (count === 0) return;
+    this.remedyIndex = Phaser.Math.Wrap(this.remedyIndex + delta, 0, count);
+    this.redrawStaticOverlay("remedies");
+  }
+
+  private async confirmRemedy(): Promise<void> {
+    const recipe = this.snapshot.remedies?.recipes[this.remedyIndex];
+    if (!recipe) return;
+    const result = await this.bridge.craftRemedy(recipe.id);
+    playSound(this, result.success ? "sfx.coin" : "sfx.miss");
+    this.showToast(result.message);
+    this.redrawStaticOverlay("remedies");
+  }
+
   private moveCodex(delta: number): void {
     playSound(this, "sfx.cursor");
     this.codexIndex = Phaser.Math.Wrap(this.codexIndex + delta, 0, codexSections.length + 1);
@@ -1399,6 +1427,16 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private overlayContent(kind: OverlayKind): string {
+    if (kind === "remedies") {
+      const remedies = this.snapshot.remedies;
+      if (!remedies?.unlocked) return "The party has not learned trail remedies yet.";
+      const rows = remedies.recipes.map((recipe, index) => {
+        const parts = recipe.inputs.map((input) => `${input.name} ${Math.min(input.have, 99)}/${input.need}`).join("  ·  ");
+        const ready = recipe.craftable ? "" : "   (short)";
+        return `${index === this.remedyIndex ? "›" : " "} ${recipe.name} — ${recipe.outputQuantity} × ${recipe.outputName}${ready}\n   ${recipe.description}\n   Needs: ${parts}`;
+      });
+      return `The delvers' ledger. Craft anywhere; the pack pays.\n\n${rows.join("\n\n")}`;
+    }
     if (kind === "codex") {
       const pageCount = codexSections.length + 1;
       // The final page is the bestiary, built from the per-species defeat
@@ -1493,6 +1531,9 @@ export class WorldScene extends Phaser.Scene {
       "Import into a Slot…",
       "Delete a Save…",
       `Restore a Backup…${this.backupChoices.length ? `   (${this.backupChoices.length})` : ""}`,
+      this.snapshot.remedies?.unlocked
+        ? "Trail Remedies…"
+        : "Trail Remedies  — a craft the road east still holds",
       `High Contrast: ${gameSettingsStore.get().highContrast ? "ON" : "OFF"}`,
       `Text Size: ${gameSettingsStore.get().textSize.toUpperCase()}`,
       `Reduced Motion: ${gameSettingsStore.get().reducedMotion ? "ON" : "OFF"}`,
@@ -2011,23 +2052,33 @@ export class WorldScene extends Phaser.Scene {
       this.openSlotPicker("restore");
       return;
     }
-    if (this.systemIndex >= 7 && this.systemIndex <= 13) {
+    if (this.systemIndex === 7) {
+      if (!this.snapshot.remedies?.unlocked) {
+        this.showToast("Emberwake's delvers teach this, when the road reaches them.");
+        return;
+      }
+      this.closeOverlay();
+      this.remedyIndex = 0;
+      this.toggleOverlay("remedies");
+      return;
+    }
+    if (this.systemIndex >= 8 && this.systemIndex <= 14) {
       const settings = gameSettingsStore.get();
-      if (this.systemIndex === 7) gameSettingsStore.update({ highContrast: !settings.highContrast });
-      else if (this.systemIndex === 8) gameSettingsStore.update({ textSize: nextTextSize(settings.textSize) });
-      else if (this.systemIndex === 9) gameSettingsStore.update({ reducedMotion: !settings.reducedMotion });
-      else if (this.systemIndex === 10) gameSettingsStore.update({ soundEnabled: !settings.soundEnabled });
-      else if (this.systemIndex === 11) gameSettingsStore.update({ soundVolume: settings.soundVolume >= 1 ? 0 : Math.min(1, settings.soundVolume + 0.1) });
-      else if (this.systemIndex === 12) gameSettingsStore.update({ musicEnabled: !settings.musicEnabled });
+      if (this.systemIndex === 8) gameSettingsStore.update({ highContrast: !settings.highContrast });
+      else if (this.systemIndex === 9) gameSettingsStore.update({ textSize: nextTextSize(settings.textSize) });
+      else if (this.systemIndex === 10) gameSettingsStore.update({ reducedMotion: !settings.reducedMotion });
+      else if (this.systemIndex === 11) gameSettingsStore.update({ soundEnabled: !settings.soundEnabled });
+      else if (this.systemIndex === 12) gameSettingsStore.update({ soundVolume: settings.soundVolume >= 1 ? 0 : Math.min(1, settings.soundVolume + 0.1) });
+      else if (this.systemIndex === 13) gameSettingsStore.update({ musicEnabled: !settings.musicEnabled });
       else gameSettingsStore.update({ musicVolume: settings.musicVolume >= 1 ? 0 : Math.min(1, settings.musicVolume + 0.1) });
       playSound(this, "sfx.confirm");
       // The palette and type scale changed under the whole scene, but the map
       // was drawn before that. Repaint it once the menu is out of the way.
-      if (this.systemIndex === 7 || this.systemIndex === 8) this.restyleOnClose = true;
+      if (this.systemIndex === 8 || this.systemIndex === 9) this.restyleOnClose = true;
       this.drawSystemOverlay();
       return;
     }
-    if (this.systemIndex === 14) {
+    if (this.systemIndex === 15) {
       // Report what actually happened: resting can now be refused for want of
       // coin or camp supplies, and the two forms restore different things.
       const result = await this.bridge.rest();
@@ -2035,7 +2086,7 @@ export class WorldScene extends Phaser.Scene {
       this.showToast(result.message);
       return;
     }
-    if (this.systemIndex === 15) {
+    if (this.systemIndex === 16) {
       this.closeOverlay();
       this.codexIndex = 0;
       this.toggleOverlay("codex");

@@ -1,7 +1,7 @@
 import type { Element, QuestState, QuestStepKind, StatusId } from "../shared/types";
 
 export type Direction = "up" | "down" | "left" | "right";
-export type OverlayKind = "journal" | "inventory" | "party" | "system" | "shop" | "ending" | "codex" | "map";
+export type OverlayKind = "journal" | "inventory" | "party" | "system" | "shop" | "ending" | "codex" | "map" | "remedies";
 export type BattleAction = "attack" | "skill" | "item" | "guard" | "escape";
 export type GameSaveSlot = "autosave" | "quick" | "manual-1" | "manual-2" | "manual-3";
 
@@ -316,6 +316,11 @@ export interface GameSnapshot {
     kind: "town" | "wilderness" | "dungeon";
     current: boolean;
   }>;
+  /** The trail-remedy ledger: unlocked mid-campaign, then craftable anywhere. */
+  remedies?: {
+    unlocked: boolean;
+    recipes: RemedyView[];
+  };
   /** True once this location's searchable curio has been claimed. */
   curioSearched?: boolean;
   /** Species the party has felled, with what has been learned of each. */
@@ -332,6 +337,16 @@ export interface GameSnapshot {
    */
   storageAvailable: boolean;
   chronicleHint: string;
+}
+
+export interface RemedyView {
+  id: string;
+  name: string;
+  description: string;
+  outputName: string;
+  outputQuantity: number;
+  craftable: boolean;
+  inputs: Array<{ name: string; need: number; have: number }>;
 }
 
 export interface SaveSlotSummaryView {
@@ -426,6 +441,8 @@ export interface GameBridge {
   listBackups(): BackupView[] | Promise<BackupView[]>;
   /** Puts an archived record back in its slot and loads it. */
   restoreBackup(backupId: string): GameCommandResult | Promise<GameCommandResult>;
+  /** Crafts one trail remedy, once the mid-campaign ledger is known. */
+  craftRemedy(recipeId: string): GameCommandResult | Promise<GameCommandResult>;
 }
 
 export interface GameLaunchOptions {

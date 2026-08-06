@@ -38,7 +38,8 @@ import {
   statsForBuild
 } from "./characters";
 import { enemyCombatant, enemyContentId } from "./enemies";
-import { CONCORD_CHOICES, ENEMY_ELEMENTS, SKILLS, traitForAncestry, traitIdsForAncestry } from "../content";
+import { CONCORD_CHOICES, ENEMY_ELEMENTS, recipes, SKILLS, TRAIL_REMEDIES_FLAG, traitForAncestry, traitIdsForAncestry } from "../content";
+import { canCraft, craftRecipe } from "../engine";
 import { actionEconomyScale, difficultyOf, DIFFICULTY_REWARD_MULTIPLIER } from "../engine";
 import {
   ANCESTRY_TINTS,
@@ -334,6 +335,22 @@ export class EngineGameBridge implements GameBridge {
           current: candidate.id === this.#state?.world.currentLocationId
         })),
       curioSearched: this.#state.world.flags[curioFlagFor(this.#state.world.currentLocationId)] === true,
+      remedies: {
+        unlocked: this.#state.world.flags[TRAIL_REMEDIES_FLAG] === true,
+        recipes: recipes.map((recipe) => ({
+          id: recipe.id,
+          name: recipe.name,
+          description: recipe.description,
+          outputName: items.find(({ id }) => id === recipe.outputItemId)?.name ?? recipe.outputItemId,
+          outputQuantity: recipe.outputQuantity,
+          craftable: canCraft(this.#state?.inventory ?? [], recipe),
+          inputs: recipe.inputs.map((input) => ({
+            name: items.find(({ id }) => id === input.itemId)?.name ?? input.itemId,
+            need: input.quantity,
+            have: this.#state?.inventory.find(({ itemId }) => itemId === input.itemId)?.quantity ?? 0
+          }))
+        }))
+      },
       bestiary: this.buildBestiary(),
       inventory: this.#state.inventory.flatMap((stack) => {
         const definition = items.find(({ id }) => id === stack.itemId);
@@ -541,6 +558,11 @@ export class EngineGameBridge implements GameBridge {
     this.#saveSlots.add(slot);
     this.#hasSave = true;
     this.#lastPlayClockMs = this.#now();
+    // A chronicle that reached Emberwake before this system shipped has
+    // earned the ledger; grant it on load rather than never.
+    if (loaded.world.discoveredLocationIds.includes("location.emberwake")) {
+      this.unlockTrailRemedies("location.emberwake");
+    }
     const recoveredCanonicalState = this.applyCompletedQuestRewards();
     const recoveredLegacyEnding = this.backfillLegacyEndingChoice();
     if (recoveredCanonicalState || recoveredLegacyEnding) await this.persist(slot);
@@ -795,11 +817,59 @@ export class EngineGameBridge implements GameBridge {
       }
     };
     this.applyInventoryObjectives();
+    this.unlockTrailRemedies(locationId);
     this.advanceCampaign();
     this.applyCompletedQuestRewards();
     this.queueScene((trigger) => trigger.kind === "location_first_visit" && trigger.locationId === locationId);
     await this.persist("autosave");
     this.enqueueNarrativeCheckpoint("world_event", `The party crossed into ${locationId.replace("location.", "").replaceAll("-", " ")}.`);
+  }
+
+  /**
+   * The mid-game system unlock: Emberwake's delvers teach the trail-remedy
+   * ledger the first time the party reaches the Cinder March's city. Before
+   * this flag the system menu shows the ledger as something the road ahead
+   * still holds; after it, crafting is available anywhere.
+   */
+  private unlockTrailRemedies(locationId: string): void {
+    if (locationId !== "location.emberwake" || !this.#state) return;
+    if (this.#state.world.flags[TRAIL_REMEDIES_FLAG] === true) return;
+    this.#state = {
+      ...this.#state,
+      world: {
+        ...this.#state.world,
+        flags: { ...this.#state.world.flags, [TRAIL_REMEDIES_FLAG]: true },
+        chronicle: [
+          ...this.#state.world.chronicle,
+          {
+            id: `chronicle.remedies.${this.#state.world.chronicle.length}`,
+            worldMinute: this.#state.world.worldMinutes,
+            title: "The Delvers' Ledger",
+            body: "Keva's crews trade road-lore over the shift bell: how to steep, bind and temper what the party already carries. Trail remedies can now be worked from the system menu.",
+            tags: ["system", "emberwake"]
+          }
+        ]
+      }
+    };
+  }
+
+  /** Crafts one trail remedy, if the ledger is known and the pack can pay. */
+  async craftRemedy(recipeId: string): Promise<GameCommandResult> {
+    const state = this.requireState();
+    if (state.world.flags[TRAIL_REMEDIES_FLAG] !== true) {
+      return commandFailure("The party has not learned trail remedies yet.");
+    }
+    const recipe = recipes.find(({ id }) => id === recipeId);
+    if (!recipe) return commandFailure("No such remedy.");
+    const result = craftRecipe(state.inventory, recipe);
+    if (!result.crafted) {
+      return commandFailure("The pack is short an ingredient for that remedy.");
+    }
+    this.#state = { ...state, inventory: result.inventory };
+    this.applyInventoryObjectives();
+    await this.persist("autosave");
+    const output = items.find(({ id }) => id === recipe.outputItemId)?.name ?? recipe.outputItemId;
+    return { success: true, message: `${recipe.name}: the party gains ${recipe.outputQuantity} × ${output}.` };
   }
 
   async interactNpc(npcId: string): Promise<InteractionView> {

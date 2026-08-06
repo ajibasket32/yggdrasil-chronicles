@@ -110,7 +110,7 @@ test("system menu exposes all manual save slots and can return to the title", as
   // there. Update both walks in this file together.
   await pressRepeatedly(page, "ArrowDown", 2);
   await page.keyboard.press("Enter");
-  await pressRepeatedly(page, "ArrowDown", 14);
+  await pressRepeatedly(page, "ArrowDown", 15);
   await page.keyboard.press("Enter");
   await expect(page.locator("#app")).toHaveAttribute("data-scene", "title");
 });
@@ -137,7 +137,7 @@ test("manual load restores the selected chronicle from the title", async ({ page
 
   // Return to the title through the system menu, then load Manual Slot 1.
   await page.keyboard.press("Escape");
-  await pressRepeatedly(page, "ArrowDown", 16);
+  await pressRepeatedly(page, "ArrowDown", 17);
   await page.keyboard.press("Enter");
   await expect(app).toHaveAttribute("data-scene", "title");
   await pressRepeatedly(page, "ArrowDown", 2);

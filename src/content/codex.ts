@@ -66,6 +66,11 @@ export const codexSections: readonly CodexSection[] = [
         body: "Ordinary encounters can be escaped. Named foes cannot, and the game will not offer you the choice — refusing to flee costs you nothing."
       },
       {
+        id: "codex.remedies",
+        title: "Trail remedies",
+        body: "Emberwake's delvers teach the remedy ledger the first time the party reaches the Cinder March. From then on, the system menu can steep, bind and temper what the pack already carries — tonics from leaves, rations from tonics, cures from cold embers — anywhere on the road. Crafting never beats a shop's price; it beats the shop's distance."
+      },
+      {
         id: "codex.elements",
         title: "Elements",
         body: "Every form carries an element, and every foe answers each element differently. You learn what a creature resists by striking it with that element; what you learn is remembered for its whole kind, and shown beside it from then on."
