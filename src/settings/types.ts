@@ -83,6 +83,9 @@ export interface GameSettings {
   reducedMotion: boolean;
   soundEnabled: boolean;
   soundVolume: number;
+  /** Background music, separately from effects: many players keep one and not the other. */
+  musicEnabled: boolean;
+  musicVolume: number;
   keyBindings: KeyboardBindings;
 }
 
@@ -93,6 +96,8 @@ export const DEFAULT_GAME_SETTINGS: Readonly<GameSettings> = {
   reducedMotion: false,
   soundEnabled: true,
   soundVolume: 0.65,
+  musicEnabled: true,
+  musicVolume: 0.5,
   keyBindings: { ...DEFAULT_KEYBOARD_BINDINGS }
 };
 

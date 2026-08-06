@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { COLORS } from "../runtime";
+import { MUSIC_TRACKS } from "../music";
 import { DUNGEON_SHEET, OVERWORLD_SHEET, SOURCE_TILE } from "../tileset";
 
 export class BootScene extends Phaser.Scene {
@@ -54,6 +55,9 @@ export class BootScene extends Phaser.Scene {
     this.load.audio("sfx.coin", `${audio}/handleCoins2.ogg`);
     this.load.audio("sfx.cursor", `${audio}/cloth1.ogg`);
     this.load.audio("sfx.miss", `${audio}/cloth3.ogg`);
+    // The score: five CC0 tracks catalogued in ASSETS.md. Loaded like any
+    // other asset so the release audit sees the paths.
+    for (const [key, path] of Object.entries(MUSIC_TRACKS)) this.load.audio(key, path);
   }
 
   create(): void {

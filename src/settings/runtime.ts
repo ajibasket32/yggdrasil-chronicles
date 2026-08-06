@@ -92,6 +92,8 @@ function settingsEqual(left: GameSettings, right: GameSettings): boolean {
     && left.reducedMotion === right.reducedMotion
     && left.soundEnabled === right.soundEnabled
     && left.soundVolume === right.soundVolume
+    && left.musicEnabled === right.musicEnabled
+    && left.musicVolume === right.musicVolume
     && REBINDABLE_ACTIONS.every((action) => {
       const leftCodes = left.keyBindings[action];
       const rightCodes = right.keyBindings[action];
@@ -117,6 +119,8 @@ export function sanitizeGameSettings(value: unknown): GameSettings {
     reducedMotion: readBoolean(value.reducedMotion, DEFAULT_GAME_SETTINGS.reducedMotion),
     soundEnabled: readBoolean(value.soundEnabled, DEFAULT_GAME_SETTINGS.soundEnabled),
     soundVolume: readVolume(value.soundVolume, DEFAULT_GAME_SETTINGS.soundVolume),
+    musicEnabled: readBoolean(value.musicEnabled, DEFAULT_GAME_SETTINGS.musicEnabled),
+    musicVolume: readVolume(value.musicVolume, DEFAULT_GAME_SETTINGS.musicVolume),
     keyBindings: readKeyBindings(value.keyBindings)
   };
 }

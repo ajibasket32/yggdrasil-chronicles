@@ -13,6 +13,9 @@ test("a touch device can start and play a chronicle with taps alone", async ({ p
   const app = page.locator("#app");
   await expect(page.locator("canvas")).toBeVisible();
   await expect(app).toHaveAttribute("data-touch-controls", "on");
+  // Taps before the title scene exists are lost: boot now decodes the score,
+  // so wait for the scene like every keyboard walk does.
+  await expect(app).toHaveAttribute("data-scene", "title");
 
   const confirm = page.locator(".touch-button.pad-a");
   const right = page.locator(".touch-button.pad-right");

@@ -212,7 +212,7 @@ test.describe("@playtest", () => {
     await page.keyboard.press("Enter");
     await page.waitForTimeout(400);
     await shot(page, "36-after-manual-save");
-    await pressRepeatedly(page, "ArrowDown", 14);
+    await pressRepeatedly(page, "ArrowDown", 16);
     await page.keyboard.press("Enter");
     await expect(app).toHaveAttribute("data-scene", "title");
     await pressRepeatedly(page, "ArrowDown", 2);

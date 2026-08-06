@@ -32,7 +32,7 @@ Open `http://127.0.0.1:5173`. The game remains playable without an AI key.
 All of the above keys are rebindable from the title screen's Settings menu, and
 from the in-game system menu. Rebinding an action replaces every key assigned to
 it, so binding movement to something else drops the WASD default with it. The
-same menus carry High Contrast, Text Size, Reduced Motion, and audio.
+same menus carry High Contrast, Text Size, Reduced Motion, sound, and music.
 
 Inventory and party screens use the same directional controls. Consumables
 select a party target; gear can be equipped or removed; advanced job branches

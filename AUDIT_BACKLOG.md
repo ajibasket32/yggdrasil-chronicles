@@ -173,7 +173,7 @@ Ordered by genuine dependency and player impact. Rows marked **MERGE →** are t
 | **143** | Add a redundant selection marker to title and character-creation rows | minor | small | game-content | Gold on cream is the sole selection cue on the very first screen. Every other menu in the same file already uses a glyph — an inconsistency as much as an accessibility failure. |
 | **144** | Let a keyboard player cancel an in-progress rebind; add reset-to-defaults | minor | small | game-content | The abort branch is reachable only by gamepad, and a scrambled binding set can currently only be recovered by clearing localStorage. `DEFAULT_KEYBOARD_BINDINGS` is already exported. |
 | **145** | Decide whether mobile is supported — a phone breakpoint exists with no touch input | minor | small | game-content | The CSS actively promises something the input layer cannot deliver. Cheapest coherent answer is to retract the promise; the in-scope answer is a real feature and should be scheduled as one. |
-| **146** | Ship background music | major | large | game-content | **DEFERRED — see Explicitly deferred.** A 20-hour JRPG in silence is not shippable, but no file can be committed until a verified CC0/public-domain source clears ASSETS.md. Everything else (settings axis, `playMusic` helper, cross-fade) can be built ahead of the tracks. |
+| **146** | Ship background music | major | large | game-content | **DONE 2026-08-06** — five verified-CC0 tracks catalogued, wired and packaged; see Explicitly deferred §1 for the resolution record. Was: no file can be committed until a verified CC0/public-domain source clears ASSETS.md. Everything else (settings axis, `playMusic` helper, cross-fade) can be built ahead of the tracks. |
 | **147** | `EngineGameBridge.ts` is 1985 lines and owns everything | major | large | engine-save | Depends on #10, which moves one block for free. Deliberately **last** among engine work: every parallel workstream collides in this file, so splitting it mid-programme maximises merge pain. Split when the churn stops. |
 | **148** | Resolve the WASD documentation drift | minor | medium | docs | Doc-only fix takes minutes; the implementation is a settings migration. Ordered with the other doc reconciliation so the decision is made once. |
 | **149** | Docs promise WASD, negotiation as a combat alternative, and a reserve roster — none exist | major | medium | docs | **Partially MERGE → #148 (WASD) and #20 (reserve).** The negotiation claim is unique to this item. Last because docs must describe the game as built, and by now it is. |
@@ -401,7 +401,17 @@ real terrain rather than as missing art — but it is not finished.
 
 Only items with a genuine external blocker. Nothing is here for being large — #16, #101, #108, #133 and #147 are all large and all scheduled.
 
-### 1. Background music (#146) — blocked by ASSETS.md licensing
+### 1. Background music (#146) — RESOLVED 2026-08-06
+
+Five CC0 tracks are catalogued in ASSETS.md (cynicmusic ×3, pauliuw, RandomMind,
+all OpenGameArt with the dedication stated on each source page), fetched offline
+through `tools/download-assets.ps1`, checksummed, and packaged by the release
+audit. `src/game/music.ts` owns playback: one looping track cross-faded per
+scene (title / town / road / dungeon / battle), settings axis in both menus,
+credits name the composers. The original blocker note is kept below for the
+record.
+
+### 1a. (historical) Background music (#146) — blocked by ASSETS.md licensing
 
 **Blocker:** AGENTS.md forbids runtime asset downloads and ASSETS.md requires every asset carry a verified source URL, author, licence, local path, SHA-256 and modification note. No music track currently clears that bar, and none can be committed until one does. Verified: the ASSETS.md table has 6 rows, all visual or SFX; no audio loop is catalogued.
 

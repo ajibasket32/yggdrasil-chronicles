@@ -153,6 +153,8 @@ describe("persistent game settings", () => {
         reducedMotion: true,
         soundEnabled: false,
         soundVolume: 0.3,
+        musicEnabled: true,
+        musicVolume: 0.4,
         keyBindings: { ...DEFAULT_GAME_SETTINGS.keyBindings }
       },
       game as never,

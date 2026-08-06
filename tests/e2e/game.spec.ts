@@ -110,7 +110,7 @@ test("system menu exposes all manual save slots and can return to the title", as
   // there. Update both walks in this file together.
   await pressRepeatedly(page, "ArrowDown", 2);
   await page.keyboard.press("Enter");
-  await pressRepeatedly(page, "ArrowDown", 12);
+  await pressRepeatedly(page, "ArrowDown", 14);
   await page.keyboard.press("Enter");
   await expect(page.locator("#app")).toHaveAttribute("data-scene", "title");
 });
@@ -137,7 +137,7 @@ test("manual load restores the selected chronicle from the title", async ({ page
 
   // Return to the title through the system menu, then load Manual Slot 1.
   await page.keyboard.press("Escape");
-  await pressRepeatedly(page, "ArrowDown", 14);
+  await pressRepeatedly(page, "ArrowDown", 16);
   await page.keyboard.press("Enter");
   await expect(app).toHaveAttribute("data-scene", "title");
   await pressRepeatedly(page, "ArrowDown", 2);
@@ -252,10 +252,11 @@ test("a rebound journal key persists and controls the world scene", async ({ pag
   const canvas = page.locator("canvas");
   await expect(app).toHaveAttribute("data-scene", "title");
 
-  // Settings -> Keyboard Bindings -> Journal, then capture K.
+  // Settings -> Keyboard Bindings -> Journal, then capture K. The bindings
+  // row sits below the two music rows now.
   await pressRepeatedly(page, "ArrowDown", 3);
   await page.keyboard.press("Enter");
-  await pressRepeatedly(page, "ArrowDown", 5);
+  await pressRepeatedly(page, "ArrowDown", 7);
   await page.keyboard.press("Enter");
   await pressRepeatedly(page, "ArrowDown", 7);
   await page.keyboard.press("Enter");

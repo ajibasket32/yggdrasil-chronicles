@@ -1,5 +1,5 @@
 import "./styles.css";
-import { applyPresentationSettings, createYggdrasilGame, mountTouchControls, prefersTouchControls } from "./game";
+import { applyMusicSettings, applyPresentationSettings, createYggdrasilGame, mountTouchControls, prefersTouchControls } from "./game";
 import { EngineGameBridge } from "./integration/EngineGameBridge";
 import { applySettingsToPhaserGame, gameSettingsStore } from "./settings";
 
@@ -50,4 +50,5 @@ applySettingsToPhaserGame(gameSettingsStore.get(), game);
 gameSettingsStore.subscribe((settings) => {
   applyPresentationSettings(settings);
   applySettingsToPhaserGame(settings, game);
+  applyMusicSettings(game);
 });

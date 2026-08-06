@@ -8,6 +8,7 @@ import {
 } from "../../settings";
 import type { CharacterCreationDraft, Difficulty, GameBridge, GameCommandResult } from "../bridge";
 import { gamepadButtonAction, pollStickDirection, type StickRepeatState } from "../gamepadControls";
+import { playMusic } from "../music";
 import {
   keyboardActionForCode,
   keyboardActionLabel,
@@ -77,6 +78,7 @@ export class TitleScene extends Phaser.Scene {
     this.drawTitleMenu();
     this.bindKeys();
     announceScene("title");
+    playMusic(this, "music.title");
   }
 
   private paintBackdrop(): void {
@@ -215,6 +217,8 @@ export class TitleScene extends Phaser.Scene {
       `REDUCED MOTION      ${settings.reducedMotion ? "ON" : "OFF"}`,
       `SOUND               ${settings.soundEnabled ? "ON" : "OFF"}`,
       `SOUND VOLUME        ${Math.round(settings.soundVolume * 100)}%`,
+      `MUSIC               ${settings.musicEnabled ? "ON" : "OFF"}`,
+      `MUSIC VOLUME        ${Math.round(settings.musicVolume * 100)}%`,
       "KEYBOARD BINDINGS"
     ];
     // The list flows from measured heights: the Text Size row made six rows,
@@ -394,7 +398,7 @@ export class TitleScene extends Phaser.Scene {
       this.loadIndex = Phaser.Math.Wrap(this.loadIndex + delta, 0, MANUAL_SLOTS.length);
       this.drawLoadMenu();
     } else if (this.mode === "settings") {
-      this.settingsIndex = Phaser.Math.Wrap(this.settingsIndex + delta, 0, 6);
+      this.settingsIndex = Phaser.Math.Wrap(this.settingsIndex + delta, 0, 8);
       this.drawSettings();
     } else if (this.mode === "bindings") {
       if (this.capturingBinding) return;
@@ -409,11 +413,11 @@ export class TitleScene extends Phaser.Scene {
 
   private adjust(delta: number): void {
     if (this.mode === "settings") {
-      if (this.settingsIndex === 3) {
-        const current = gameSettingsStore.get().soundVolume;
-        gameSettingsStore.update({
-          soundVolume: Phaser.Math.Clamp(Math.round((current + delta * 0.1) * 10) / 10, 0, 1)
-        });
+      if (this.settingsIndex === 4 || this.settingsIndex === 6) {
+        const settings = gameSettingsStore.get();
+        const current = this.settingsIndex === 4 ? settings.soundVolume : settings.musicVolume;
+        const next = Phaser.Math.Clamp(Math.round((current + delta * 0.1) * 10) / 10, 0, 1);
+        gameSettingsStore.update(this.settingsIndex === 4 ? { soundVolume: next } : { musicVolume: next });
         playSound(this, "sfx.confirm");
         this.drawSettings();
       }
@@ -457,6 +461,8 @@ export class TitleScene extends Phaser.Scene {
       else if (this.settingsIndex === 2) gameSettingsStore.update({ reducedMotion: !settings.reducedMotion });
       else if (this.settingsIndex === 3) gameSettingsStore.update({ soundEnabled: !settings.soundEnabled });
       else if (this.settingsIndex === 4) gameSettingsStore.update({ soundVolume: settings.soundVolume >= 1 ? 0 : Math.min(1, settings.soundVolume + 0.1) });
+      else if (this.settingsIndex === 5) gameSettingsStore.update({ musicEnabled: !settings.musicEnabled });
+      else if (this.settingsIndex === 6) gameSettingsStore.update({ musicVolume: settings.musicVolume >= 1 ? 0 : Math.min(1, settings.musicVolume + 0.1) });
       else {
         this.capturingBinding = false;
         this.drawBindings();

@@ -16,6 +16,7 @@ import { keyboardActionForCode, keyboardCodeLabel } from "../keyboardControls";
 import { windowAround, windowFooter, type OverlayWindow } from "../overlayWindow";
 import { groundTile, tileVariant, treeAt, TREE_TILES } from "../tileset";
 import { getNpcSpawnPoints } from "../npcPlacement";
+import { musicForLocation, playMusic, stopMusic } from "../music";
 import { announceGameStatus, announceScene, COLORS, fontPx, getBridge, motionDuration, playSound, setSceneFlag, TEXT } from "../runtime";
 import {
   getLocationExits,
@@ -56,7 +57,7 @@ const CURIO_POINTS: Readonly<Record<string, Point>> = {
 const HUD_X = MAP_COLUMNS * TILE;
 const EQUIPMENT_SLOTS = ["weapon", "armor", "accessory"] as const;
 /** Must match the length of the `commands` array built in overlayContent's "system" branch. */
-const SYSTEM_MENU_COMMAND_COUNT = 15;
+const SYSTEM_MENU_COMMAND_COUNT = 17;
 
 /** Load-menu ordering, matching SAVE_SLOTS in the save module. */
 const SAVE_SLOT_ORDER = ["autosave", "quick", "manual-1", "manual-2", "manual-3"] as const;
@@ -495,6 +496,7 @@ export class WorldScene extends Phaser.Scene {
     this.player = this.add.image(this.playerGrid.x * TILE + 16, this.playerGrid.y * TILE + 16, "sprite.player");
     this.player.setDepth(10);
     this.applyDayTint();
+    playMusic(this, musicForLocation(kind));
     this.renderHud();
     this.prompt = this.add.text(18, 496, "", {
       ...TEXT.body,
@@ -1200,6 +1202,7 @@ export class WorldScene extends Phaser.Scene {
    * single overlay with no acknowledgement of what it was made from.
    */
   private drawCredits(): void {
+    stopMusic(this);
     this.overlay?.destroy();
     const veil = this.add.rectangle(0, 0, 960, 540, 0x0b1119, 0.96).setOrigin(0);
     const title = this.add.text(480, 84, "YGGDRASIL CHRONICLES", { ...TEXT.title, color: COLORS.gold }).setOrigin(0.5);
@@ -1209,8 +1212,9 @@ export class WorldScene extends Phaser.Scene {
       "An original browser JRPG.",
       "",
       "ENGINE  ·  a deterministic pure-function core, Phaser 3 presentation",
+      "MUSIC  ·  cynicmusic (pixelsphere.org), pauliuw, RandomMind — all CC0",
       "SOUND  ·  Kenney RPG Audio (CC0), unmodified",
-      "SPRITES  ·  Puny Characters pixel pack (CC0)",
+      "SPRITES  ·  Puny Characters & Puny World by Shade, EverRogue tiles by Efilheim (CC0)",
       "",
       "Every road, name and covenant in this chronicle was authored for it.",
       "The rootways remember the choices you made — and the ones you closed.",
@@ -1470,6 +1474,8 @@ export class WorldScene extends Phaser.Scene {
       `Reduced Motion: ${gameSettingsStore.get().reducedMotion ? "ON" : "OFF"}`,
       `Sound: ${gameSettingsStore.get().soundEnabled ? "ON" : "OFF"}`,
       `Sound Volume: ${Math.round(gameSettingsStore.get().soundVolume * 100)}%`,
+      `Music: ${gameSettingsStore.get().musicEnabled ? "ON" : "OFF"}`,
+      `Music Volume: ${Math.round(gameSettingsStore.get().musicVolume * 100)}%`,
       "Rest — lodging or camp",
       // Reachable here as well as by key, so a gamepad player can read the
       // codex without a keyboard.
@@ -1981,13 +1987,15 @@ export class WorldScene extends Phaser.Scene {
       this.openSlotPicker("restore");
       return;
     }
-    if (this.systemIndex >= 7 && this.systemIndex <= 11) {
+    if (this.systemIndex >= 7 && this.systemIndex <= 13) {
       const settings = gameSettingsStore.get();
       if (this.systemIndex === 7) gameSettingsStore.update({ highContrast: !settings.highContrast });
       else if (this.systemIndex === 8) gameSettingsStore.update({ textSize: nextTextSize(settings.textSize) });
       else if (this.systemIndex === 9) gameSettingsStore.update({ reducedMotion: !settings.reducedMotion });
       else if (this.systemIndex === 10) gameSettingsStore.update({ soundEnabled: !settings.soundEnabled });
-      else gameSettingsStore.update({ soundVolume: settings.soundVolume >= 1 ? 0 : Math.min(1, settings.soundVolume + 0.1) });
+      else if (this.systemIndex === 11) gameSettingsStore.update({ soundVolume: settings.soundVolume >= 1 ? 0 : Math.min(1, settings.soundVolume + 0.1) });
+      else if (this.systemIndex === 12) gameSettingsStore.update({ musicEnabled: !settings.musicEnabled });
+      else gameSettingsStore.update({ musicVolume: settings.musicVolume >= 1 ? 0 : Math.min(1, settings.musicVolume + 0.1) });
       playSound(this, "sfx.confirm");
       // The palette and type scale changed under the whole scene, but the map
       // was drawn before that. Repaint it once the menu is out of the way.
@@ -1995,7 +2003,7 @@ export class WorldScene extends Phaser.Scene {
       this.drawSystemOverlay();
       return;
     }
-    if (this.systemIndex === 12) {
+    if (this.systemIndex === 14) {
       // Report what actually happened: resting can now be refused for want of
       // coin or camp supplies, and the two forms restore different things.
       const result = await this.bridge.rest();
@@ -2003,7 +2011,7 @@ export class WorldScene extends Phaser.Scene {
       this.showToast(result.message);
       return;
     }
-    if (this.systemIndex === 13) {
+    if (this.systemIndex === 15) {
       this.closeOverlay();
       this.codexIndex = 0;
       this.toggleOverlay("codex");

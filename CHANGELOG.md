@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Gave the game its score. Five CC0 tracks from OpenGameArt — cynicmusic's
+  town, battle and cavern themes, pauliuw's "The Field of Dreams" for the
+  title, RandomMind's "The Old Tower Inn" for the roads — verified on their
+  source pages, fetched offline, checksummed in ASSETS.md, and packaged by the
+  release audit. One looping track plays at a time and cross-fades between
+  scenes; returning from battle resumes the road's theme. Music has its own
+  ON/OFF and volume in both settings menus, and the credits name the
+  composers. Also fixed in passing: Left/Right on the title settings volume
+  row had stopped working when the Text Size row shifted the list.
+
 - Drew the world from its tilesets. `punyworld-overworld.png` and
   `everrogue-tileset.png` had been committed with verified CC0 provenance since
   the asset catalog was written and were referenced by no code; the world was

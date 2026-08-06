@@ -28,11 +28,32 @@ $downloads = @(
     @{
         Name = 'kenney-rpg-audio.zip'
         Url = 'https://kenney.nl/media/pages/assets/rpg-audio/8e99002d76-1677590336/kenney_rpg-audio.zip'
+    },
+    @{
+        Name = 'music/TownTheme.mp3'
+        Url = 'https://opengameart.org/sites/default/files/TownTheme.mp3'
+    },
+    @{
+        Name = 'music/battleThemeA.mp3'
+        Url = 'https://opengameart.org/sites/default/files/battleThemeA.mp3'
+    },
+    @{
+        Name = 'music/song18_0.mp3'
+        Url = 'https://opengameart.org/sites/default/files/song18_0.mp3'
+    },
+    @{
+        Name = 'music/the_field_of_dreams.mp3'
+        Url = 'https://opengameart.org/sites/default/files/the_field_of_dreams.mp3'
+    },
+    @{
+        Name = 'music/The_Old_Tower_Inn.mp3'
+        Url = 'https://opengameart.org/sites/default/files/The_Old_Tower_Inn.mp3'
     }
 )
 
 foreach ($download in $downloads) {
     $target = Join-Path $resolvedDestination $download.Name
+    New-Item -ItemType Directory -Path (Split-Path $target) -Force | Out-Null
     Invoke-WebRequest -Uri $download.Url -OutFile $target
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash.ToLowerInvariant()
     [PSCustomObject]@{

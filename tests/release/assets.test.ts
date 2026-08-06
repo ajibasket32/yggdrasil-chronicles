@@ -30,7 +30,7 @@ describe("release asset audit", () => {
     const result = auditAssets();
 
     expect(result.valid, result.issues.map((issue) => issue.message).join("\n")).toBe(true);
-    expect(result.catalog).toHaveLength(4);
+    expect(result.catalog).toHaveLength(9);
     expect(result.runtimeAssetReferences).toEqual([
       "/assets/vendor/everrogue-tileset.png",
       "/assets/vendor/kenney-rpg-audio/Audio/bookFlip1.ogg",
@@ -44,6 +44,11 @@ describe("release asset audit", () => {
       "/assets/vendor/kenney-rpg-audio/Audio/handleSmallLeather.ogg",
       "/assets/vendor/kenney-rpg-audio/Audio/knifeSlice.ogg",
       "/assets/vendor/kenney-rpg-audio/Audio/metalLatch.ogg",
+      "/assets/vendor/music/The_Old_Tower_Inn.mp3",
+      "/assets/vendor/music/TownTheme.mp3",
+      "/assets/vendor/music/battleThemeA.mp3",
+      "/assets/vendor/music/song18_0.mp3",
+      "/assets/vendor/music/the_field_of_dreams.mp3",
       "/assets/vendor/puny-characters/Puny-Characters/Archer-Green.png",
       "/assets/vendor/puny-characters/Puny-Characters/Archer-Purple.png",
       "/assets/vendor/puny-characters/Puny-Characters/Character-Base.png",

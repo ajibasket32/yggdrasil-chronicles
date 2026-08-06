@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { gameSettingsStore } from "../../settings";
 import type { BattleAction, BattleView, GameBridge, GameSnapshot } from "../bridge";
 import { gamepadButtonAction, pollStickDirection, type StickRepeatState } from "../gamepadControls";
+import { playMusic } from "../music";
 import { keyboardActionForCode, keyboardCodeLabel } from "../keyboardControls";
 import { announceGameStatus, announceScene, COLORS, fontPx, getBridge, motionDuration, playSound, TEXT } from "../runtime";
 
@@ -60,6 +61,7 @@ export class BattleScene extends Phaser.Scene {
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unsubscribe?.());
     announceScene("battle");
+    playMusic(this, "music.battle");
   }
 
   override update(time: number): void {
