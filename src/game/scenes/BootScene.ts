@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { COLORS } from "../runtime";
 import { MUSIC_TRACKS } from "../music";
+import { PORTRAIT_SHEET, PORTRAIT_SOURCE_SIZE } from "../../content";
 import { DUNGEON_SHEET, OVERWORLD_SHEET, SOURCE_TILE } from "../tileset";
 
 export class BootScene extends Phaser.Scene {
@@ -41,6 +42,11 @@ export class BootScene extends Phaser.Scene {
     this.load.spritesheet("sprite.enemy.small", `${base}/Slime.png`, { frameWidth: 32, frameHeight: 32 });
     this.load.spritesheet("sprite.enemy.humanoid", `${base}/Soldier-Yellow.png`, { frameWidth: 32, frameHeight: 32 });
     this.load.spritesheet("sprite.enemy.boss", `${base}/Character-Base.png`, { frameWidth: 32, frameHeight: 32 });
+    // Speaker portraits: EverFace (Efilheim, CC0), one row of eighteen faces.
+    this.load.spritesheet(PORTRAIT_SHEET, "/assets/vendor/everface.png", {
+      frameWidth: PORTRAIT_SOURCE_SIZE,
+      frameHeight: PORTRAIT_SOURCE_SIZE
+    });
     const audio = "/assets/vendor/kenney-rpg-audio/Audio";
     this.load.audio("sfx.confirm", `${audio}/bookFlip1.ogg`);
     this.load.audio("sfx.step", `${audio}/footstep04.ogg`);

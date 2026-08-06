@@ -30,8 +30,9 @@ describe("release asset audit", () => {
     const result = auditAssets();
 
     expect(result.valid, result.issues.map((issue) => issue.message).join("\n")).toBe(true);
-    expect(result.catalog).toHaveLength(9);
+    expect(result.catalog).toHaveLength(10);
     expect(result.runtimeAssetReferences).toEqual([
+      "/assets/vendor/everface.png",
       "/assets/vendor/everrogue-tileset.png",
       "/assets/vendor/kenney-rpg-audio/Audio/bookFlip1.ogg",
       "/assets/vendor/kenney-rpg-audio/Audio/bookPlace1.ogg",

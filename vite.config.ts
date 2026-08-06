@@ -24,6 +24,7 @@ const runtimeAssetPaths = [
   "/assets/vendor/music/battleThemeA.mp3",
   "/assets/vendor/music/song18_0.mp3",
   "/assets/vendor/music/the_field_of_dreams.mp3",
+  "/assets/vendor/everface.png",
   "/assets/vendor/everrogue-tileset.png",
   "/assets/vendor/punyworld-overworld.png",
   "/assets/vendor/puny-characters/Puny-Characters/Archer-Green.png",

@@ -30,6 +30,10 @@ $downloads = @(
         Url = 'https://kenney.nl/media/pages/assets/rpg-audio/8e99002d76-1677590336/kenney_rpg-audio.zip'
     },
     @{
+        Name = 'everface.png'
+        Url = 'https://opengameart.org/sites/default/files/everface1.0.png'
+    },
+    @{
         Name = 'music/TownTheme.mp3'
         Url = 'https://opengameart.org/sites/default/files/TownTheme.mp3'
     },

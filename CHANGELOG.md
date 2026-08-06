@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Gave every speaker a real face. EverFace (Efilheim — the same CC0 author as
+  the dungeon tileset) ships eighteen pixel portraits in exactly this game's
+  style; all thirty speaker tags now map to a face and a subtle faction wash,
+  each pairing unique and test-enforced. This closes the last item that was
+  blocked on asset provenance: stage two of the speaker-face work, shipped as
+  the texture swap stage one's design promised.
+
 - Split `EngineGameBridge.ts` (3,137 → 2,607 lines): combat skills, enemy
   elements and boss tiers moved to content — killing the balance simulation's
   hand-copied mirror, which had already drifted — difficulty scaling to the

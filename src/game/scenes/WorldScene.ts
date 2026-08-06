@@ -241,7 +241,7 @@ export class WorldScene extends Phaser.Scene {
       parts.push(this.add.rectangle(x, y - 4, 52, 52, COLORS.ink, 0.95).setOrigin(0).setStrokeStyle(2, 0x8aa394));
       const face = this.add.image(x + 26, y + 22, portrait.spriteKey, portrait.frame)
         .setOrigin(0.5)
-        .setScale(1.5)
+        .setDisplaySize(48, 48)
         .setTint(portrait.tint);
       parts.push(face);
     }

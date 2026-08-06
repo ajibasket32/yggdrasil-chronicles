@@ -3,18 +3,10 @@ import { npcs, startingBuildLoadouts } from "../../src/content/campaign";
 import { knownPortraitTags, portraitAppearance } from "../../src/content/portraits";
 import { scenes } from "../../src/content/scenes";
 
+import { PORTRAIT_FRAME_COUNT, PORTRAIT_SHEET } from "../../src/content/portraits";
+
 /** Texture keys BootScene loads. A portrait pointing anywhere else draws nothing. */
-const LOADED_SHEETS = new Set([
-  "sprite.job.vanguard",
-  "sprite.job.ranger",
-  "sprite.job.mender",
-  "sprite.job.shaper",
-  "sprite.job.trickster",
-  "sprite.job.warden",
-  "sprite.enemy.small",
-  "sprite.enemy.humanoid",
-  "sprite.enemy.boss"
-]);
+const LOADED_SHEETS = new Set([PORTRAIT_SHEET]);
 
 describe("speaker portraits", () => {
   it("gives every authored NPC a face", () => {
@@ -27,9 +19,8 @@ describe("speaker portraits", () => {
       const appearance = portraitAppearance(tag);
       expect(appearance, tag).toBeDefined();
       expect(LOADED_SHEETS.has(appearance!.spriteKey), `${tag} -> ${appearance!.spriteKey}`).toBe(true);
-      // 24x8 grids of 32px frames on the character sheets.
       expect(appearance!.frame).toBeGreaterThanOrEqual(0);
-      expect(appearance!.frame).toBeLessThan(192);
+      expect(appearance!.frame).toBeLessThan(PORTRAIT_FRAME_COUNT);
     }
   });
 
