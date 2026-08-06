@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- Split `EngineGameBridge.ts` (3,137 → 2,607 lines): combat skills, enemy
+  elements and boss tiers moved to content — killing the balance simulation's
+  hand-copied mirror, which had already drifted — difficulty scaling to the
+  engine, and sprite/label lookups, character assembly and enemy assembly to
+  their own integration modules.
+- Built the towns from buildings. The tileset's complete cottage, shopfront,
+  hut and well tiles replace the filled-rectangle halls; Emberwake keeps its
+  kiln glow and Larkspire its dome as accents over the shared layout.
+- Gave each ancestry an innate combat trait implementing the identity its
+  creation text always claimed: Hearthfire, Rootspeaker, Stoneguard,
+  Wayfinder. Shown at creation and on the party screen; applied by the
+  engine; never persisted, so no migration.
+- Added the game's first mid-campaign system unlock: Trail Remedies. First
+  arrival in Emberwake teaches a four-recipe field-crafting ledger over
+  existing consumables, worked from the system menu anywhere; older saves
+  that already reached Emberwake are taught on load.
+- A second scripted play session through the mid-game caught and fixed an
+  invisible kiln-glow accent (drawn under the buildings) and a remedies
+  ledger that clipped its fourth recipe without saying more existed.
+
 - Gave the game its score. Five CC0 tracks from OpenGameArt — cynicmusic's
   town, battle and cavern themes, pauliuw's "The Field of Dreams" for the
   title, RandomMind's "The Old Tower Inn" for the roads — verified on their

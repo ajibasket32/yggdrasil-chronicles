@@ -25,6 +25,10 @@ The world is a 16×16 orthogonal pixel grid rendered at integer scale. Three con
 ## Characters and progression
 
 Players choose one of four original ancestries and one of six starting jobs.
+Each ancestry carries one innate combat trait implementing its stated identity
+— Hearthfire (healing received is stronger), Rootspeaker (afflictions lose a
+round), Stoneguard (guarding blocks harder), Wayfinder (acts earlier) — so the
+4×6 creation grid is twenty-four mechanically distinct builds.
 Each starting job exposes two advanced paths at level 4; unlocked paths persist
 and can be changed from the party screen. A party holds four active characters
 plus reserves. Every build has explicit strengths, weaknesses, and counters.
@@ -44,7 +48,9 @@ without hidden formulas — and "without hidden formulas" is a working commitmen
 not a slogan. A build states the elements it resists and is weak to at character
 creation, before the choice is made. MP costs, status durations, and an enemy's
 learned weaknesses and resistances are all shown in battle rather than inferred
-from damage. Every ancestry's elemental identity is authored data in
+from damage. Mid-campaign, Emberwake's delvers teach the trail-remedy ledger:
+field crafting over existing consumables, worked from the system menu anywhere
+on the road. Every ancestry's elemental identity is authored data in
 `src/content/campaign.ts`, not a rule buried in the integration layer.
 
 ## Quests and factions
