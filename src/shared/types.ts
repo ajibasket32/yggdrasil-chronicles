@@ -134,6 +134,9 @@ export interface InventoryStack {
   quantity: number;
 }
 
+/** Chosen once at character creation and persisted in world flags for the life of the chronicle. */
+export type Difficulty = "easy" | "normal" | "hard";
+
 export interface GameState {
   schemaVersion: number;
   seed: string;

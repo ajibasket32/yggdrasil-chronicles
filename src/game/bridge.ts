@@ -5,7 +5,8 @@ export type OverlayKind = "journal" | "inventory" | "party" | "system" | "shop" 
 export type BattleAction = "attack" | "skill" | "item" | "guard" | "escape";
 export type GameSaveSlot = "autosave" | "quick" | "manual-1" | "manual-2" | "manual-3";
 
-export type Difficulty = "easy" | "normal" | "hard";
+import type { Difficulty } from "../shared/types";
+export type { Difficulty };
 
 export interface CharacterCreationDraft {
   name: string;

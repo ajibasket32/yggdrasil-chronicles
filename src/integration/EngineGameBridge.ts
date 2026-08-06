@@ -8,10 +8,8 @@ import {
   chooseEnemyAction,
   createCombatState,
   createRng,
-  createEquipmentCatalog,
   createInitialGameState,
   deriveCharacterCombatStats,
-  enemyMaxHealth,
   canEquipItem,
   equipItem,
   failQuest,
@@ -31,6 +29,27 @@ import {
   type CombatState
 } from "../engine";
 import { applyGeneratedPatch, NarrativeCheckpointQueue } from "../ai";
+import {
+  EQUIPMENT,
+  isEquipmentItem,
+  playerFromDraft,
+  recruitCharacter,
+  reviseStatsForJobChange,
+  statsForBuild
+} from "./characters";
+import { enemyCombatant, enemyContentId } from "./enemies";
+import { CONCORD_CHOICES, ENEMY_ELEMENTS, SKILLS } from "../content";
+import { actionEconomyScale, difficultyOf, DIFFICULTY_REWARD_MULTIPLIER } from "../engine";
+import {
+  ANCESTRY_TINTS,
+  baseJobIdFor,
+  errorMessage,
+  slotLabel,
+  spriteForEnemyId,
+  spriteKeyForJob,
+  STATUS_LABELS,
+  titleCase
+} from "./presentation";
 import {
   encounterFinds,
   encounters,
@@ -53,7 +72,6 @@ import {
   regions,
   startingBuildLoadouts,
   vendorProfiles,
-  type RecruitProfile,
   type SceneTrigger
 } from "../content";
 import type {
@@ -61,7 +79,6 @@ import type {
   BattleAction,
   BattleView,
   CharacterCreationDraft,
-  Difficulty,
   GameCommandResult,
   GameBridge,
   GameSaveSlot,
@@ -83,14 +100,12 @@ import type {
   Combatant,
   Element,
   EncounterDefinition,
-  EquipmentBand,
   GameState,
   NarrativeContext,
   PlayerCharacter,
   QuestDefinition,
   ItemDefinition,
   Stats,
-  StatusId,
   StatusInstance
 } from "../shared/types";
 
@@ -106,245 +121,7 @@ const CAMP_SUPPLY_ITEM = "item.trail-rations";
 function curioFlagFor(locationId: string): string {
   return `content.curio.${locationId}`;
 }
-function titleCase(value: string): string {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
 const CORE_PACK_VERSION = "0.1.0";
-/** What this build actually ships, for reconciliation against what a save was written with. */
-const RUNNING_CONTENT_PACKS: Readonly<Record<string, string>> = {
-  "core.yggdrasil-chronicles": CORE_PACK_VERSION
-};
-const FIRST_QUEST = "quest.first-silence";
-const CONCORD_QUEST = "quest.a-new-concord";
-const CONCORD_FINAL_NPC = "npc.sable-voss";
-/** The astronomer speaks for the campaign's last decision, outside the ordinary NPC path. */
-const SABLE_VOSS = npcs.find(({ id }) => id === CONCORD_FINAL_NPC);
-
-/**
- * Each ending has a genuine trade-off, not just a single faction gain: the
- * opposedFactionId is the faction whose interests that future structurally
- * closes off, per WORLD_BIBLE.md's faction descriptions. epilogue is a
- * fourth chronicle line shown only in the journal/ending screen, naming a
- * concrete systemic consequence beyond the faction-standing numbers.
- */
-const CONCORD_CHOICES = [
-  {
-    id: "ending.concord-remade",
-    label: "Restore the Concord",
-    description: "Bind the factions to a renewed shared covenant.",
-    factionId: "faction.rootwardens",
-    opposedFactionId: "faction.freebound",
-    title: "THE CONCORD REMADE",
-    resolution: "The old promise is rewritten with mortal voices at its center.",
-    body: "The severed roads sing again—not as they once did, but in the voices of those who chose to mend them.",
-    epilogue: "The Freebound Companies lose their independent routes to the renewed covenant's shared law; some comply, more scatter to the unmapped edges."
-  },
-  {
-    id: "ending.rootways-freed",
-    label: "Free the Rootways",
-    description: "End central rule and let every region govern its own memories.",
-    factionId: "faction.freebound",
-    opposedFactionId: "faction.rootwardens",
-    title: "THE ROOTWAYS FREED",
-    resolution: "No single covenant owns the roads now; each settlement carries its own truth and risk.",
-    body: "The rootways open without a throne above them. Their songs disagree, overlap, and finally belong to the people who travel them.",
-    epilogue: "The Rootwardens' mandate to protect every living rootway ends with the central authority that enforced it; some roots go unwatched."
-  },
-  {
-    id: "ending.lantern-covenant",
-    label: "Entrust the Archive",
-    description: "Create a transparent covenant of witnesses and public records.",
-    factionId: "faction.lantern-archive",
-    opposedFactionId: "faction.quiet-choir",
-    title: "THE LANTERN COVENANT",
-    resolution: "The Archive accepts stewardship under laws that make every hidden revision visible.",
-    body: "Lanterns burn beside every living record. Memory has keepers again, but never again an unseen hand.",
-    epilogue: "The Quiet Choir's belief that the tree must forget finds no shelter under public record; its remaining voices go quieter still, or go underground."
-  }
-] as const;
-
-const BASE_STATS: Stats = {
-  maxHp: 72,
-  maxMp: 28,
-  strength: 11,
-  dexterity: 9,
-  agility: 9,
-  vitality: 11,
-  intellect: 8,
-  wisdom: 9,
-  charisma: 8
-};
-
-const COMBAT_SKILLS: readonly CombatSkill[] = [
-  { id: "skill.guard-line", name: "Guard Line", element: "physical", power: 28, accuracy: 0.98, mpCost: 3, target: "enemy", status: { id: "stun", chance: 0.2, turns: 1, potency: 0 } },
-  { id: "skill.shield-bash", name: "Shield Bash", element: "physical", power: 40, accuracy: 0.88, mpCost: 5, target: "enemy", status: { id: "stun", chance: 0.3, turns: 1, potency: 0 } },
-  { id: "skill.aimed-shot", name: "Aimed Shot", element: "physical", power: 44, accuracy: 0.96, mpCost: 4, target: "enemy" },
-  { id: "skill.quickstep", name: "Quickstep Cut", element: "wind", power: 34, accuracy: 0.98, mpCost: 3, target: "enemy", status: { id: "bleed", chance: 0.25, turns: 2, potency: 3 } },
-  { id: "skill.mend", name: "Mending Light", element: "radiant", power: 18, accuracy: 1, mpCost: 4, target: "ally", healing: true },
-  { id: "skill.ward-thread", name: "Ward Thread", element: "aether", power: 30, accuracy: 1, mpCost: 3, target: "enemy", status: { id: "sleep", chance: 0.2, turns: 1, potency: 0 } },
-  { id: "skill.ember-spark", name: "Ember Spark", element: "fire", power: 48, accuracy: 0.9, mpCost: 6, target: "enemy", status: { id: "burn", chance: 0.35, turns: 2, potency: 4 } },
-  { id: "skill.tide-pulse", name: "Tide Pulse", element: "water", power: 40, accuracy: 0.94, mpCost: 5, target: "enemy" },
-  // The Trickster is advertised as "Debuffs and turn control". Feint weakens
-  // what a foe deals; Slow Mark now actually applies `slow` rather than the
-  // freeze its name never described.
-  { id: "skill.feint", name: "Feint", element: "physical", power: 32, accuracy: 0.99, mpCost: 3, target: "enemy", status: { id: "weaken", chance: 0.45, turns: 3, potency: 0.3 } },
-  { id: "skill.slow-mark", name: "Slow Mark", element: "shadow", power: 30, accuracy: 0.96, mpCost: 4, target: "enemy", status: { id: "slow", chance: 0.5, turns: 3, potency: 0.35 } },
-  { id: "skill.thorn-bind", name: "Thorn Bind", element: "nature", power: 40, accuracy: 0.93, mpCost: 5, target: "enemy", status: { id: "poison", chance: 0.4, turns: 2, potency: 4 } },
-  { id: "skill.rootward", name: "Rootward", element: "earth", power: 34, accuracy: 0.97, mpCost: 4, target: "enemy" },
-  // Advanced job branch forms: each is a permanently new skill granted the
-  // first time its branch is selected, distinct in element, target, or
-  // status from every starting and sibling-branch skill.
-  { id: "skill.bastion-slam", name: "Bastion Slam", element: "physical", power: 52, accuracy: 0.85, mpCost: 6, target: "enemy", status: { id: "stun", chance: 0.4, turns: 1, potency: 0 } },
-  // The Banneret rallies rather than bleeds: a self-fortify that finally gives
-  // the buff half of the buff/debuff set a caster, and distinguishes this
-  // branch from the four other bleed-appliers.
-  { id: "skill.rallying-strike", name: "Rallying Strike", element: "physical", power: 0, accuracy: 1, mpCost: 4, target: "self", status: { id: "fortify", chance: 1, turns: 3, potency: 0.3 } },
-  // The Pathfinder's stride is the fourth buff/debuff caster: haste is the
-  // only way a player moves themselves up the initiative order.
-  { id: "skill.pathfinders-stride", name: "Pathfinder's Stride", element: "wind", power: 0, accuracy: 1, mpCost: 5, target: "self", status: { id: "haste", chance: 1, turns: 3, potency: 0.4 } },
-  { id: "skill.piercing-arrow", name: "Piercing Arrow", element: "physical", power: 56, accuracy: 0.92, mpCost: 6, target: "enemy" },
-  { id: "skill.hunting-mark", name: "Hunting Mark", element: "physical", power: 38, accuracy: 0.97, mpCost: 4, target: "enemy", status: { id: "bleed", chance: 0.5, turns: 3, potency: 4 } },
-  { id: "skill.greater-mend", name: "Greater Mend", element: "radiant", power: 30, accuracy: 1, mpCost: 7, target: "ally", healing: true },
-  { id: "skill.dawnfire-lance", name: "Dawnfire Lance", element: "radiant", power: 46, accuracy: 0.92, mpCost: 5, target: "enemy", status: { id: "burn", chance: 0.4, turns: 2, potency: 5 } },
-  { id: "skill.storm-lance", name: "Storm Lance", element: "lightning", power: 52, accuracy: 0.88, mpCost: 7, target: "enemy", status: { id: "stun", chance: 0.35, turns: 1, potency: 0 } },
-  // Rethemed from water to ice: it always applied freeze, and Pale Canopy is
-  // an entire frost region that had no ice-element form to answer it.
-  { id: "skill.deep-resonance", name: "Deep Resonance", element: "ice", power: 22, accuracy: 0.95, mpCost: 6, target: "enemy", status: { id: "freeze", chance: 0.3, turns: 1, potency: 0 } },
-  { id: "skill.veil-strike", name: "Veil Strike", element: "shadow", power: 42, accuracy: 0.95, mpCost: 5, target: "enemy", status: { id: "sleep", chance: 0.35, turns: 2, potency: 0 } },
-  { id: "skill.wild-gambit", name: "Wild Gambit", element: "physical", power: 64, accuracy: 0.8, mpCost: 6, target: "enemy" },
-  { id: "skill.bramble-snare", name: "Bramble Snare", element: "nature", power: 44, accuracy: 0.9, mpCost: 6, target: "enemy", status: { id: "poison", chance: 0.5, turns: 3, potency: 5 } },
-  { id: "skill.verdant-bulwark", name: "Verdant Bulwark", element: "nature", power: 22, accuracy: 1, mpCost: 5, target: "ally", healing: true },
-  // Recruited companion signature forms: each grants a toolkit their base
-  // Ranger/Vanguard/Mender kit otherwise entirely lacks (Tovin's Ranger kit
-  // has no freeze; Keva's Vanguard kit has no sustain; Eira's Mender kit has
-  // no damage-with-lasting-status), so recruiting them is a mechanically
-  // distinct addition, not a stat-identical reskin of a self-made character.
-  { id: "skill.marked-quarry", name: "Marked Quarry", element: "wind", power: 42, accuracy: 0.95, mpCost: 5, target: "enemy", status: { id: "freeze", chance: 0.3, turns: 1, potency: 0 } },
-  { id: "skill.delvers-grit", name: "Delver's Grit", element: "earth", power: 24, accuracy: 1, mpCost: 5, target: "ally", healing: true },
-  { id: "skill.bridgekeepers-warding", name: "Bridgekeeper's Warding", element: "nature", power: 38, accuracy: 0.94, mpCost: 5, target: "enemy", status: { id: "poison", chance: 0.4, turns: 2, potency: 4 } },
-  // Boss-exclusive forms: zero MP cost (bosses never spend MP), each
-  // matching that boss's own authored phase theme. chooseEnemyAction only
-  // reaches for these once bloodied (<=60% HP), so a boss's own turn
-  // becomes a genuine decision instead of only ever a basic attack, without
-  // requiring any RNG roll or MP-pool bookkeeping.
-  // Enemy signature skills sit on the original power scale. The player-side
-  // pass that widened the gap between a form and a free attack does not apply
-  // here: an enemy has no such choice to make, and doubling these turned a boss
-  // into a two-hit kill against a party at its own level.
-  { id: "skill.antler-charge", name: "Antler Charge", element: "water", power: 18, accuracy: 0.9, mpCost: 0, target: "enemy", status: { id: "bleed", chance: 0.3, turns: 2, potency: 4 } },
-  { id: "skill.crucible-flare", name: "Crucible Flare", element: "fire", power: 20, accuracy: 0.88, mpCost: 0, target: "enemy", status: { id: "burn", chance: 0.35, turns: 2, potency: 5 } },
-  { id: "skill.severance-cut", name: "Severance Cut", element: "shadow", power: 22, accuracy: 0.9, mpCost: 0, target: "enemy", status: { id: "bleed", chance: 0.3, turns: 2, potency: 5 } }
-];
-
-const SKILLS: Readonly<Record<string, CombatSkill>> = Object.fromEntries(
-  COMBAT_SKILLS.map((skill) => [skill.id, skill])
-);
-
-/**
- * Flat stat deltas applied on top of the base job's stats while a character
- * follows an advanced branch. Reversible: selectJob subtracts the previous
- * job's delta before adding the next one, so switching branches never
- * compounds bonuses. Base starting jobs have no entry (their stats are
- * already baked in by statsForBuild at character creation).
- */
-const ADVANCED_JOB_STATS: Readonly<Record<string, Partial<Stats>>> = {
-  bulwark: { maxHp: 10, vitality: 2 },
-  banneret: { strength: 3, charisma: 2 },
-  pathfinder: { dexterity: 3, agility: 2 },
-  beastwarden: { strength: 2, dexterity: 3 },
-  lifebinder: { maxMp: 8, wisdom: 3 },
-  dawnkeeper: { wisdom: 2, intellect: 2 },
-  stormcaller: { intellect: 4, maxMp: 4 },
-  resonant: { intellect: 2, wisdom: 2, maxMp: 4 },
-  veilhand: { dexterity: 2, agility: 3 },
-  gambler: { strength: 2, dexterity: 2 },
-  thornspeaker: { wisdom: 2, vitality: 2 },
-  "green-sentinel": { maxHp: 8, wisdom: 2 }
-};
-
-function jobStatDelta(jobId: string): Partial<Stats> {
-  return ADVANCED_JOB_STATS[jobId] ?? {};
-}
-
-/**
- * Removes the character's current job stat delta and applies nextJobId's,
- * preserving the current HP/MP deficit. Must be called with the character's
- * still-current jobId (before it is switched) so the old delta is subtracted
- * correctly; the returned character has jobId already set to nextJobId.
- */
-function reviseStatsForJobChange(character: PlayerCharacter, nextJobId: string): PlayerCharacter {
-  const previousDelta = jobStatDelta(character.jobId);
-  const nextDelta = jobStatDelta(nextJobId);
-  const statKeys = Object.keys(character.stats) as (keyof Stats)[];
-  const nextStats = Object.fromEntries(statKeys.map((key) => {
-    const value = character.stats[key] - (previousDelta[key] ?? 0) + (nextDelta[key] ?? 0);
-    return [key, Math.max(key === "maxHp" ? 1 : 0, value)];
-  })) as unknown as Stats;
-  return {
-    ...character,
-    jobId: nextJobId,
-    stats: nextStats,
-    hp: Math.min(nextStats.maxHp, character.hp + Math.max(0, nextStats.maxHp - character.stats.maxHp)),
-    mp: Math.min(nextStats.maxMp, character.mp + Math.max(0, nextStats.maxMp - character.stats.maxMp))
-  };
-}
-
-/**
- * Two bands only. Per-job restriction on a catalog this size would make half
- * of it unwearable by any given character; martial/caster expresses the
- * identity difference the gear is actually authored around. Branch ids resolve
- * to their base job, so this never needs to enumerate the twelve branches.
- */
-const BAND_BASE_JOB_IDS: Readonly<Record<EquipmentBand, readonly string[]>> = {
-  martial: ["vanguard", "ranger"],
-  caster: ["mender", "shaper", "trickster", "warden"]
-};
-
-function jobIdsForBands(bands: readonly EquipmentBand[]): string[] {
-  const baseIds = new Set(bands.flatMap((band) => BAND_BASE_JOB_IDS[band]));
-  // Branch ids must be listed explicitly: the engine compares against the
-  // character's current jobId, which is the branch once one is chosen.
-  return [
-    ...baseIds,
-    ...advancedJobs.filter((job) => baseIds.has(job.baseJobId)).map((job) => job.id)
-  ];
-}
-
-/**
- * Built from the authored item catalog rather than re-declared here. The
- * previous shape duplicated nine items: name, description and price lived in
- * content while stats lived in this file, so rebalancing gear in content
- * changed its price and silently nothing else.
- */
-const EQUIPMENT = createEquipmentCatalog(
-  items.flatMap((item) => {
-    if (item.kind !== "weapon" && item.kind !== "armor" && item.kind !== "accessory") return [];
-    return [{
-      ...item,
-      kind: item.kind,
-      statModifiers: item.modifiers ?? {},
-      minimumLevel: item.requiredLevel,
-      allowedJobIds: item.allowedBands === undefined ? undefined : jobIdsForBands(item.allowedBands)
-    }];
-  })
-);
-
-const ANCESTRY_STATS: Readonly<Record<string, Partial<Stats>>> = {
-  hearthborn: { maxHp: 4, charisma: 2 },
-  sylvan: { maxMp: 8, intellect: 2, wisdom: 1 },
-  stonekin: { maxHp: 12, vitality: 3, agility: -2 },
-  wayfarer: { dexterity: 2, agility: 2, charisma: 1 }
-};
-
-const JOB_STATS: Readonly<Record<string, Partial<Stats>>> = {
-  vanguard: { maxHp: 12, strength: 2, vitality: 3 },
-  ranger: { dexterity: 3, agility: 3, vitality: -1 },
-  mender: { maxMp: 10, intellect: 1, wisdom: 4 },
-  shaper: { maxMp: 14, intellect: 4, vitality: -2 },
-  trickster: { maxMp: 5, dexterity: 3, agility: 2 },
-  warden: { maxHp: 6, maxMp: 7, vitality: 1, wisdom: 3 }
-};
 
 const RECOVERY_ITEMS: Readonly<Record<string, Readonly<{ hp: number; mp: number }>>> = {
   "item.vesleaf": { hp: 18, mp: 0 },
@@ -370,86 +147,15 @@ function commandFailure(message: string): GameCommandResult {
 function jobUnlockFlag(memberId: string, jobId: string): string {
   return `progression.job.${memberId}.${jobId}`;
 }
-
-function baseJobIdFor(jobId: string): string {
-  return advancedJobs.find((job) => job.id === jobId)?.baseJobId ?? jobId;
-}
-
-/** Battle portrait per starting job family, preloaded in BootScene. Advanced branches share their base job's sprite. */
-const JOB_SPRITE_KEYS: Readonly<Record<string, string>> = {
-  vanguard: "sprite.job.vanguard",
-  ranger: "sprite.job.ranger",
-  mender: "sprite.job.mender",
-  shaper: "sprite.job.shaper",
-  trickster: "sprite.job.trickster",
-  warden: "sprite.job.warden"
+/** What this build actually ships, for reconciliation against what a save was written with. */
+const RUNNING_CONTENT_PACKS: Readonly<Record<string, string>> = {
+  "core.yggdrasil-chronicles": CORE_PACK_VERSION
 };
-
-function spriteKeyForJob(jobId: string): string {
-  return JOB_SPRITE_KEYS[baseJobIdFor(jobId)] ?? "sprite.player";
-}
-
-/** Distinct per-ancestry tint so party members sharing a job sprite still read as different characters. */
-const ANCESTRY_TINTS: Readonly<Record<string, number>> = {
-  hearthborn: 0xffffff,
-  sylvan: 0x9ad6a0,
-  stonekin: 0xc2a878,
-  wayfarer: 0xe8c992
-};
-
-/**
- * Enemy portraits use a small/humanoid/boss silhouette split (creature packs,
- * armed humanoids, named bosses) plus a per-enemy-ID tint so every authored
- * enemy reads as visually distinct rather than one repeated red silhouette.
- */
-const ENEMY_SPRITE_KEYS: Readonly<Record<string, string>> = {
-  "enemy.briar-wolf": "sprite.enemy.small",
-  "enemy.root-gnawer": "sprite.enemy.small",
-  "enemy.mireling": "sprite.enemy.small",
-  "enemy.ash-mote": "sprite.enemy.small",
-  "enemy.cinder-hound": "sprite.enemy.small",
-  "enemy.rime-stag": "sprite.enemy.small",
-  "enemy.frost-moth": "sprite.enemy.small",
-  "enemy.star-echo": "sprite.enemy.small",
-  "enemy.cinder-wraith": "sprite.enemy.humanoid",
-  "enemy.brass-sentinel": "sprite.enemy.humanoid",
-  "enemy.pale-custodian": "sprite.enemy.humanoid",
-  "enemy.mire-antler": "sprite.enemy.boss",
-  "enemy.kiln-heart": "sprite.enemy.boss",
-  "enemy.varn-rootless": "sprite.enemy.boss",
-  "enemy.varn-echo": "sprite.enemy.boss"
-};
-
-const ENEMY_TINTS: Readonly<Record<string, number>> = {
-  "enemy.briar-wolf": 0xb0a08c,
-  "enemy.root-gnawer": 0x8a9a6e,
-  "enemy.mireling": 0x6f8f7a,
-  "enemy.ash-mote": 0xd98c5a,
-  "enemy.cinder-hound": 0xb8563f,
-  "enemy.rime-stag": 0xb9c8d6,
-  "enemy.frost-moth": 0xd8e6ec,
-  "enemy.star-echo": 0xb0a2d8,
-  "enemy.cinder-wraith": 0x8a5c8c,
-  "enemy.brass-sentinel": 0xc9a24a,
-  "enemy.pale-custodian": 0x9fb0c2,
-  "enemy.mire-antler": 0x6f8f5a,
-  "enemy.kiln-heart": 0xd9762f,
-  "enemy.varn-rootless": 0x8c3a46,
-  "enemy.varn-echo": 0x6f4a86
-};
-
-function spriteForEnemyId(enemyId: string): { spriteKey: string; tint: number } {
-  return {
-    spriteKey: ENEMY_SPRITE_KEYS[enemyId] ?? "sprite.enemy.small",
-    tint: ENEMY_TINTS[enemyId] ?? 0xffffff
-  };
-}
-
-/** Strips a combat instance suffix like ".0"/".1" back to the authored enemy content ID. */
-function enemyContentId(instanceId: string): string {
-  const lastDot = instanceId.lastIndexOf(".");
-  return lastDot === -1 ? instanceId : instanceId.slice(0, lastDot);
-}
+const FIRST_QUEST = "quest.first-silence";
+const CONCORD_QUEST = "quest.a-new-concord";
+const CONCORD_FINAL_NPC = "npc.sable-voss";
+/** The astronomer speaks for the campaign's last decision, outside the ordinary NPC path. */
+const SABLE_VOSS = npcs.find(({ id }) => id === CONCORD_FINAL_NPC);
 
 function reorderSignatureSkill(skills: readonly string[], signatureSkillId: string): string[] {
   return skills.includes(signatureSkillId)
@@ -478,275 +184,6 @@ interface ActiveBattle {
    * keypresses — the genre convention.
    */
   lastTargetId?: string;
-}
-
-function statsForBuild(ancestryId: string, jobId: string): Stats {
-  const ancestry = ANCESTRY_STATS[ancestryId] ?? {};
-  const job = JOB_STATS[jobId] ?? {};
-  return Object.fromEntries(
-    Object.entries(BASE_STATS).map(([key, value]) => [
-      key,
-      Math.max(key === "maxHp" ? 1 : 0, value + (ancestry[key as keyof Stats] ?? 0) + (job[key as keyof Stats] ?? 0))
-    ])
-  ) as unknown as Stats;
-}
-
-function equipStartingItems(character: PlayerCharacter, startingItems: readonly string[]): PlayerCharacter {
-  return startingItems.reduce((current, itemId) => {
-    const equipment = EQUIPMENT[itemId];
-    return equipment ? equipItem(current, equipment) : current;
-  }, character);
-}
-
-function isEquipmentItem(itemId: string): boolean {
-  return EQUIPMENT[itemId] !== undefined;
-}
-
-function createPartyCharacter(options: {
-  id: string;
-  name: string;
-  ancestryId: string;
-  jobId: string;
-  skills: readonly string[];
-  startingItems: readonly string[];
-}): PlayerCharacter {
-  const stats = statsForBuild(options.ancestryId, options.jobId);
-  const character: PlayerCharacter = {
-    id: options.id,
-    name: options.name,
-    raceId: options.ancestryId,
-    jobId: options.jobId,
-    experience: 0,
-    level: 1,
-    stats,
-    hp: stats.maxHp,
-    mp: stats.maxMp,
-    skills: [...options.skills],
-    // Authored per build in campaign.ts rather than decided here: an ancestry's
-    // elemental identity is content, and the build preview has to be able to
-    // state it before the player commits.
-    elements: { ...(startingBuildLoadouts.find(({ ancestryId }) => ancestryId === options.ancestryId)?.elementalAffinities ?? {}) },
-    statuses: [],
-    isPlayerControlled: true,
-    equipment: {}
-  };
-  return equipStartingItems(character, options.startingItems);
-}
-
-function playerFromDraft(draft: CharacterCreationDraft): PlayerCharacter {
-  const loadout = startingBuildLoadouts.find(
-    (candidate) => candidate.ancestryId === draft.ancestryId && candidate.jobId === draft.jobId
-  );
-  if (!loadout) throw new Error(`Unknown starting build '${draft.ancestryId}/${draft.jobId}'`);
-  return createPartyCharacter({
-    id: "party.protagonist",
-    name: draft.name.trim() || "Rowan",
-    ancestryId: draft.ancestryId,
-    jobId: draft.jobId,
-    skills: loadout.startingSkills,
-    startingItems: loadout.startingItems
-  });
-}
-
-/**
- * `joinLevel` brings a companion in at the party's own standing rather than at
- * level 1. A recruit who joined a level-9 party arrived nine levels behind,
- * could not survive the content they were recruited into, and diluted the
- * party's experience share — so recruiting was a penalty.
- *
- * Levels are granted through `grantExperience` so stats grow with them:
- * writing `level` directly leaves level-1 numbers behind, because `growStats`
- * only runs on levels actually gained.
- */
-function recruitCharacter(profile: RecruitProfile, joinLevel = 1): PlayerCharacter {
-  const npc = npcs.find(({ id }) => id === profile.npcId);
-  const base = createPartyCharacter({
-    id: profile.id.replace("recruit.", "party."),
-    name: npc?.name.split(" ")[0] ?? profile.id,
-    ancestryId: profile.ancestryId,
-    jobId: profile.jobId,
-    skills: profile.startingSkills,
-    startingItems: profile.startingItems
-  });
-  if (joinLevel <= 1) return base;
-
-  const grown = grantExperience(base, totalExperienceForLevel(joinLevel)).character;
-  const taught = levelUpSkillsFor(baseJobIdFor(grown.jobId), grown.level)
-    .filter((skillId) => SKILLS[skillId] && !grown.skills.includes(skillId));
-  return taught.length > 0 ? { ...grown, skills: [...grown.skills, ...taught] } : grown;
-}
-
-/** Boss-exclusive forms matching each boss's own authored phase theme (see bossPhases in campaign.ts). */
-const ENEMY_SKILLS: Readonly<Record<string, readonly string[]>> = {
-  "enemy.mire-antler": ["skill.antler-charge"],
-  "enemy.kiln-heart": ["skill.crucible-flare"],
-  "enemy.varn-rootless": ["skill.severance-cut"],
-  // The echo keeps Varn's signature and adds turn denial, so the postgame
-  // fight demands the status tools the campaign taught.
-  "enemy.varn-echo": ["skill.severance-cut", "skill.deep-resonance"]
-};
-
-/**
- * Per-enemy elemental identity. Every enemy previously shared one of two
- * tables, so eleven elements resolved to a single decision the player could
- * never learn or exploit. Positive values resist, negative values are
- * weaknesses.
- *
- * This is also where `ice` earns its place in the element union: WORLD_BIBLE
- * names frost among the practiced forms and Pale Canopy is an entire frost
- * region, but no skill or resistance referenced the element, leaving it
- * declared in two type files and used nowhere.
- */
-const ENEMY_ELEMENTS: Readonly<Record<string, Partial<Record<Element, number>>>> = {
-  // Verdant Reach: rain-soaked and root-bound. Fire clears them, nature does not.
-  "enemy.briar-wolf": { nature: 0.3, fire: -0.35 },
-  "enemy.root-gnawer": { nature: 0.35, fire: -0.3 },
-  "enemy.mireling": { water: 0.35, lightning: -0.4 },
-  "enemy.mire-antler": { nature: 0.3, fire: -0.25, ice: -0.2 },
-  // Cinder March: kiln-born. Fire is their medium; water and ice undo them.
-  "enemy.ash-mote": { fire: 0.45, water: -0.4 },
-  "enemy.cinder-hound": { fire: 0.4, ice: -0.35 },
-  "enemy.cinder-wraith": { fire: 0.35, shadow: 0.2, radiant: -0.4 },
-  "enemy.brass-sentinel": { physical: 0.3, lightning: -0.35 },
-  "enemy.kiln-heart": { fire: 0.4, water: -0.3, ice: -0.25 },
-  // Pale Canopy: frost and starlight. Ice runs off them; fire answers.
-  "enemy.rime-stag": { ice: 0.45, fire: -0.4 },
-  "enemy.frost-moth": { ice: 0.4, wind: 0.2, fire: -0.45 },
-  "enemy.star-echo": { aether: 0.4, shadow: -0.35 },
-  "enemy.pale-custodian": { ice: 0.3, aether: 0.25, physical: -0.2 },
-  "enemy.varn-rootless": { aether: 0.35, ice: 0.2, radiant: -0.3 },
-  "enemy.varn-echo": { aether: 0.5, ice: 0.35, shadow: 0.2, radiant: -0.25 }
-};
-
-/**
- * Chosen once at character creation and fixed for the life of the
- * chronicle (see newGame). Scales enemy HP/offense and battle rewards
- * without touching combat.ts's formulas, keeping the deterministic engine
- * itself difficulty-agnostic — the integration layer applies the scale
- * before combat starts and after rewards are computed.
- */
-const DIFFICULTY_ENEMY_MULTIPLIER: Readonly<Record<Difficulty, number>> = {
-  easy: 0.8,
-  normal: 1,
-  hard: 1.25
-};
-
-const DIFFICULTY_REWARD_MULTIPLIER: Readonly<Record<Difficulty, number>> = {
-  easy: 0.85,
-  normal: 1,
-  hard: 1.2
-};
-
-function isDifficulty(value: unknown): value is Difficulty {
-  return value === "easy" || value === "normal" || value === "hard";
-}
-
-function difficultyOf(state: GameState): Difficulty {
-  const value = state.world.flags.difficulty;
-  return isDifficulty(value) ? value : "normal";
-}
-
-/**
- * Every combatant acts once per round, so a lone hero facing three enemies
- * takes three times the incoming actions while dealing one. Authored encounter
- * levels exposed this: `flooded-grove` (3 enemies) was unwinnable at its own
- * level while `mossroad-foragers` (2 enemies) was comfortable.
- *
- * Scaling each enemy's offence by the action ratio makes a group's TOTAL output
- * track the party's, so an encounter's difficulty comes from its authored level
- * rather than from how many bodies it fields. Health is untouched — a group
- * should still take longer to clear. Solo encounters (every boss) are
- * unaffected at ratio 1.
- */
-function actionEconomyScale(enemyCount: number, partySize: number): number {
-  if (enemyCount <= partySize) return 1;
-  // Square root, not the raw ratio: full normalisation would make a mob of six
-  // feel like a single enemy, which removes the pressure a group should create.
-  return Math.sqrt(Math.max(1, partySize) / enemyCount);
-}
-
-/**
- * Enemies that use the boss stat curve without being campaign bosses. The
- * post-game superboss is authored `boss: false` so it stays repeatable and so
- * the three-named-boss campaign shape is unchanged, but it must not fight like
- * a trash mob.
- */
-const BOSS_TIER_ENEMY_IDS = new Set(["enemy.varn-echo"]);
-
-function enemyCombatant(
-  id: string,
-  index: number,
-  boss: boolean,
-  level: number,
-  difficulty: Difficulty,
-  economyScale = 1,
-  attackers = 1
-): Combatant {
-  const scale = DIFFICULTY_ENEMY_MULTIPLIER[difficulty];
-  const offenceScale = scale * economyScale;
-  const bossTier = boss || BOSS_TIER_ENEMY_IDS.has(id);
-  const maxHp = Math.max(1, Math.round(enemyMaxHealth(level, bossTier, attackers) * scale));
-  return {
-    id: `${id}.${index}`,
-    name: id.replace("enemy.", "").split("-").map(titleCase).join(" "),
-    level,
-    stats: {
-      maxHp,
-      maxMp: 0,
-      strength: Math.max(1, Math.round((7 + level * 2) * offenceScale)),
-      dexterity: 7 + level,
-      agility: 6 + level,
-      vitality: 6 + level,
-      intellect: Math.max(1, Math.round((4 + level) * offenceScale)),
-      wisdom: 5 + level,
-      charisma: 1
-    },
-    hp: maxHp,
-    mp: 0,
-    skills: [...(ENEMY_SKILLS[id] ?? [])],
-    elements: ENEMY_ELEMENTS[id] ?? (boss ? { nature: 0.2, fire: -0.2 } : { nature: -0.1 }),
-    statuses: [],
-    // Bosses resist turn denial. Without this, a party alternating two 40%
-    // stuns silences a boss for most of its own fight and the authored phase
-    // choreography never plays. Halving the chance keeps a status build
-    // worthwhile without letting it replace the fight.
-    statusResistance: bossTier ? { stun: 0.5, sleep: 0.5, freeze: 0.5 } : undefined,
-    isPlayerControlled: false
-  };
-}
-
-/**
- * Player-facing status names. The game previously never explained what any
- * status did, so a freeze and a stun were indistinguishable to the player.
- */
-const STATUS_LABELS: Readonly<Record<StatusId, string>> = {
-  guard: "Guarding — incoming harm reduced",
-  poison: "Poisoned — losing vitality each round",
-  burn: "Burning — losing vitality each round",
-  bleed: "Bleeding — losing vitality each round",
-  stun: "Stunned — cannot act",
-  sleep: "Asleep — cannot act",
-  freeze: "Frozen — cannot act",
-  weaken: "Weakened — dealing less harm",
-  fortify: "Fortified — taking less harm",
-  haste: "Hastened — acting sooner",
-  slow: "Slowed — acting later"
-};
-
-const SLOT_LABELS: Readonly<Record<GameSaveSlot, string>> = {
-  autosave: "Autosave",
-  quick: "Quick Save",
-  "manual-1": "Manual Slot 1",
-  "manual-2": "Manual Slot 2",
-  "manual-3": "Manual Slot 3"
-};
-
-function slotLabel(slot: GameSaveSlot): string {
-  return SLOT_LABELS[slot];
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export class EngineGameBridge implements GameBridge {

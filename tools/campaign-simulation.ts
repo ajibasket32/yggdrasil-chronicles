@@ -1,5 +1,7 @@
 import {
   auditCampaignReadiness,
+  ENEMY_SKILLS,
+  SKILLS,
   bossPhases,
   coreCampaign,
   encounterAvailability,
@@ -17,7 +19,6 @@ import {
   enemyMaxHealth,
   resolveCombatAction,
   type CombatAction,
-  type CombatSkill,
   type CombatState
 } from "../src/engine";
 import type { Combatant, Element, Stats } from "../src/shared/types";
@@ -55,22 +56,6 @@ const STAT_GROWTH: Stats = {
   charisma: 1
 };
 
-const SKILLS: Readonly<Record<string, CombatSkill>> = {
-  "skill.guard-line": { id: "skill.guard-line", name: "Guard Line", element: "physical", power: 28, accuracy: 0.98, mpCost: 3, target: "enemy", status: { id: "stun", chance: 0.2, turns: 1, potency: 0 } },
-  "skill.shield-bash": { id: "skill.shield-bash", name: "Shield Bash", element: "physical", power: 40, accuracy: 0.88, mpCost: 5, target: "enemy", status: { id: "stun", chance: 0.3, turns: 1, potency: 0 } },
-  "skill.aimed-shot": { id: "skill.aimed-shot", name: "Aimed Shot", element: "physical", power: 44, accuracy: 0.96, mpCost: 4, target: "enemy" },
-  "skill.quickstep": { id: "skill.quickstep", name: "Quickstep Cut", element: "wind", power: 34, accuracy: 0.98, mpCost: 3, target: "enemy", status: { id: "bleed", chance: 0.25, turns: 2, potency: 3 } },
-  "skill.mend": { id: "skill.mend", name: "Mending Light", element: "radiant", power: 18, accuracy: 1, mpCost: 4, target: "self", healing: true },
-  "skill.ward-thread": { id: "skill.ward-thread", name: "Ward Thread", element: "aether", power: 30, accuracy: 1, mpCost: 3, target: "enemy", status: { id: "sleep", chance: 0.2, turns: 1, potency: 0 } },
-  "skill.ember-spark": { id: "skill.ember-spark", name: "Ember Spark", element: "fire", power: 48, accuracy: 0.9, mpCost: 6, target: "enemy", status: { id: "burn", chance: 0.35, turns: 2, potency: 4 } },
-  "skill.tide-pulse": { id: "skill.tide-pulse", name: "Tide Pulse", element: "water", power: 40, accuracy: 0.94, mpCost: 5, target: "enemy" },
-  "skill.marked-quarry": { id: "skill.marked-quarry", name: "Marked Quarry", element: "wind", power: 42, accuracy: 0.95, mpCost: 5, target: "enemy", status: { id: "freeze", chance: 0.3, turns: 1, potency: 0 } },
-  "skill.delvers-grit": { id: "skill.delvers-grit", name: "Delver's Grit", element: "earth", power: 24, accuracy: 1, mpCost: 5, target: "self", healing: true },
-  "skill.bridgekeepers-warding": { id: "skill.bridgekeepers-warding", name: "Bridgekeeper's Warding", element: "nature", power: 38, accuracy: 0.94, mpCost: 5, target: "enemy", status: { id: "poison", chance: 0.4, turns: 2, potency: 4 } },
-  "skill.antler-charge": { id: "skill.antler-charge", name: "Antler Charge", element: "water", power: 18, accuracy: 0.9, mpCost: 0, target: "enemy", status: { id: "bleed", chance: 0.3, turns: 2, potency: 4 } },
-  "skill.crucible-flare": { id: "skill.crucible-flare", name: "Crucible Flare", element: "fire", power: 20, accuracy: 0.88, mpCost: 0, target: "enemy", status: { id: "burn", chance: 0.35, turns: 2, potency: 5 } },
-  "skill.severance-cut": { id: "skill.severance-cut", name: "Severance Cut", element: "shadow", power: 22, accuracy: 0.9, mpCost: 0, target: "enemy", status: { id: "bleed", chance: 0.3, turns: 2, potency: 5 } }
-};
 
 const BASE_STATS: Stats = {
   maxHp: 72,
@@ -184,13 +169,6 @@ function createPartyCombatant(blueprint: PartyBlueprint): Combatant {
     isPlayerControlled: true
   };
 }
-
-/** Must mirror ENEMY_SKILLS in src/integration/EngineGameBridge.ts exactly. */
-const ENEMY_SKILLS: Readonly<Record<string, readonly string[]>> = {
-  "enemy.mire-antler": ["skill.antler-charge"],
-  "enemy.kiln-heart": ["skill.crucible-flare"],
-  "enemy.varn-rootless": ["skill.severance-cut"]
-};
 
 function createBossCombatant(enemyId: string, level: number, attackers: number): Combatant {
   // Shared with the integration layer so a balance change cannot land in one
