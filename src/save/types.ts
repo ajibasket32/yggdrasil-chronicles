@@ -39,6 +39,17 @@ export interface SaveSummary {
   readonly damaged?: boolean;
 }
 
+/**
+ * Archived copies kept per source slot.
+ *
+ * Every overwrite of a manual slot stores a whole game state and nothing ever
+ * removed one, so a long campaign's archive grew without bound until the
+ * browser's storage quota refused the next save outright — the archive existing
+ * to protect saves being the thing that stopped them being written. Five is
+ * deep enough that a mis-aimed save is still recoverable several saves later.
+ */
+export const BACKUPS_PER_SLOT = 5;
+
 export interface SaveBackup {
   readonly id: string;
   readonly sourceSlot: SaveSlot;

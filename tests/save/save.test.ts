@@ -3,7 +3,7 @@ import { createInitialGameState, CURRENT_GAME_SCHEMA_VERSION } from "../../src/e
 import { MemorySaveStorage } from "../../src/save/memory-storage";
 import { SaveRepository } from "../../src/save/repository";
 import { migrateGameState, validateGameState } from "../../src/save/schema";
-import type { SaveRecord, SaveSlot } from "../../src/save/types";
+import { BACKUPS_PER_SLOT, type SaveRecord, type SaveSlot } from "../../src/save/types";
 import type { GameState } from "../../src/shared/types";
 import { makePlayerCharacter } from "../engine/fixtures";
 
@@ -217,3 +217,28 @@ describe("save management", () => {
     expect(summaries.find(({ slot }) => slot === "manual-2")?.damaged).toBe(true);
   });
 });
+
+describe("the archive is bounded", () => {
+  it("keeps only the most recent backups for a slot", async () => {
+    const repository = new SaveRepository(new MemorySaveStorage());
+    for (let write = 0; write < BACKUPS_PER_SLOT + 4; write += 1) {
+      await repository.save("manual-1", makeState(`write-${write}`));
+    }
+    const backups = await repository.backups("manual-1");
+    // Every overwrite archives a whole game state; unbounded, a long campaign
+    // filled the browser's quota until saving itself started failing.
+    expect(backups.length).toBe(BACKUPS_PER_SLOT);
+  });
+
+  it("bounds each slot independently", async () => {
+    const repository = new SaveRepository(new MemorySaveStorage());
+    for (const slot of ["manual-1", "manual-2"] as const) {
+      for (let write = 0; write < BACKUPS_PER_SLOT + 2; write += 1) {
+        await repository.save(slot, makeState(`${slot}-${write}`));
+      }
+    }
+    expect((await repository.backups("manual-1")).length).toBe(BACKUPS_PER_SLOT);
+    expect((await repository.backups("manual-2")).length).toBe(BACKUPS_PER_SLOT);
+  });
+});
+

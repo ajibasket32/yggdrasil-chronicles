@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-import type { SaveBackup, SaveRecord, SaveSlot, SaveStorage } from "./types";
+import { BACKUPS_PER_SLOT, type SaveBackup, type SaveRecord, type SaveSlot, type SaveStorage } from "./types";
 
 interface YggdrasilSaveDatabase extends DBSchema {
   saves: {
@@ -49,13 +49,21 @@ export class IndexedDbSaveStorage implements SaveStorage {
     const database = await this.#databasePromise;
     const transaction = database.transaction(["saves", "backups"], "readwrite");
     if (previous) {
+      const backups = transaction.objectStore("backups");
       const backedUpAt = new Date().toISOString();
-      await transaction.objectStore("backups").put({
+      await backups.put({
         id: `${previous.slot}:${backedUpAt}:${crypto.randomUUID()}`,
         sourceSlot: previous.slot,
         backedUpAt,
         record: previous
       });
+      // Trim inside the same transaction, so the archive can never be left
+      // over its bound by a write that half-succeeded.
+      const forSlot = await backups.index("by-source-slot").getAll(previous.slot);
+      const stale = forSlot
+        .sort((left, right) => right.backedUpAt.localeCompare(left.backedUpAt))
+        .slice(BACKUPS_PER_SLOT);
+      for (const entry of stale) await backups.delete(entry.id);
     }
     await transaction.objectStore("saves").put(record);
     await transaction.done;

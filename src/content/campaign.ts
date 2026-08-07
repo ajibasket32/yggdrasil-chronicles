@@ -362,7 +362,12 @@ const mainQuestSeeds: QuestSeed[] = [
 const regionalQuestSeeds: QuestSeed[] = [
   { id: "medicine-in-the-mud", title: "Medicine in the Mud", summary: "Recover vesleaf for Hearthcross's clinic.", steps: [step("collect", "item.vesleaf", 5), deliver("item.vesleaf", "npc.veska-reed", 5)] },
   { id: "storytellers-toll", title: "The Storyteller's Toll", summary: "Find the ending Pella lost on the flooded road.", steps: [step("travel", "location.mossroad"), step("talk", "npc.pella-wren")] },
-  { id: "ferriers-lantern", title: "Ferrier's Lantern", summary: "Relight Fen's route markers before nightfall.", steps: [step("collect", "item.lantern-wick", 3), deliver("item.lantern-wick", "npc.fen-til", 3)] },
+  // Fen opens this one in person. Without a talk step it could not be started
+  // at all: a side quest begins when an objective event matches its first step,
+  // its first step was collecting resin wicks, and wicks drop only from the
+  // Flooded Grove — an encounter the road offers only while a quest is already
+  // asking for those wicks. The quest gated itself behind its own reward.
+  { id: "ferriers-lantern", title: "Ferrier's Lantern", summary: "Relight Fen's route markers before nightfall.", steps: [step("talk", "npc.fen-til"), step("collect", "item.lantern-wick", 3), deliver("item.lantern-wick", "npc.fen-til", 3)] },
   { id: "salvagers-debt", title: "A Salvager's Debt", summary: "Choose whether a recovered memory belongs to its family or finder.", steps: [step("talk", "npc.ilas-morn"), step("talk", "npc.senna-brook")], rewardTier: "standard" },
   { id: "tovins-company", title: "Tovin's Company", summary: "Help Tovin face the route where their company vanished.", prerequisites: ["quest.marks-in-rain"], steps: [step("defeat", "enemy.briar-wolf", 3), step("talk", "npc.tovin-ash")], rewardTier: "major" },
   { id: "glass-and-bread", title: "Glass and Bread", summary: "Settle a refinery ration dispute before it becomes a riot.", steps: [step("talk", "npc.hett-copper"), step("talk", "npc.brannic-quill")] },

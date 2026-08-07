@@ -629,6 +629,11 @@ export class EngineGameBridge implements GameBridge {
     if (loaded.world.discoveredLocationIds.includes("location.emberwake")) {
       this.unlockTrailRemedies("location.emberwake");
     }
+    // Re-check what the party is carrying and wearing. A chronicle stalled by
+    // an objective that only counted the pack — its quest item worn rather than
+    // stowed — recovers on load rather than never, the same way the remedies
+    // ledger above is granted to a save that predates it.
+    this.applyInventoryObjectives();
     const recoveredCanonicalState = this.applyCompletedQuestRewards();
     const recoveredLegacyEnding = this.backfillLegacyEndingChoice();
     if (recoveredCanonicalState || recoveredLegacyEnding) await this.persist(slot);
@@ -2180,16 +2185,34 @@ export class EngineGameBridge implements GameBridge {
     if (changed) this.#state = { ...state, quests: progress, inventory };
   }
 
+  /**
+   * Advances `collect` objectives against everything the party holds — pack and
+   * worn alike.
+   *
+   * Counting only the pack meant equipping a quest item hid it from its own
+   * quest. Dream Resin is a Warden's starting accessory *and* the objective of
+   * The Root That Dreams, so a player who simply wore what the game gave them
+   * could never finish the step asking for it. Whether a thing is in the pack
+   * or on a character is an inventory-model detail; it is not something to make
+   * somebody reason about mid-quest.
+   *
+   * `deliver` steps are untouched: handing an item over genuinely does require
+   * taking it out of the pack first.
+   */
   private applyInventoryObjectives(): void {
     if (!this.#state) return;
-    let progress = this.#state.quests;
+    const held = new Map<string, number>();
     for (const stack of this.#state.inventory) {
-      progress = this.applyObjectiveToActiveQuests(
-        progress,
-        "collect",
-        stack.itemId,
-        stack.quantity
-      );
+      held.set(stack.itemId, (held.get(stack.itemId) ?? 0) + stack.quantity);
+    }
+    for (const member of [...this.#state.party, ...this.#state.reserve]) {
+      for (const itemId of Object.values(member.equipment)) {
+        if (itemId) held.set(itemId, (held.get(itemId) ?? 0) + 1);
+      }
+    }
+    let progress = this.#state.quests;
+    for (const [itemId, quantity] of held) {
+      progress = this.applyObjectiveToActiveQuests(progress, "collect", itemId, quantity);
     }
     this.#state = { ...this.#state, quests: progress };
   }
@@ -2471,8 +2494,15 @@ export class EngineGameBridge implements GameBridge {
         rewardTiers: ["minor", "standard", "major", "boss"]
       }
     };
+    // Pin the request to the chronicle that made it. A narrative call outlives
+    // the run it was enqueued from — return to the title and load another save
+    // while one is in flight, and the continuation read whatever `#state` had
+    // become, applying a patch written for a different chronicle and then
+    // persisting it over the autosave. The seed is per-run, so it is the thing
+    // to check.
+    const chronicleSeed = this.#state.seed;
     void this.#narrative.enqueue(context).then(async ({ patch, report }) => {
-      if (!this.#state) return;
+      if (!this.#state || this.#state.seed !== chronicleSeed) return;
       const applied = applyGeneratedPatch(this.#state, patch, report);
       if (applied.applied) {
         this.#state = applied.state;

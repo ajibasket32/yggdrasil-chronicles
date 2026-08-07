@@ -1,4 +1,4 @@
-import type { SaveBackup, SaveRecord, SaveSlot, SaveStorage } from "./types";
+import { BACKUPS_PER_SLOT, type SaveBackup, type SaveRecord, type SaveSlot, type SaveStorage } from "./types";
 
 function clone<T>(value: T): T {
   return structuredClone(value);
@@ -23,7 +23,7 @@ export class MemorySaveStorage implements SaveStorage {
 
   async replaceWithBackup(record: SaveRecord, previous: SaveRecord | undefined): Promise<void> {
     const nextRecords = new Map(this.#records);
-    const nextBackups = [...this.#backups];
+    let nextBackups = [...this.#backups];
     if (previous) {
       const backedUpAt = new Date().toISOString();
       nextBackups.push({
@@ -32,6 +32,14 @@ export class MemorySaveStorage implements SaveStorage {
         backedUpAt,
         record: clone(previous)
       });
+      // Bounded the same way the IndexedDB backend is, so tests exercise the
+      // retention rule the browser actually applies.
+      const kept = nextBackups
+        .filter((backup) => backup.sourceSlot === previous.slot)
+        .sort((left, right) => right.backedUpAt.localeCompare(left.backedUpAt))
+        .slice(0, BACKUPS_PER_SLOT);
+      nextBackups = nextBackups.filter((backup) =>
+        backup.sourceSlot !== previous.slot || kept.includes(backup));
     }
     nextRecords.set(record.slot, clone(record));
     this.#records.clear();

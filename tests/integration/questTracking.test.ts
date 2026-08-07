@@ -81,3 +81,32 @@ describe("the player chooses which thread the game follows", () => {
     }
   });
 });
+
+describe("a worn quest item still counts as held", () => {
+  it("advances a collect objective for an item the party has equipped", async () => {
+    const { bridge, saves } = createBridge("worn-objective");
+    // The Warden opens with Dream Resin, which is both an accessory and the
+    // objective of The Root That Dreams.
+    await bridge.newGame({ name: "Vale", ancestryId: "sylvan", jobId: "warden", difficulty: "normal" });
+    const state = await saves.load("autosave");
+    if (!state) throw new Error("expected an autosave");
+
+    const hero = state.party[0]!;
+    await saves.save("autosave", {
+      ...state,
+      // Worn, not carried — exactly what a player does with a starting accessory.
+      inventory: state.inventory.filter(({ itemId }) => itemId !== "item.dream-resin"),
+      party: [{ ...hero, equipment: { ...hero.equipment, accessory: "item.dream-resin" } }],
+      quests: state.quests.map((quest) => quest.questId === "quest.root-that-dreams"
+        ? { ...quest, state: "active" as const, currentStep: 1 }
+        : quest)
+    });
+    await bridge.continueGame();
+
+    const tracked = bridge.getSnapshot().quests.find(({ id }) => id === "quest.root-that-dreams");
+    // Counting the pack alone left this step permanently unsatisfiable for a
+    // player who simply wore what the game handed them.
+    expect(tracked?.state).toBe("completed");
+  });
+});
+
