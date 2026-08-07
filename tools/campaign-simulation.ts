@@ -1,6 +1,6 @@
+import { enemyCombatant } from "../src/integration/enemies";
 import {
   auditCampaignReadiness,
-  ENEMY_SKILLS,
   SKILLS,
   bossPhases,
   coreCampaign,
@@ -16,7 +16,6 @@ import {
   advanceCombatRound,
   chooseEnemyAction,
   createCombatState,
-  enemyMaxHealth,
   resolveCombatAction,
   type CombatAction,
   type CombatState
@@ -175,32 +174,19 @@ function createPartyCombatant(blueprint: PartyBlueprint): Combatant {
   };
 }
 
+/**
+ * The boss the game actually builds, not a copy of it.
+ *
+ * This carried its own construction: the authored elemental table replaced by a
+ * hardcoded `{ nature: 0.2, fire: -0.2 }`, and no status resistance at all. The
+ * release gate therefore certified the balance of a boss nobody fights — one
+ * with the wrong weaknesses, and one a pair of alternating stuns could lock out
+ * of its own fight, which is exactly the case `statusResistance` exists to stop.
+ * The old comment claimed the curve was shared so a balance change could not
+ * land in one place and not the other; only the health curve ever was.
+ */
 function createBossCombatant(enemyId: string, level: number, attackers: number): Combatant {
-  // Shared with the integration layer so a balance change cannot land in one
-  // and not the other; this file previously carried its own copy of the curve.
-  const maxHp = enemyMaxHealth(level, true, attackers);
-  return {
-    id: `${enemyId}.0`,
-    name: enemyId.replace("enemy.", "").replaceAll("-", " "),
-    level,
-    stats: {
-      maxHp,
-      maxMp: 0,
-      strength: 7 + level * 2,
-      dexterity: 7 + level,
-      agility: 6 + level,
-      vitality: 6 + level,
-      intellect: 4 + level,
-      wisdom: 5 + level,
-      charisma: 1
-    },
-    hp: maxHp,
-    mp: 0,
-    skills: [...(ENEMY_SKILLS[enemyId] ?? [])],
-    elements: { nature: 0.2, fire: -0.2 },
-    statuses: [],
-    isPlayerControlled: false
-  };
+  return enemyCombatant(enemyId, 0, true, level, "normal", 1, attackers);
 }
 
 function firstLivingEnemy(state: CombatState): Combatant | undefined {
