@@ -68,6 +68,11 @@ export class TitleScene extends Phaser.Scene {
     this.mode = "title";
     this.titleIndex = 0;
     this.loadIndex = 0;
+    // Phaser reuses the scene instance, so the confirm latch outlives a run.
+    // Leaving it set — as the BEGIN path deliberately does, since the scene is
+    // on its way out — would refuse every confirm on the next visit here.
+    this.loading = false;
+    this.confirmingNewGame = false;
     this.cameras.main.setBackgroundColor(COLORS.ink);
     this.paintBackdrop();
     this.add.text(64, 66, "YGGDRASIL", { ...TEXT.title, fontSize: fontPx(54), letterSpacing: 7 });
@@ -510,7 +515,17 @@ export class TitleScene extends Phaser.Scene {
       jobId: jobs[this.jobIndex]?.id ?? "vanguard",
       difficulty: DIFFICULTY_CHOICES[this.difficultyIndex]?.id ?? "normal"
     };
-    await this.bridge.newGame(draft);
+    // Latch before the await, the way the load path already does. Without it a
+    // second confirm landing inside newGame began a second chronicle, and the
+    // two raced to write the same autosave record. The scene leaves on success,
+    // so the latch only has to reopen when the call fails.
+    this.loading = true;
+    try {
+      await this.bridge.newGame(draft);
+    } catch (error) {
+      this.loading = false;
+      throw error;
+    }
     this.cameras.main.fadeOut(motionDuration(260), 10, 18, 24);
     this.time.delayedCall(motionDuration(270), () => this.scene.start("world"));
   }

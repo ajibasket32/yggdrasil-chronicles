@@ -108,3 +108,46 @@ describe("quests and relationships", () => {
     expect(world).toMatchObject({ flags: {}, factionStanding: {}, relationships: [] });
   });
 });
+
+describe("a flag gate is a gate", () => {
+  const gatedQuests: QuestDefinition[] = [
+    {
+      id: "quest-recovery",
+      title: "Recovery",
+      summary: "Opens only after a specific failure.",
+      prerequisites: [],
+      steps: [{ kind: "talk", targetId: "npc-someone", count: 1 }],
+      rewardTier: "major",
+      mainStory: false,
+      consequences: [],
+      requiredFlags: [{ key: "outcome.quest.something", equals: true }]
+    },
+    {
+      id: "quest-open",
+      title: "Open",
+      summary: "No gate of any kind.",
+      prerequisites: [],
+      steps: [{ kind: "talk", targetId: "npc-someone", count: 1 }],
+      rewardTier: "minor",
+      mainStory: false,
+      consequences: []
+    }
+  ];
+
+  it("locks a quest that gates on a world flag even when it has no prerequisites", () => {
+    const progress = createQuestProgress(gatedQuests);
+    // refreshQuestAvailability only reconsiders locked quests, so starting this
+    // one as available meant its flag gate never ran even once.
+    expect(progress.find(({ questId }) => questId === "quest-recovery")?.state).toBe("locked");
+    expect(progress.find(({ questId }) => questId === "quest-open")?.state).toBe("available");
+  });
+
+  it("opens the gated quest once its flag is set", () => {
+    const locked = createQuestProgress(gatedQuests);
+    const stillLocked = refreshQuestAvailability(locked, gatedQuests, {});
+    expect(stillLocked.find(({ questId }) => questId === "quest-recovery")?.state).toBe("locked");
+
+    const opened = refreshQuestAvailability(locked, gatedQuests, { "outcome.quest.something": true });
+    expect(opened.find(({ questId }) => questId === "quest-recovery")?.state).toBe("available");
+  });
+});

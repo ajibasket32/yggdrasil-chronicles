@@ -47,6 +47,12 @@ export class BattleScene extends Phaser.Scene {
       this.scene.start("world");
       return;
     }
+    // Phaser reuses the scene instance, so these survive the last battle. A
+    // cursor left on a long action list pointed past a shorter one — and every
+    // fight should open on ATTACK regardless.
+    this.actionIndex = 0;
+    this.subMenu = "none";
+    this.subMenuIndex = 0;
     this.cameras.main.setBackgroundColor(0x151923);
     this.render();
     this.bindKeys();

@@ -49,6 +49,39 @@ function effectiveVolume(): number {
 }
 
 /**
+ * Fades a sound to `volume` in a way a scene change cannot orphan.
+ *
+ * The track is deliberately owned by the game so it outlives any scene — but a
+ * tween is owned by the scene that created it. Leaving mid-cross-fade (walking
+ * into a battle, say) killed the tween before its `onComplete`, so the outgoing
+ * track was never stopped and never destroyed. Only the incoming one is in the
+ * registry, so nothing could reach the survivor afterwards: two tracks playing
+ * at once, one of them unstoppable. The incoming one, meanwhile, was left at
+ * the volume 0 it started from — silent music. The shutdown hook simply
+ * finishes whatever the tween was going to do.
+ *
+ * The event name is the literal "shutdown" because this module imports Phaser
+ * as a type only, which is what keeps `musicForLocation` testable without it.
+ */
+function fadeSound(
+  scene: Phaser.Scene,
+  sound: Phaser.Sound.BaseSound,
+  volume: number,
+  onDone?: () => void
+): void {
+  let settled = false;
+  const finish = (): void => {
+    if (settled) return;
+    settled = true;
+    scene.events.off("shutdown", finish);
+    (sound as Phaser.Sound.WebAudioSound).setVolume(volume);
+    onDone?.();
+  };
+  scene.events.once("shutdown", finish);
+  scene.tweens.add({ targets: sound, volume, duration: FADE_MS, onComplete: finish });
+}
+
+/**
  * Cross-fades to `key`, or keeps playing if it is already current. Missing
  * audio (a stripped dev build, a failed decode) degrades to silence rather
  * than an error — music must never be the reason the game stops.
@@ -63,14 +96,9 @@ export function playMusic(scene: Phaser.Scene, key: MusicKey): void {
 
   if (current?.sound.isPlaying) {
     const fading = current.sound;
-    scene.tweens.add({
-      targets: fading,
-      volume: 0,
-      duration: FADE_MS,
-      onComplete: () => {
-        fading.stop();
-        fading.destroy();
-      }
+    fadeSound(scene, fading, 0, () => {
+      fading.stop();
+      fading.destroy();
     });
   } else {
     current?.sound.destroy();
@@ -78,7 +106,7 @@ export function playMusic(scene: Phaser.Scene, key: MusicKey): void {
 
   const next = game.sound.add(key, { loop: true, volume: 0 });
   next.play();
-  scene.tweens.add({ targets: next, volume: effectiveVolume(), duration: FADE_MS });
+  fadeSound(scene, next, effectiveVolume());
   game.registry.set(CURRENT_KEY, { key, sound: next } satisfies CurrentMusic);
 }
 
@@ -93,14 +121,9 @@ export function stopMusic(scene: Phaser.Scene): void {
     fading.destroy();
     return;
   }
-  scene.tweens.add({
-    targets: fading,
-    volume: 0,
-    duration: FADE_MS,
-    onComplete: () => {
-      fading.stop();
-      fading.destroy();
-    }
+  fadeSound(scene, fading, 0, () => {
+    fading.stop();
+    fading.destroy();
   });
 }
 

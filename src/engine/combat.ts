@@ -295,7 +295,13 @@ export function chooseEnemyAction(
 
   const target = selectEnemyTarget(actor.combatant, living, state.round);
   const bloodied = actor.combatant.hp / actor.combatant.stats.maxHp <= 0.6;
-  const knownSkillId = actor.combatant.skills.find((candidate) => skills[candidate]);
+  // Rotate through everything the combatant knows rather than always reaching
+  // for the first entry: a boss authored with several forms only ever showed
+  // one of them, so the rest of its kit was content no fight ever revealed.
+  // Keyed on the round, like selectEnemyTarget, so no RNG state is consumed and
+  // the offline campaign simulation stays reproducible.
+  const knownSkillIds = actor.combatant.skills.filter((candidate) => skills[candidate]);
+  const knownSkillId = knownSkillIds[state.round % knownSkillIds.length];
   if (bloodied && knownSkillId) {
     return { type: "skill", actorId, targetId: target.id, skillId: knownSkillId };
   }

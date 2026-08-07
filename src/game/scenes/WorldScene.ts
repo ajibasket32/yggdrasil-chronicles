@@ -1067,6 +1067,12 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     if (this.overlay) return;
+    // Every overlay and dialogue case has returned by here, so a lock still
+    // held at this point belongs to a transition or to an interaction already
+    // in flight. `activeInteraction` is not set until its await resolves, so a
+    // second confirm arriving inside that window used to fall through and call
+    // interactNpc again — spending a recruitment moment that happens once.
+    if (this.locked) return;
     const npc = this.nearestNpc();
     if (npc) {
       this.locked = true;
@@ -1207,9 +1213,14 @@ export class WorldScene extends Phaser.Scene {
     }
     this.locked = false;
     this.publishUiState();
+    // Repaint before announcing. refreshObjectiveActors repaints the whole map
+    // through renderLocation, which destroys every child — so a toast raised
+    // above it was torn down on the frame it was created, and the two moments
+    // most worth announcing, a companion joining and a quest opening, were the
+    // ones the player never saw.
+    this.refreshObjectiveActors();
     if (recruited) this.showToast(`${recruited.name} joined the party.`);
     else if (startedQuestTitle) this.showToast(`New quest — ${startedQuestTitle}`);
-    this.refreshObjectiveActors();
     if (this.snapshot.campaign?.complete) this.showCampaignEnding();
     this.refreshPrompt();
   }
@@ -1324,6 +1335,11 @@ export class WorldScene extends Phaser.Scene {
   private toggleOverlay(kind: OverlayKind): void {
     this.time.delayedCall(0, () => this.publishUiState());
     if (this.activeInteraction) return;
+    // A scripted beat owns the screen and draws into `overlay`. Without this,
+    // an overlay key fell through to closeOverlay below, tearing the beat's
+    // panel down and unlocking movement while `activeScene` stayed set — the
+    // narration gone, the scene still notionally running.
+    if (this.activeScene) return;
     if (this.overlay) {
       this.closeOverlay();
       return;
@@ -1956,6 +1972,9 @@ export class WorldScene extends Phaser.Scene {
       this.overlayKind = undefined;
       this.locked = false;
       this.renderLocation(false);
+      // The early return skipped the publish the ordinary path does, so the
+      // #app data-overlay attribute kept naming a panel that had just closed.
+      this.publishUiState();
       return;
     }
     if (this.overlayKind === "shop") void this.bridge.leaveShop();
@@ -1979,9 +1998,11 @@ export class WorldScene extends Phaser.Scene {
       this.showToast("Saving is unavailable in this browser session.");
       return;
     }
-    await this.bridge.save("quick");
-    const failed = this.bridge.getSnapshot().autosave === "error";
-    this.showToast(failed ? "Quick save failed." : "Quick saved.");
+    // The bridge reports this write's own outcome. Reading the shared autosave
+    // status instead meant an autosave finishing nearby decided what this
+    // message said, so a failure could be reported against the wrong save.
+    const saved = await this.bridge.save("quick");
+    this.showToast(saved ? "Quick saved." : "Quick save failed.");
   }
 
   private async quickLoad(): Promise<void> {
@@ -2304,6 +2325,12 @@ export class WorldScene extends Phaser.Scene {
 
   private returnToTitle(): void {
     if (this.overlayKind !== "system" || !this.overlay || !this.locked) return;
+    // Phaser reuses the scene instance, so these fields outlive the world. The
+    // entry direction decides where a party is placed on arrival; carried into
+    // a fresh chronicle it put the opening party on a map edge instead of the
+    // authored arrival point. The battle return tile goes for the same reason.
+    this.entryDirection = undefined;
+    this.battleReturnGrid = undefined;
     this.cameras.main.fadeOut(motionDuration(180), 10, 18, 24);
     this.time.delayedCall(motionDuration(190), () => this.scene.start("title"));
   }

@@ -108,3 +108,43 @@ describe("enemies do not all behave identically", () => {
     expect(first).toEqual(second);
   });
 });
+
+describe("a boss shows its whole kit", () => {
+  const strike = {
+    id: "skill.strike", name: "Strike", element: "physical" as const,
+    power: 30, accuracy: 0.9, mpCost: 0, target: "enemy" as const
+  };
+  const ember = {
+    id: "skill.ember", name: "Ember", element: "fire" as const,
+    power: 30, accuracy: 0.9, mpCost: 0, target: "enemy" as const
+  };
+  const catalog = { [strike.id]: strike, [ember.id]: ember };
+
+  function actionAtRound(round: number): string | undefined {
+    const hero = combatant({ id: "hero", isPlayerControlled: true });
+    const boss = combatant({ id: "boss", skills: [strike.id, ember.id], hp: 40 });
+    const state = { ...createCombatState([hero], [boss], "kit-seed"), round };
+    const action = chooseEnemyAction(state, "boss", catalog);
+    return action.type === "skill" ? action.skillId : undefined;
+  }
+
+  it("rotates through every known skill instead of repeating the first", () => {
+    const used = new Set([1, 2, 3, 4].map((round) => actionAtRound(round)));
+    // Previously `skills.find` pinned every bloodied turn to the first entry,
+    // so a boss's second authored form was content no fight ever showed.
+    expect(used.has(strike.id)).toBe(true);
+    expect(used.has(ember.id)).toBe(true);
+  });
+
+  it("stays deterministic: the same round always chooses the same form", () => {
+    expect(actionAtRound(3)).toBe(actionAtRound(3));
+  });
+
+  it("still basic-attacks a combatant that knows no catalogued skill", () => {
+    const hero = combatant({ id: "hero", isPlayerControlled: true });
+    const boss = combatant({ id: "boss", skills: [], hp: 10 });
+    const action = chooseEnemyAction(createCombatState([hero], [boss], "bare"), "boss", catalog);
+    expect(action.type).toBe("attack");
+  });
+});
+

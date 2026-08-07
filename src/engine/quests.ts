@@ -9,7 +9,14 @@ export interface QuestObjectiveEvent {
 export function createQuestProgress(definitions: readonly QuestDefinition[]): QuestProgress[] {
   return definitions.map((definition) => ({
     questId: definition.id,
-    state: definition.prerequisites.length === 0 ? "available" : "locked",
+    // A flag gate counts as a gate. `refreshQuestAvailability` only reconsiders
+    // quests that are locked, so a quest with `requiredFlags` and no
+    // prerequisites opened as available and its gate never ran once — which
+    // offered a failure-recovery thread from the opening minute of a chronicle,
+    // before the failure it exists to answer could have happened.
+    state: definition.prerequisites.length === 0 && (definition.requiredFlags ?? []).length === 0
+      ? "available"
+      : "locked",
     currentStep: 0
   }));
 }
