@@ -163,9 +163,28 @@ function commandFailure(message: string): GameCommandResult {
  * through, leaving an unlimited supply and a balance that can never display.
  */
 export function readCurrency(flags: GameState["world"]["flags"]): number {
-  const raw = flags.currency;
-  const value = typeof raw === "number" ? raw : Number(raw ?? 0);
-  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+  return readFlagCount(flags, "currency");
+}
+
+/**
+ * A counter kept in `world.flags`, read as a whole number.
+ *
+ * Marks are not the only number in that bag: completed runs, per-NPC
+ * conversation counts, encounter engagements and lifetime defeat tallies all
+ * live there too, and all were read with a bare `Number(...)`. A string in any
+ * of them answers NaN — and unlike a merely wrong count, NaN is then written
+ * straight back into the flag, where the save schema refuses it. From that
+ * point the chronicle cannot autosave at all.
+ */
+export function readFlagCount(
+  flags: GameState["world"]["flags"],
+  key: string,
+  fallback = 0
+): number {
+  const raw = flags[key];
+  if (raw === undefined) return fallback;
+  const value = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : fallback;
 }
 
 /**
@@ -568,7 +587,7 @@ export class EngineGameBridge implements GameBridge {
     const carriedEquipment = previous.party
       .flatMap((member) => Object.values(member.equipment))
       .filter((itemId): itemId is string => typeof itemId === "string");
-    const completedRuns = Number(previous.world.flags["progress.completed-runs"] ?? 0) + 1;
+    const completedRuns = readFlagCount(previous.world.flags, "progress.completed-runs") + 1;
 
     await this.newGame(draft);
     const fresh = this.requireState();
@@ -971,7 +990,7 @@ export class EngineGameBridge implements GameBridge {
   async interactNpc(npcId: string): Promise<InteractionView> {
     const state = this.requireState();
     const conversationFlag = this.npcConversationFlag(npcId);
-    const previousConversationCount = Number(state.world.flags[conversationFlag] ?? 0);
+    const previousConversationCount = readFlagCount(state.world.flags, conversationFlag);
     const conversationCount = (Number.isFinite(previousConversationCount) ? previousConversationCount : 0) + 1;
     let progress = state.quests;
     // Remember which quest this conversation started so the scene can announce
@@ -1166,7 +1185,7 @@ export class EngineGameBridge implements GameBridge {
     const relationship = state.world.relationships.find(({ npcId: candidate }) => candidate === npcId);
     const factionStanding = definition ? state.world.factionStanding[definition.factionId] ?? 0 : 0;
     const scripted = getDialogue(npcId);
-    const conversationCount = Number(state.world.flags[this.npcConversationFlag(npcId)] ?? 1);
+    const conversationCount = readFlagCount(state.world.flags, this.npcConversationFlag(npcId), 1);
     const rotatingIndex = scripted.length > 1
       ? 1 + ((Math.max(1, Math.floor(conversationCount)) - 1) % (scripted.length - 1))
       : 0;
@@ -1330,7 +1349,7 @@ export class EngineGameBridge implements GameBridge {
     // chronicle. It always dropped, or it never did. Counting engagements makes
     // successive fights differ while a reload still replays one exactly.
     const engagementFlag = `progress.encounter.${encounterId}`;
-    const engagement = Number(state.world.flags[engagementFlag] ?? 0) + 1;
+    const engagement = readFlagCount(state.world.flags, engagementFlag) + 1;
     this.#state = {
       ...state,
       world: {
@@ -2023,7 +2042,7 @@ export class EngineGameBridge implements GameBridge {
     for (const enemyId of new Set(encounter.enemyIds)) {
       const defeatedThisBattle = encounter.enemyIds.filter((id) => id === enemyId).length;
       const countFlag = `progress.defeat.${enemyId}`;
-      const lifetimeCount = Number(flags[countFlag] ?? 0) + defeatedThisBattle;
+      const lifetimeCount = readFlagCount(flags, countFlag) + defeatedThisBattle;
       flags = { ...flags, [countFlag]: lifetimeCount };
       progress = this.applyObjectiveToActiveQuests(progress, "defeat", enemyId, lifetimeCount);
     }

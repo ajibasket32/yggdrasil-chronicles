@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EngineGameBridge, readCurrency } from "../../src/integration/EngineGameBridge";
+import { EngineGameBridge, readCurrency, readFlagCount } from "../../src/integration/EngineGameBridge";
 import { MemorySaveStorage } from "../../src/save/memory-storage";
 import { SaveRepository } from "../../src/save/repository";
 import { gameStateSchema } from "../../src/save/schema";
@@ -81,5 +81,31 @@ describe("a save whose currency flag is not a number", () => {
     expect(readCurrency({ currency: 12.9 })).toBe(12);
     expect(readCurrency({ currency: true })).toBe(1);
     expect(readCurrency({ currency: "48" })).toBe(48);
+  });
+
+  it("keeps every other flag counter finite, so the save stays writable", async () => {
+    const { bridge, saves } = createBridge();
+    await startChronicle(bridge);
+    const state = await saves.load("autosave");
+    if (!state) throw new Error("expected an autosave");
+
+    // Marks are not the only number kept in the flag bag. A NaN in any of these
+    // is worse than a wrong count: it gets written straight back into the flag,
+    // and the schema refuses NaN — from then on the chronicle cannot autosave.
+    expect(() => saves.save("autosave", {
+      ...state,
+      world: { ...state.world, flags: { ...state.world.flags, "progress.completed-runs": Number.NaN } }
+    })).rejects.toThrow();
+
+    for (const key of [
+      "progress.completed-runs",
+      "progress.encounter.mossroad-foragers",
+      "progress.npc.mara.conversations"
+    ]) {
+      expect(readFlagCount({ [key]: "many" }, key)).toBe(0);
+      expect(readFlagCount({ [key]: Number.NaN }, key)).toBe(0);
+      expect(readFlagCount({}, key, 1), "an absent counter keeps its own default").toBe(1);
+      expect(readFlagCount({ [key]: 7 }, key)).toBe(7);
+    }
   });
 });
