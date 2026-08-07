@@ -126,6 +126,11 @@ export class WorldScene extends Phaser.Scene {
   /** Where the party stood when a battle began; scene fields survive the scene restart. */
   private battleReturnGrid?: Point;
   /**
+   * A boss introduction is playing and its fight opens when the scene ends.
+   * BattleScene draws no scripted scenes, so the beat has to finish here first.
+   */
+  private startBattleAfterScene = false;
+  /**
    * The system menu's sub-view. While set, the command list is replaced by a
    * list of save slots (or archived backups) and every key routes to it.
    */
@@ -195,6 +200,10 @@ export class WorldScene extends Phaser.Scene {
         this.applyDayTint();
         if (this.overlayKind === "inventory" || this.overlayKind === "party") this.drawInteractiveOverlay();
       }
+      // A beat queued while the world is already running — an arrival scene, or
+      // the next one behind a beat just acknowledged — was only ever picked up
+      // by create(), so it waited for the scene to be rebuilt before playing.
+      this.playPendingScene();
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unsubscribe?.());
     announceScene("world");
@@ -213,7 +222,9 @@ export class WorldScene extends Phaser.Scene {
    */
   private playPendingScene(): void {
     const scene = this.snapshot.pendingScene;
-    if (!scene || this.activeScene || this.activeInteraction) return;
+    // Never open a beat over a faded-out screen: travel and encounter starts
+    // both hold `transitioning` while the camera is black.
+    if (!scene || this.activeScene || this.activeInteraction || this.transitioning) return;
     // An arrival beat waits for the party to actually be there. It stays
     // pending, so stepping back into the place plays it then.
     if (scene.locationId && scene.locationId !== this.snapshot.locationId) return;
@@ -355,7 +366,16 @@ export class WorldScene extends Phaser.Scene {
     this.overlay = undefined;
     this.locked = false;
     if (active) await this.bridge.acknowledgeScene(active.id);
+    // A boss introduction opens its fight the moment it finishes.
+    if (this.startBattleAfterScene) {
+      this.startBattleAfterScene = false;
+      this.locked = true;
+      this.time.delayedCall(motionDuration(200), () => this.scene.start("battle"));
+      return;
+    }
     this.refreshPrompt();
+    // Another beat may be waiting behind the one just finished.
+    this.playPendingScene();
     if (this.snapshot.campaign?.complete) this.showCampaignEnding();
   }
 
@@ -473,7 +493,10 @@ export class WorldScene extends Phaser.Scene {
     this.overlayKind = undefined;
     this.prompt = undefined;
     this.encounterSprite = undefined;
-    this.locked = false;
+    // A repaint must not reopen input that something else is holding shut. This
+    // fired from the travel subscription while the camera was still faded to
+    // black, handing the party back to the player mid-transition.
+    if (!this.transitioning && !this.activeScene && !this.activeInteraction) this.locked = false;
     if (resetPlayerPosition) {
       // Returning from a battle resumes the tile the fight started on. The
       // scene previously fell through to the arrival point, teleporting a
@@ -885,7 +908,12 @@ export class WorldScene extends Phaser.Scene {
       this.time.delayedCall(motionDuration(200), () => {
         this.cameras.main.fadeIn(motionDuration(180), 10, 18, 24);
         playSound(this, "sfx.door");
-        this.locked = false;
+        // Release only this transition's own lock. Blanket-clearing it also
+        // unlocked a scripted scene or a return to the title begun in the
+        // meantime, letting the party walk around underneath it.
+        if (!this.activeScene && !this.activeInteraction) this.locked = false;
+        // An arrival beat belongs on arrival, not on the next scene rebuild.
+        this.playPendingScene();
       });
     } catch (error) {
       console.error("Travel failed", error);
@@ -1404,7 +1432,12 @@ export class WorldScene extends Phaser.Scene {
       this.time.delayedCall(motionDuration(200), () => {
         this.cameras.main.fadeIn(motionDuration(180), 10, 18, 24);
         playSound(this, "sfx.door");
-        this.locked = false;
+        // Release only this transition's own lock. Blanket-clearing it also
+        // unlocked a scripted scene or a return to the title begun in the
+        // meantime, letting the party walk around underneath it.
+        if (!this.activeScene && !this.activeInteraction) this.locked = false;
+        // An arrival beat belongs on arrival, not on the next scene rebuild.
+        this.playPendingScene();
       });
     } catch (error) {
       console.error("Fast travel failed", error);
@@ -2301,9 +2334,22 @@ export class WorldScene extends Phaser.Scene {
       if (!this.bridge.getSnapshot().battle) {
         this.showToast("The party is in no condition to fight.");
         this.locked = false;
+        // Disarm the return tile too: left set, the next ordinary map change
+        // resumed a position from a fight that never happened.
+        this.battleReturnGrid = undefined;
         return;
       }
       this.cameras.main.flash(motionDuration(220), 238, 221, 179);
+      // A boss introduction is authored to run before its fight, and BattleScene
+      // draws no scripted scenes. Leaving it queued here meant scene.start
+      // carried the party past it, and it finally played on the next return to
+      // the world — introducing a boss the party had already killed.
+      if (this.snapshot.pendingScene && !this.snapshot.pendingScene.locationId) {
+        this.transitioning = false;
+        this.startBattleAfterScene = true;
+        this.playPendingScene();
+        return;
+      }
       this.time.delayedCall(motionDuration(240), () => this.scene.start("battle"));
     } catch (error) {
       console.error("Encounter failed to start", error);

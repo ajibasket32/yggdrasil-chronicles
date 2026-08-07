@@ -166,6 +166,10 @@ test("inventory targets a party member and visibly consumes a restorative", asyn
   // Take one hit so the selected restorative has a meaningful target.
   await pressRepeatedly(page, "ArrowUp", 2);
   await pressRepeatedly(page, "ArrowRight", 17);
+  // Settle on the far side before walking on, the same way the quest walk
+  // above does. The crossing fades the camera and holds input until it
+  // finishes, so presses aimed at the road land only once the party is there.
+  await expect(app).toHaveAttribute("data-location-id", "location.mossroad");
   await pressRepeatedly(page, "ArrowRight", 13);
   await page.keyboard.press("b");
   await expect(app).toHaveAttribute("data-scene", "battle");

@@ -220,6 +220,12 @@ interface ActiveBattle {
   log: string[];
   /** Index of the party member whose player turn is awaiting an action. */
   partyTurnIndex: number;
+  /**
+   * Party indices that have already acted this round. Whether somebody has had
+   * their turn cannot be read off the initiative queue, because that queue is
+   * recomputed from live statuses and a mid-round haste reorders it underneath.
+   */
+  actedPartyIndices: number[];
   activatedBossPhases: string[];
   /** Engine events from the most recent action, projected onto the view for animation. */
   events: CombatEvent[];
@@ -375,7 +381,7 @@ export class EngineGameBridge implements GameBridge {
       difficulty: difficultyOf(this.#state),
       party: party.map((member, index) => this.toPartyView(member, index)),
       reserve: this.#state.reserve.map((member, index) => this.toPartyView(member, party.length + index)),
-      pendingScene: this.#sceneQueue[0],
+      pendingScene: this.playableScene(),
       discoveredLocations: this.#state.world.discoveredLocationIds
         .map((id) => locations.find((candidate) => candidate.id === id))
         .filter((candidate): candidate is (typeof locations)[number] => candidate !== undefined)
@@ -1202,9 +1208,26 @@ export class EngineGameBridge implements GameBridge {
     });
   }
 
+  /**
+   * The first queued beat the party can actually watch from where they stand.
+   *
+   * An arrival beat carries its location and waits until the party is in it.
+   * Serving strictly the head of the queue meant one stranded arrival scene —
+   * walk into Hollow Root, leave before its narration is dismissed — sat at the
+   * front forever, hiding every beat behind it: boss introductions, quest
+   * epilogues, the lot, for the rest of the run.
+   */
+  private playableScene(): PendingSceneView | undefined {
+    const locationId = this.#state?.world.currentLocationId;
+    return this.#sceneQueue.find((scene) => !scene.locationId || scene.locationId === locationId);
+  }
+
   async acknowledgeScene(sceneId: string): Promise<void> {
-    if (this.#sceneQueue[0]?.id !== sceneId) return;
-    this.#sceneQueue.shift();
+    // Removed by id, not by position: the beat just watched is not necessarily
+    // the head, because a location-tagged one may be waiting in front of it.
+    const index = this.#sceneQueue.findIndex((scene) => scene.id === sceneId);
+    if (index < 0) return;
+    this.#sceneQueue.splice(index, 1);
     const state = this.#state;
     if (!state) {
       this.emit();
@@ -1275,6 +1298,7 @@ export class EngineGameBridge implements GameBridge {
       phase: "choosing",
       log: [`${encounter.name} bars the road.`],
       partyTurnIndex: this.firstLivingPartyIndex(party),
+      actedPartyIndices: [],
       activatedBossPhases: [],
       events: []
     };
@@ -1398,6 +1422,7 @@ export class EngineGameBridge implements GameBridge {
       if (active.state.outcome === "ongoing") {
         // Start the new round on whoever initiative puts first, so a haste or
         // slow landed last round actually changes who leads this one.
+        active.actedPartyIndices = [];
         active.partyTurnIndex = this.partyTurnQueue(active)[0]
           ?? this.firstLivingPartyIndex(active.state.party);
       }
@@ -2391,11 +2416,16 @@ export class EngineGameBridge implements GameBridge {
   }
 
   private advancePartyTurn(active: ActiveBattle): boolean {
-    const queue = this.partyTurnQueue(active);
-    const current = queue.indexOf(active.partyTurnIndex);
-    // A member who died mid-round drops out of the queue; resume from whoever
-    // is next rather than restarting the round.
-    const next = current >= 0 ? queue[current + 1] : queue.find((index) => index > active.partyTurnIndex);
+    // Record the turn that just ended before consulting the order again. The
+    // queue is rebuilt from live initiative, so a member who buffs their own
+    // speed mid-round moves to the front of it — and the old positional walk
+    // then handed a second action to whoever they overtook, who had already
+    // gone. A member who died mid-round simply drops out of the queue.
+    if (!active.actedPartyIndices.includes(active.partyTurnIndex)) {
+      active.actedPartyIndices.push(active.partyTurnIndex);
+    }
+    const next = this.partyTurnQueue(active)
+      .find((index) => !active.actedPartyIndices.includes(index));
     if (next === undefined) return false;
     active.partyTurnIndex = next;
     return true;

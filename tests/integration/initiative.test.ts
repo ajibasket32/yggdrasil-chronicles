@@ -99,3 +99,59 @@ describe("agility decides who acts first", () => {
     expect(battle?.turnOrder).not.toContain(downedId);
   });
 });
+
+describe("a mid-round speed change does not duplicate a turn", () => {
+  it("does not hand a second action to an ally overtaken by a self-haste", async () => {
+    const { bridge, saves } = createBridge("initiative-haste");
+    await twoMemberParty(bridge, saves);
+
+    // Pin both agilities so the reorder is certain rather than incidental: the
+    // protagonist starts a point slower, and the +40% from Pathfinder's Stride
+    // clears the recruit even allowing for a Wayfinder bonus on top.
+    const state = await saves.load("autosave");
+    if (!state) throw new Error("expected an autosave");
+    await saves.save("autosave", {
+      ...state,
+      party: state.party.map((member) => member.id === "party.protagonist"
+        ? {
+            ...member,
+            skills: [...member.skills, "skill.pathfinders-stride"],
+            stats: { ...member.stats, agility: 30, maxMp: 40 },
+            mp: 40
+          }
+        : { ...member, stats: { ...member.stats, agility: 31 } })
+    });
+    await bridge.continueGame();
+    bridge.startEncounter("encounter.mossroad-foragers");
+
+    const partyIds = (bridge.getSnapshot().battle?.actors ?? [])
+      .filter(({ isParty }) => isParty).map(({ id }) => id);
+    expect(partyIds.length).toBe(2);
+    const partyOrder = (): string[] =>
+      (bridge.getSnapshot().battle?.turnOrder ?? []).filter((id) => partyIds.includes(id));
+
+    // The recruit leads, so the protagonist acts second.
+    const openingOrder = partyOrder();
+    expect(openingOrder[0]).toBe("party.tovin-ash");
+    const firstActor = bridge.getSnapshot().battle?.activeActorId;
+    expect(firstActor).toBe("party.tovin-ash");
+    await bridge.chooseBattleAction("guard");
+
+    // Now the slower protagonist hastes themselves past the ally who just went.
+    expect(bridge.getSnapshot().battle?.activeActorId).toBe("party.protagonist");
+    const stride = bridge.getSnapshot().battle?.activeSkills
+      .find(({ id }) => id === "skill.pathfinders-stride");
+    expect(stride?.affordable, "the haste must be castable for this to prove anything").toBe(true);
+    await bridge.chooseBattleAction("skill", "skill.pathfinders-stride");
+
+    // The order really did invert — otherwise this test proves nothing.
+    expect(partyOrder()[0], "the haste should have moved the caster to the front").toBe("party.protagonist");
+
+    // And the recruit, who already acted, is not handed a second turn: the
+    // round ends and the enemies answer instead.
+    const after = bridge.getSnapshot().battle;
+    if (after?.phase === "choosing") {
+      expect(after.activeActorId).not.toBe("party.tovin-ash");
+    }
+  });
+});

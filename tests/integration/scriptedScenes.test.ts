@@ -178,13 +178,34 @@ describe("arrival scenes wait for their location", () => {
     expect(arrival?.id).toBe("scene.hollow-root-arrival");
     expect(arrival?.locationId).toBe("location.hollow-root");
 
-    // Stepping straight back out leaves the beat pending, still tagged for
-    // Hollow Root — the presentation layer holds it rather than narrating a
+    // Stepping straight back out withholds the beat rather than narrating a
     // dripping cavern on the open road.
     await bridge.travel("location.mossroad");
-    const held = bridge.getSnapshot().pendingScene;
-    expect(held?.id).toBe("scene.hollow-root-arrival");
-    expect(held?.locationId).toBe("location.hollow-root");
+    expect(bridge.getSnapshot().pendingScene?.id).not.toBe("scene.hollow-root-arrival");
     expect(bridge.getSnapshot().locationId).toBe("location.mossroad");
+
+    // It is withheld, not discarded: it is waiting again on return.
+    await bridge.travel("location.hollow-root");
+    expect(bridge.getSnapshot().pendingScene?.id).toBe("scene.hollow-root-arrival");
+  });
+
+  it("does not let a withheld arrival beat block the beats behind it", async () => {
+    const { bridge } = createBridge("scene-block-fixture");
+    await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "vanguard", difficulty: "normal" });
+    await bridge.acknowledgeScene("scene.prologue");
+
+    // Walk in, leave without watching: the arrival beat is queued and stranded.
+    await bridge.travel("location.mossroad");
+    await bridge.travel("location.hollow-root");
+    expect(bridge.getSnapshot().pendingScene?.id).toBe("scene.hollow-root-arrival");
+    await bridge.travel("location.mossroad");
+
+    // A beat queued afterwards must still be reachable. Taking strictly the
+    // head of the queue left the stranded arrival in front of it, hiding every
+    // later beat — boss introductions and quest epilogues — for the whole run.
+    await bridge.travel("location.hollow-root");
+    bridge.startEncounter("encounter.mire-antler");
+    await bridge.travel("location.mossroad");
+    expect(bridge.getSnapshot().pendingScene?.id).toBe("scene.mire-antler-intro");
   });
 });
