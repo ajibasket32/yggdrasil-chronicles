@@ -91,6 +91,22 @@ function isAlive(combatant: Combatant): boolean {
   return combatant.hp > 0;
 }
 
+/**
+ * Orders two ids by code unit, for the tie-breaks that decide turn order and
+ * targeting.
+ *
+ * `localeCompare` with no locale resolves against the host's collation tables,
+ * which makes it machine-dependent by construction — and this tie-break is not
+ * a rare path: every enemy in an encounter is built from the same level, so
+ * their agility always ties and the id comparison alone orders the fight. Two
+ * hosts could therefore draw a different initiative order from one seed, take a
+ * different sequence of RNG draws, and play a different battle — with the
+ * offline balance simulation no longer reproducing the numbers CI asserts.
+ */
+export function compareIds(left: EntityId, right: EntityId): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function findCombatant(state: CombatState, id: EntityId): { combatant: Combatant; side: CombatSide; index: number } | undefined {
   const partyIndex = state.party.findIndex((combatant) => combatant.id === id);
   if (partyIndex >= 0) {
@@ -266,7 +282,7 @@ function initiativeAgility(combatant: Combatant): number {
 export function getInitiativeOrder(state: CombatState): EntityId[] {
   return [...state.party, ...state.enemies]
     .filter(isAlive)
-    .sort((left, right) => initiativeAgility(right) - initiativeAgility(left) || left.id.localeCompare(right.id))
+    .sort((left, right) => initiativeAgility(right) - initiativeAgility(left) || compareIds(left.id, right.id))
     .map((combatant) => combatant.id);
 }
 
@@ -322,10 +338,10 @@ function selectEnemyTarget(
   living: readonly Combatant[],
   round: number
 ): Combatant {
-  const byHealth = [...living].sort((left, right) => left.hp - right.hp || left.id.localeCompare(right.id));
+  const byHealth = [...living].sort((left, right) => left.hp - right.hp || compareIds(left.id, right.id));
   const byThreat = [...living].sort((left, right) =>
     right.stats.strength + right.stats.intellect - (left.stats.strength + left.stats.intellect)
-    || left.id.localeCompare(right.id));
+    || compareIds(left.id, right.id));
 
   const profile = enemyTargetingProfile(enemy);
   if (profile === "opportunist") return byHealth[0] ?? living[0]!;

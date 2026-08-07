@@ -39,7 +39,7 @@ import {
 } from "./characters";
 import { enemyCombatant, enemyContentId } from "./enemies";
 import { CONCORD_CHOICES, ENEMY_ELEMENTS, recipes, SKILLS, TRAIL_REMEDIES_FLAG, traitForAncestry, traitIdsForAncestry } from "../content";
-import { canCraft, craftRecipe } from "../engine";
+import { canCraft, compareIds, craftRecipe } from "../engine";
 import { actionEconomyScale, difficultyOf, DIFFICULTY_REWARD_MULTIPLIER } from "../engine";
 import {
   ANCESTRY_TINTS,
@@ -1531,7 +1531,7 @@ export class EngineGameBridge implements GameBridge {
       const afflicted = living
         .filter((member) => member.statuses.some((status) => cureList.includes(status.id)))
         .sort((left, right) =>
-          (left.hp / left.stats.maxHp) - (right.hp / right.stats.maxHp) || left.id.localeCompare(right.id));
+          (left.hp / left.stats.maxHp) - (right.hp / right.stats.maxHp) || compareIds(left.id, right.id));
       if (afflicted[0]) return afflicted[0].id;
     }
     return this.resolveActionTarget(active, actorId, "ally", undefined, actorId);
@@ -1552,7 +1552,7 @@ export class EngineGameBridge implements GameBridge {
     if (scope === "ally") {
       // Default to the ally who most needs it, which is what an unaimed heal means.
       const neediest = [...living].sort((left, right) =>
-        (left.hp / left.stats.maxHp) - (right.hp / right.stats.maxHp) || left.id.localeCompare(right.id));
+        (left.hp / left.stats.maxHp) - (right.hp / right.stats.maxHp) || compareIds(left.id, right.id));
       return neediest[0]?.id ?? actorId;
     }
     const remembered = active.lastTargetId
@@ -2529,7 +2529,7 @@ export class EngineGameBridge implements GameBridge {
         .sort((left, right) =>
           Math.max(Math.abs(right.trust), Math.abs(right.respect), Math.abs(right.fear))
           - Math.max(Math.abs(left.trust), Math.abs(left.respect), Math.abs(left.fear))
-          || left.npcId.localeCompare(right.npcId))
+          || compareIds(left.npcId, right.npcId))
         .slice(0, NARRATIVE_NPC_MEMORY_LIMIT)
         .map(({ npcId }) => ({ npcId, memories: [] })),
       factionState: this.#state.world.factionStanding,

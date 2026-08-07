@@ -66,7 +66,12 @@ function textCorpus(patch: GeneratedContentPatch): string {
     ...patch.effects.flatMap((effect) =>
       effect.type === "add_chronicle_entry" ? [effect.title, effect.body] : []
     )
-  ].join("\n").toLocaleLowerCase();
+    // Deliberately `toLowerCase`, not `toLocaleLowerCase`. The forbidden-term
+    // list this feeds is ASCII, and the locale-sensitive form maps "I" to a
+    // dotless "ı" on a Turkish or Azeri host — so "AINZ" became "aınz", matched
+    // nothing, and the canon guard was defeated by the operator's system
+    // settings rather than by anything in the text.
+  ].join("\n").toLowerCase();
 }
 
 function duplicates(values: readonly string[]): string[] {
@@ -243,7 +248,10 @@ export function validateGeneratedPatch(
 
   const corpus = textCorpus(patch);
   for (const term of catalog.forbiddenCanonTerms ?? []) {
-    const normalizedTerm = term.trim().toLocaleLowerCase();
+    // Locale-independent on both sides of the comparison, for the reason given
+    // on `textCorpus`: a Turkish or Azeri host lowercases "I" to a dotless "ı",
+    // and a guard that disagrees with its own corpus matches nothing.
+    const normalizedTerm = term.trim().toLowerCase();
     if (normalizedTerm.length > 0 && corpus.includes(normalizedTerm)) {
       errors.push(`Generated text conflicts with canon restriction "${term}".`);
     }
