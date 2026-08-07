@@ -22,15 +22,29 @@ body,
 }
 
 body {
+  box-sizing: border-box;
+  height: 100vh;
+  padding: 18px;
   background:
     radial-gradient(circle at 72% 20%, rgba(51, 91, 76, 0.3), transparent 36%),
     linear-gradient(160deg, #101d27, #080d14 68%);
 }
 
+/*
+ * One element owns the sizing. Phaser's FIT mode measures this element's border
+ * box — padding included — and writes an inline width/height that saturates one
+ * axis at the full viewport. A CSS cap that then trimmed that axis by the gutter
+ * while leaving the other alone scaled the 16:9 canvas non-uniformly, so the
+ * pixel art was stretched at every window size (1.819:1 instead of 1.778:1 at
+ * the e2e viewport, and a visible 12% squash on a short wide window). The gutter
+ * lives on the body now, and the canvas below no longer fights the computed fit.
+ */
 #app {
   display: grid;
   place-items: center;
-  padding: 18px;
+  padding: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .screen-reader-status {
@@ -46,8 +60,6 @@ body {
 }
 
 #app canvas {
-  max-width: calc(100vw - 36px);
-  max-height: calc(100vh - 36px);
   border: 1px solid rgba(166, 192, 169, 0.4);
   box-shadow:
     0 30px 90px rgba(0, 0, 0, 0.48),

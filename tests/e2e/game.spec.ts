@@ -313,3 +313,31 @@ test("an authored quest permanently updates world reputation and the journal", a
   const journal = await canvas.screenshot();
   expect(journal.equals(world)).toBe(false);
 });
+
+test("the canvas keeps its aspect ratio at any window shape", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("canvas")).toBeVisible();
+
+  // Phaser's FIT mode measures #app's border box and writes an inline size that
+  // saturates one axis. A CSS max-width/max-height that then trimmed only that
+  // axis scaled the 16:9 canvas non-uniformly, so the pixel art was stretched at
+  // every window size — worse the further the window sat from 16:9.
+  const shapes = [
+    { width: 1280, height: 720 },
+    { width: 1000, height: 900 },
+    { width: 900, height: 420 }
+  ];
+  for (const shape of shapes) {
+    await page.setViewportSize(shape);
+    await page.waitForTimeout(250);
+    const measured = await page.locator("canvas").evaluate((canvas) => {
+      const rect = canvas.getBoundingClientRect();
+      return { width: rect.width, height: rect.height };
+    });
+    expect(measured.width, `${shape.width}x${shape.height} width`).toBeGreaterThan(0);
+    const aspect = measured.width / measured.height;
+    // 960x540 is 1.7778; allow a pixel of rounding either way.
+    expect(Math.abs(aspect - 960 / 540), `${shape.width}x${shape.height} aspect ${aspect}`).toBeLessThan(0.02);
+  }
+});
+
