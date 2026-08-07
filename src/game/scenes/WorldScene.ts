@@ -2064,9 +2064,11 @@ export class WorldScene extends Phaser.Scene {
         return;
       }
       this.armedSaveSlot = undefined;
-      await this.bridge.save(slot);
+      const saved = await this.bridge.save(slot);
       await this.refreshBackupChoices();
-      this.showToast(`Chronicle saved to ${SAVE_SLOT_LABELS[slot]}.`);
+      this.showToast(saved
+        ? `Chronicle saved to ${SAVE_SLOT_LABELS[slot]}.`
+        : `${SAVE_SLOT_LABELS[slot]} could not be written. The chronicle is not saved.`);
       this.drawSystemOverlay();
       return;
     }
@@ -2178,8 +2180,10 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     this.systemPicker = undefined;
-    await this.bridge.save(slot);
-    this.showToast(`Chronicle saved to ${SAVE_SLOT_LABELS[slot]}.`);
+    const saved = await this.bridge.save(slot);
+    this.showToast(saved
+      ? `Chronicle saved to ${SAVE_SLOT_LABELS[slot]}.`
+      : `${SAVE_SLOT_LABELS[slot]} could not be written. The chronicle is not saved.`);
     this.drawSystemOverlay();
   }
 

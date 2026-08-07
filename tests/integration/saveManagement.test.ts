@@ -122,3 +122,28 @@ describe("save management", () => {
     expect(bridge.getSnapshot().saveSummaries?.some((entry) => entry.slot === "manual-1")).toBe(false);
   });
 });
+
+describe("a save that did not land does not claim it did", () => {
+  it("resolves false when the storage write throws", async () => {
+    const storage = new MemorySaveStorage();
+    const bridge = new EngineGameBridge(new SaveRepository(storage), () => FIXED_SEED);
+    await startChronicle(bridge);
+
+    // The disk fills, or the browser revokes the quota, mid-session.
+    storage.put = async () => {
+      throw new Error("QuotaExceededError");
+    };
+    storage.replaceWithBackup = async () => {
+      throw new Error("QuotaExceededError");
+    };
+
+    await expect(bridge.save("manual-1")).resolves.toBe(false);
+    expect(bridge.getSnapshot().autosave).toBe("error");
+  });
+
+  it("resolves true on an ordinary write", async () => {
+    const bridge = new EngineGameBridge(new SaveRepository(new MemorySaveStorage()), () => FIXED_SEED);
+    await startChronicle(bridge);
+    await expect(bridge.save("manual-1")).resolves.toBe(true);
+  });
+});

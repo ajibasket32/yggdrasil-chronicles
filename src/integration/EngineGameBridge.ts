@@ -1304,7 +1304,7 @@ export class EngineGameBridge implements GameBridge {
         // Items may now be handed to an ally. The branch used to hard-filter to
         // the acting member, so a downed companion could never be reached and
         // the dedicated healer could only ever treat themselves.
-        const recipientId = this.resolveActionTarget(active, actor.id, "ally", targetId, actor.id);
+        const recipientId = this.resolveItemRecipient(active, actor.id, targetId, cureList);
         const recipient = active.state.party.find(({ id }) => id === recipientId);
         const healedParty = active.state.party.map((member) => {
           if (member.id !== recipientId) return member;
@@ -1432,6 +1432,34 @@ export class EngineGameBridge implements GameBridge {
    * it fall back to the first living enemy. Self-scoped skills ignore all of
    * this and hit the actor.
    */
+  /**
+   * Who an unaimed battle item should go to.
+   *
+   * Routing every ally action through "lowest health fraction" is right for a
+   * tonic and wrong for a cure: Ash Spice went to whoever was most hurt, who
+   * frequently carried no affliction at all, while the poisoned character it
+   * was meant for stood untouched. A cure looks for somebody it can actually
+   * cure first, and only then falls back to the neediest.
+   */
+  private resolveItemRecipient(
+    active: ActiveBattle,
+    actorId: string,
+    requestedId: string | undefined,
+    cureList: readonly StatusInstance["id"][] | undefined
+  ): string {
+    const living = active.state.party.filter(({ hp }) => hp > 0);
+    const requested = requestedId ? living.find(({ id }) => id === requestedId) : undefined;
+    if (requested) return requested.id;
+    if (cureList) {
+      const afflicted = living
+        .filter((member) => member.statuses.some((status) => cureList.includes(status.id)))
+        .sort((left, right) =>
+          (left.hp / left.stats.maxHp) - (right.hp / right.stats.maxHp) || left.id.localeCompare(right.id));
+      if (afflicted[0]) return afflicted[0].id;
+    }
+    return this.resolveActionTarget(active, actorId, "ally", undefined, actorId);
+  }
+
   private resolveActionTarget(
     active: ActiveBattle,
     actorId: string,
@@ -1602,8 +1630,14 @@ export class EngineGameBridge implements GameBridge {
     };
   }
 
-  async save(slot: SaveSlot): Promise<void> {
-    await this.persist(slot);
+  /**
+   * Reports whether the write actually landed. This used to swallow `persist`'s
+   * result, so the system menu told the player "Chronicle saved to Manual Slot
+   * 1" whether or not anything reached storage — the one message a save system
+   * must never get wrong.
+   */
+  async save(slot: SaveSlot): Promise<boolean> {
+    return this.persist(slot);
   }
 
   async useInventoryItem(itemId: string, memberId: string): Promise<GameCommandResult> {

@@ -417,7 +417,8 @@ export interface GameBridge {
   leaveBattle(): void | Promise<void>;
   /** Resting has a cost: paid lodging in a settlement, or a camp supply in the field. */
   rest(): GameCommandResult | Promise<GameCommandResult>;
-  save(slot: GameSaveSlot): void | Promise<void>;
+  /** Resolves false when the write failed, so callers can avoid promising a save that did not happen. */
+  save(slot: GameSaveSlot): boolean | Promise<boolean>;
   useInventoryItem(itemId: string, memberId: string): GameCommandResult | Promise<GameCommandResult>;
   setEquipment(
     memberId: string,

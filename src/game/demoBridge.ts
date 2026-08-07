@@ -269,11 +269,13 @@ export class DemoGameBridge implements GameBridge {
     return { success: true, message: "The demo party rests." };
   }
 
-  save(_slot: GameSaveSlot): void {
+  save(_slot: GameSaveSlot): boolean {
     this.state = { ...this.state, autosave: "saving" };
     this.emit();
     this.state = { ...this.state, autosave: "saved" };
     this.emit();
+    // The demo keeps nothing, but it never fails to keep nothing.
+    return true;
   }
 
   useInventoryItem(_itemId: string, _memberId: string): GameCommandResult {
