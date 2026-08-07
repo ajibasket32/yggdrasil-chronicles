@@ -144,3 +144,49 @@ describe("no authored encounter is stranded", () => {
   });
 });
 
+describe("every objective kind gives the player a direction", () => {
+  const withRecipient = (
+    objectiveKind: NonNullable<QuestView["objectiveKind"]>,
+    objectiveTargetId: string,
+    objectiveRecipientId?: string
+  ): QuestView => ({
+    ...activeQuest(objectiveKind, objectiveTargetId),
+    ...(objectiveRecipientId ? { objectiveRecipientId } : {})
+  });
+
+  it("points a delivery at whoever is waiting for the item", () => {
+    // Fen Til keeps the Mossroad; the item itself is not a place to walk to.
+    const guidance = getObjectiveGuidance(
+      snapshotWith("location.hearthcross", withRecipient("deliver", "item.lantern-wick", "npc.fen-til"))
+    );
+    expect(guidance?.targetLocationId).toBe("location.mossroad");
+    expect(guidance?.message ?? "").toContain("Fen Til");
+  });
+
+  it("says so plainly once the party is standing with the recipient", () => {
+    const guidance = getObjectiveGuidance(
+      snapshotWith("location.mossroad", withRecipient("deliver", "item.lantern-wick", "npc.fen-til"))
+    );
+    expect(guidance?.local).toBe(true);
+    expect(guidance?.message ?? "").toContain("Hand it to Fen Til");
+  });
+
+  it("points a survive objective at the place the encounter is fought", () => {
+    const guidance = getObjectiveGuidance(
+      snapshotWith("location.hearthcross", activeQuest("survive", "encounter.ashfall-motes"))
+    );
+    expect(guidance?.targetLocationId).toBe("location.ashfall-trail");
+  });
+
+  it("leaves no authored objective kind without guidance", () => {
+    const kinds = new Set(quests.flatMap((quest) => quest.steps.map(({ kind }) => kind)));
+    for (const kind of kinds) {
+      const step = quests.flatMap((quest) => quest.steps).find((entry) => entry.kind === kind)!;
+      const guidance = getObjectiveGuidance(
+        snapshotWith("location.hearthcross", withRecipient(kind, step.targetId, step.recipientId))
+      );
+      expect(guidance, `${kind} objectives give the player nothing`).toBeDefined();
+    }
+  });
+});
+

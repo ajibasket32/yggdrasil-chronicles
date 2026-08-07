@@ -53,6 +53,16 @@ export interface Combatant {
   statusResistance?: Partial<Record<StatusId, number>>;
   /** See TraitId — battle-time only, derived from ancestry, never saved. */
   traits?: readonly TraitId[];
+  /**
+   * Who this combatant goes after, fixed from its authored shape at build time.
+   *
+   * Deriving it from live battle stats made a numeric knob a behavioural one:
+   * difficulty and action-economy scaling move strength and intellect but not
+   * agility, so a large group — whose per-enemy offence is scaled down — had
+   * every member silently flip to hunting the weakest character. Battle-time
+   * only, like `traits`; never saved.
+   */
+  targetingProfile?: "opportunist" | "hunter" | "shifting";
   isPlayerControlled: boolean;
 }
 

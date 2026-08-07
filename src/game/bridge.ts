@@ -62,6 +62,12 @@ export interface QuestView {
   objective: string;
   objectiveKind?: QuestStepKind;
   objectiveTargetId?: string;
+  /**
+   * Who a `deliver` step hands its item to. The step names both the item and
+   * the recipient; without the recipient here the compass had nothing to point
+   * at, so delivery objectives gave the player no direction at all.
+   */
+  objectiveRecipientId?: string;
   /** True once the player has reached a step the quest marks as irreversible. */
   atPointOfNoReturn?: boolean;
   /** Present when the current step offers a branch the player must choose. */

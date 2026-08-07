@@ -1,5 +1,5 @@
 import { BOSS_TIER_ENEMY_IDS, ENEMY_ELEMENTS, ENEMY_SKILLS } from "../content";
-import { DIFFICULTY_ENEMY_MULTIPLIER, enemyMaxHealth } from "../engine";
+import { DIFFICULTY_ENEMY_MULTIPLIER, enemyMaxHealth, targetingProfileForStats } from "../engine";
 import type { Combatant, Difficulty } from "../shared/types";
 import { titleCase } from "./presentation";
 
@@ -22,6 +22,11 @@ export function enemyCombatant(
   const offenceScale = scale * economyScale;
   const bossTier = boss || BOSS_TIER_ENEMY_IDS.has(id);
   const maxHp = Math.max(1, Math.round(enemyMaxHealth(level, bossTier, attackers) * scale));
+  // Taken from the authored shape, before scaling touches it. Difficulty and
+  // action-economy move strength and intellect but not agility, so a scaled-down
+  // group would otherwise read as fast-and-weak and hunt the frailest character
+  // — a behavioural change nobody asked for when tuning a number.
+  const targetingProfile = targetingProfileForStats(7 + level * 2, 4 + level, 6 + level);
   return {
     id: `${id}.${index}`,
     name: id.replace("enemy.", "").split("-").map(titleCase).join(" "),
@@ -47,6 +52,7 @@ export function enemyCombatant(
     // choreography never plays. Halving the chance keeps a status build
     // worthwhile without letting it replace the fight.
     statusResistance: bossTier ? { stun: 0.5, sleep: 0.5, freeze: 0.5 } : undefined,
+    targetingProfile,
     isPlayerControlled: false
   };
 }

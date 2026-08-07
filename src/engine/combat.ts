@@ -342,11 +342,23 @@ export type EnemyTargetingProfile = "opportunist" | "hunter" | "shifting";
  * every enemy — including any added later — gets a coherent behaviour without
  * a second content table to maintain.
  */
-export function enemyTargetingProfile(enemy: Combatant): EnemyTargetingProfile {
-  const { strength, intellect, agility } = enemy.stats;
+export function targetingProfileForStats(
+  strength: number,
+  intellect: number,
+  agility: number
+): EnemyTargetingProfile {
   if (agility >= strength && agility >= intellect) return "opportunist";
   if (intellect > strength) return "hunter";
   return "shifting";
+}
+
+export function enemyTargetingProfile(enemy: Combatant): EnemyTargetingProfile {
+  // An authored profile wins. Reading live stats let difficulty and group-size
+  // scaling — which move strength and intellect but leave agility alone —
+  // rewrite an enemy's behaviour as a side effect of tuning its numbers.
+  if (enemy.targetingProfile) return enemy.targetingProfile;
+  const { strength, intellect, agility } = enemy.stats;
+  return targetingProfileForStats(strength, intellect, agility);
 }
 
 export function resolveCombatAction(

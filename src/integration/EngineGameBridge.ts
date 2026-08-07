@@ -2675,7 +2675,8 @@ export class EngineGameBridge implements GameBridge {
       state,
       objective: objective ? this.describeObjective(objective) : "Completed",
       objectiveKind: objective?.kind,
-      objectiveTargetId: objective?.targetId
+      objectiveTargetId: objective?.targetId,
+      ...(objective?.recipientId ? { objectiveRecipientId: objective.recipientId } : {})
     };
   }
 

@@ -98,6 +98,15 @@ function targetLocations(quest: QuestView): string[] {
       );
       return [...new Set([...directSources, ...encounterSources])];
     }
+    // A delivery points at whoever is waiting for the item, not at the item.
+    case "deliver": {
+      const recipient = npcs.find(({ id }) => id === quest.objectiveRecipientId);
+      return recipient ? [recipient.locationId] : [];
+    }
+    // `survive` names the encounter to be endured, so it points where that
+    // encounter is fought.
+    case "survive":
+      return encounterLocations(targetId);
     default:
       return [];
   }
@@ -109,6 +118,14 @@ function objectiveTargetName(quest: QuestView): string {
   if (quest.objectiveKind === "talk") return npcs.find(({ id }) => id === targetId)?.name ?? targetId;
   if (quest.objectiveKind === "travel") return locations.find(({ id }) => id === targetId)?.name ?? targetId;
   if (quest.objectiveKind === "collect") return items.find(({ id }) => id === targetId)?.name ?? targetId;
+  if (quest.objectiveKind === "deliver") {
+    return npcs.find(({ id }) => id === quest.objectiveRecipientId)?.name
+      ?? quest.objectiveRecipientId
+      ?? targetId;
+  }
+  if (quest.objectiveKind === "survive") {
+    return encounters.find(({ id }) => id === targetId)?.name ?? targetId.replace("encounter.", "").replaceAll("-", " ");
+  }
   const encounter = encounters.find(({ enemyIds }) => enemyIds.includes(targetId));
   return encounter?.name ?? targetId.replace("enemy.", "").replaceAll("-", " ");
 }
@@ -123,6 +140,10 @@ function localMessage(quest: QuestView, targetName: string): string {
       return `HERE  Search or battle for ${targetName}`;
     case "defeat":
       return `HERE  Engage ${targetName}`;
+    case "deliver":
+      return `HERE  Hand it to ${targetName}`;
+    case "survive":
+      return `HERE  Hold the line at ${targetName}`;
     default:
       return quest.objective;
   }
