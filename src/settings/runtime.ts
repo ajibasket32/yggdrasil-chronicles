@@ -239,6 +239,12 @@ export function applySettingsToPhaserGame(
   documentRef: Document | undefined = typeof document === "undefined" ? undefined : document
 ): void {
   applyVisualGameSettings(settings, documentRef, game.canvas);
-  game.sound.mute = !settings.soundEnabled;
-  game.sound.volume = settings.soundVolume;
+  // The global manager is the bus music and effects BOTH play through, so
+  // muting it for the effects toggle silenced the score as well: Music On with
+  // Sound Off was total silence, and the effects slider quietly scaled the
+  // music underneath its own. The bus stays neutral and each side applies its
+  // own preference where it plays — `playSound` for effects, `effectiveVolume`
+  // in music.ts for the score.
+  game.sound.mute = false;
+  game.sound.volume = 1;
 }

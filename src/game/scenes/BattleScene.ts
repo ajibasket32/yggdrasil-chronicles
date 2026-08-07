@@ -254,6 +254,17 @@ export class BattleScene extends Phaser.Scene {
       color: `#${color.toString(16).padStart(6, "0")}`
     }).setOrigin(0.5).setDepth(60).setAlpha(0);
 
+    // Reduced Motion shows the number, it does not delete it. The label starts
+    // invisible and both tweens collapse to zero duration, so it faded in and
+    // straight back out and destroyed itself inside one frame: a Reduced Motion
+    // player saw no damage, healing, miss or status numbers at all. Show it
+    // plainly and hold it instead.
+    if (motionDuration(1) === 0) {
+      label.setAlpha(1);
+      this.time.delayedCall(900, () => label.destroy());
+      return;
+    }
+
     this.tweens.add({
       targets: label,
       alpha: 1,

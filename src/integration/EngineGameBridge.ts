@@ -141,6 +141,13 @@ const STATUS_CURE_ITEMS: Readonly<Record<string, readonly StatusInstance["id"][]
   "item.ash-spice": ["stun", "sleep", "freeze", "poison", "burn", "bleed"]
 };
 
+/**
+ * Mirrors the `npcMemories` cap in the narrative request contract
+ * (server/contracts.ts). The context object is `.strict()`, so exceeding this
+ * is not a truncation — it is a 400 that silently retires the feature.
+ */
+const NARRATIVE_NPC_MEMORY_LIMIT = 12;
+
 function commandFailure(message: string): GameCommandResult {
   return { success: false, message };
 }
@@ -2486,7 +2493,22 @@ export class EngineGameBridge implements GameBridge {
         quests: this.#state.quests.filter(({ state }) => state === "active" || state === "completed")
       }),
       relevantFlags: this.#state.world.flags,
-      npcMemories: this.#state.world.relationships.map(({ npcId }) => ({ npcId, memories: [] })),
+      // The request contract caps this at twelve, and relationships accumulate
+      // one per distinct quest NPC without bound — twenty-five across the
+      // authored campaign. Sending them all made every request fail validation
+      // with a 400 from the thirteenth onward, so the narrative provider was
+      // never contacted again for the rest of the run. Gameplay was unharmed
+      // (the client falls back to scripted text) and nothing surfaced the
+      // reason, so the living-world feature switched itself off silently,
+      // exactly where the world had become richest. Strongest bonds first, by
+      // the same ordering the snapshot already uses.
+      npcMemories: [...this.#state.world.relationships]
+        .sort((left, right) =>
+          Math.max(Math.abs(right.trust), Math.abs(right.respect), Math.abs(right.fear))
+          - Math.max(Math.abs(left.trust), Math.abs(left.respect), Math.abs(left.fear))
+          || left.npcId.localeCompare(right.npcId))
+        .slice(0, NARRATIVE_NPC_MEMORY_LIMIT)
+        .map(({ npcId }) => ({ npcId, memories: [] })),
       factionState: this.#state.world.factionStanding,
       availableResources: {
         assetTags: [...new Set(npcs.map(({ assetTag }) => assetTag))],

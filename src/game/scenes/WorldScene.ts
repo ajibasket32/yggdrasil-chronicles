@@ -2394,6 +2394,16 @@ export class WorldScene extends Phaser.Scene {
       padding: { x: 14, y: 9 },
       color: COLORS.gold
     }).setOrigin(0.5).setDepth(80);
+    // Reduced Motion collapses the animation, not the message. Sending both the
+    // fade and its delay to zero finished the tween on the frame that created
+    // it — before a single render — so onComplete destroyed the text unseen.
+    // Every world result travels through here: quick save succeeded or failed,
+    // a manual slot could not be written, a craft, a companion joining, a quest
+    // opening. The players who asked for less movement were told none of it.
+    if (motionDuration(1) === 0) {
+      this.time.delayedCall(2500, () => toast.destroy());
+      return;
+    }
     this.tweens.add({
       targets: toast,
       alpha: 0,

@@ -165,7 +165,10 @@ describe("persistent game settings", () => {
     expect(root.classList.has("game-reduced-motion")).toBe(true);
     expect(root.property("--game-motion-scale")).toBe("0");
     expect(canvas.attribute("data-game-high-contrast")).toBe("true");
-    expect(game.sound).toEqual({ mute: true, volume: 0.3 });
+    // The global manager is left neutral on purpose: music and effects share it,
+    // so muting it here for `soundEnabled: false` silenced the score as well.
+    // Each side applies its own preference at the point it plays.
+    expect(game.sound).toEqual({ mute: false, volume: 1 });
 
     applyVisualGameSettings(DEFAULT_GAME_SETTINGS, fakeDocument, fakeCanvas);
     expect(root.classList.has("game-high-contrast")).toBe(false);

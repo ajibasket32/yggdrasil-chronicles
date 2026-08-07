@@ -51,9 +51,13 @@ export function prefersTouchControls(
   windowRef: Window | undefined = typeof window === "undefined" ? undefined : window
 ): boolean {
   if (!windowRef) return false;
+  // Both signals, not either. A touchscreen laptop reports maxTouchPoints of 10
+  // while its primary pointer is a mouse, so the old `||` mounted the pad on a
+  // machine being driven by keyboard and mouse — and the stylesheet only hides
+  // it above 721px, so half-screening the window put seven buttons over the HUD.
   const coarse = windowRef.matchMedia?.("(pointer: coarse)").matches ?? false;
-  const touchPoints = windowRef.navigator?.maxTouchPoints ?? 0;
-  return coarse || touchPoints > 0;
+  const noHover = windowRef.matchMedia?.("(hover: none)").matches ?? false;
+  return coarse && noHover;
 }
 
 /**
@@ -95,12 +99,18 @@ export function mountTouchControls(
 
   const timers = new Map<KeyboardAction, { delay?: number; repeat?: number }>();
 
-  const stop = (action: KeyboardAction): void => {
+  /** Cancels an action's pending repeat without claiming the key is released. */
+  const clearTimers = (action: KeyboardAction): void => {
     const timer = timers.get(action);
     if (!timer) return;
     if (timer.delay !== undefined) clearTimeout(timer.delay);
     if (timer.repeat !== undefined) clearInterval(timer.repeat);
     timers.delete(action);
+  };
+
+  const stop = (action: KeyboardAction): void => {
+    if (!timers.has(action)) return;
+    clearTimers(action);
     dispatchAction(action, "keyup", target);
   };
 
@@ -116,6 +126,13 @@ export function mountTouchControls(
       // Claim the gesture: without this a tap also scrolls the page, and a
       // double tap zooms the canvas out from under the player.
       event.preventDefault();
+      // A second pointerdown with no pointerup between — a second finger on the
+      // same button, or an up event the browser never delivered — used to
+      // overwrite this action's stored handles. The interval already running was
+      // then unreachable: `stop` could only ever clear the newest one, so the
+      // pad kept dispatching keydown and the party walked in that direction
+      // until the page was reloaded.
+      clearTimers(action);
       dispatchAction(action, "keydown", target);
       if (!repeats) {
         dispatchAction(action, "keyup", target);

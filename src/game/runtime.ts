@@ -50,7 +50,12 @@ export function motionDuration(milliseconds: number): number {
 }
 
 export function playSound(scene: Phaser.Scene, key: string): void {
-  if (scene.cache.audio.exists(key)) scene.sound.play(key);
+  // Effects carry their own preference. They used to ride the global sound
+  // manager's mute and volume, which the music shares — so silencing effects
+  // silenced the score too.
+  const settings = gameSettingsStore.get();
+  if (!settings.soundEnabled) return;
+  if (scene.cache.audio.exists(key)) scene.sound.play(key, { volume: settings.soundVolume });
 }
 
 export interface Palette {

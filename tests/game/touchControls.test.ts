@@ -96,15 +96,27 @@ describe("touch controls", () => {
     gameSettingsStore.update({ keyBindings: { ...DEFAULT_KEYBOARD_BINDINGS } });
   });
 
-  it("mounts for touch input, not merely for a narrow window", () => {
-    const fake = (overrides: { coarse?: boolean; touchPoints?: number }): Window =>
+  it("mounts for a touch-driven device, not merely a device that can be touched", () => {
+    const fake = (overrides: { coarse?: boolean; noHover?: boolean; touchPoints?: number }): Window =>
       ({
-        matchMedia: (query: string) => ({ matches: query.includes("coarse") && (overrides.coarse ?? false) }),
+        matchMedia: (query: string) => ({
+          matches: query.includes("coarse")
+            ? overrides.coarse ?? false
+            : query.includes("hover") && (overrides.noHover ?? false)
+        }),
         navigator: { maxTouchPoints: overrides.touchPoints ?? 0 }
       }) as unknown as Window;
 
-    expect(prefersTouchControls(fake({ coarse: true }))).toBe(true);
-    expect(prefersTouchControls(fake({ touchPoints: 5 }))).toBe(true);
+    // A phone or tablet: the primary pointer is coarse and nothing hovers.
+    expect(prefersTouchControls(fake({ coarse: true, noHover: true, touchPoints: 5 }))).toBe(true);
+
+    // A touchscreen laptop reports ten touch points while being driven by a
+    // mouse. Mounting the pad there put seven buttons over the HUD of a game
+    // nobody was tapping — and the stylesheet only hides them above 721px, so
+    // half-screening the window brought them back.
+    expect(prefersTouchControls(fake({ touchPoints: 10 }))).toBe(false);
+    expect(prefersTouchControls(fake({ coarse: true, touchPoints: 10 }))).toBe(false);
+
     expect(prefersTouchControls(fake({}))).toBe(false);
     expect(prefersTouchControls(undefined)).toBe(false);
   });
@@ -138,6 +150,30 @@ describe("touch controls", () => {
     right.fire("pointerup");
     vi.advanceTimersByTime(1000);
     expect(codes).toHaveLength(whileHeld);
+    controls.destroy();
+    vi.useRealTimers();
+  });
+
+  it("does not orphan a repeat when a second finger lands on the same button", () => {
+    vi.useFakeTimers();
+    const { controls, codes } = mount();
+    const right = button(controls, "pad-right");
+
+    // Two pointerdowns with no pointerup between them — a second finger on the
+    // same button, or an up event the browser never delivered.
+    right.fire("pointerdown");
+    right.fire("pointerdown");
+    vi.advanceTimersByTime(1000);
+    const whileHeld = codes.length;
+    expect(whileHeld).toBeGreaterThan(2);
+
+    // One release must stop everything. The first press's interval used to be
+    // orphaned by the second press overwriting its handles, and nothing could
+    // reach it again: the party walked on until the page was reloaded.
+    right.fire("pointerup");
+    vi.advanceTimersByTime(2000);
+    expect(codes).toHaveLength(whileHeld);
+
     controls.destroy();
     vi.useRealTimers();
   });

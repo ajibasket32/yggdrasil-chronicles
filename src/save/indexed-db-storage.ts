@@ -17,7 +17,14 @@ export class IndexedDbSaveStorage implements SaveStorage {
   readonly #databasePromise: Promise<IDBPDatabase<YggdrasilSaveDatabase>>;
 
   constructor(databaseName = "yggdrasil-chronicles") {
-    this.#databasePromise = openDB<YggdrasilSaveDatabase>(databaseName, 1, {
+    // Wrapped so the failure is a rejected promise rather than a synchronous
+    // throw. `indexedDB.open` throws SecurityError outright when a browser
+    // blocks site data, and this constructor runs inside EngineGameBridge's
+    // default arguments — a throw there aborted module evaluation before any
+    // caller could catch it, and the player got a blank page. Every method
+    // below awaits this promise, so the rejection surfaces where it can be
+    // handled: as storage being unavailable.
+    this.#databasePromise = (async () => openDB<YggdrasilSaveDatabase>(databaseName, 1, {
       upgrade(database) {
         if (!database.objectStoreNames.contains("saves")) {
           database.createObjectStore("saves", { keyPath: "slot" });
@@ -27,7 +34,7 @@ export class IndexedDbSaveStorage implements SaveStorage {
           store.createIndex("by-source-slot", "sourceSlot");
         }
       }
-    });
+    }))();
   }
 
   async get(slot: SaveSlot): Promise<SaveRecord | undefined> {
@@ -85,6 +92,9 @@ export class IndexedDbSaveStorage implements SaveStorage {
   }
 
   close(): void {
-    void this.#databasePromise.then((database) => database.close());
+    // Closing a database that never opened is not an error worth reporting,
+    // and an unhandled rejection here would be noise on exactly the browsers
+    // that already refused storage.
+    void this.#databasePromise.then((database) => database.close()).catch(() => undefined);
   }
 }
