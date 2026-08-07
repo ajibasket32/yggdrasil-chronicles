@@ -186,3 +186,71 @@ test("no title or HUD text falls off the canvas at the largest text size", async
   expect(title.legendBottom!, "the legend runs past the bottom of the canvas")
     .toBeLessThanOrEqual(title.canvasHeight);
 });
+
+/**
+ * The title scene draws four more screens behind the same fixed canvas, and
+ * they were never checked at the largest text size either. Character creation's
+ * detail column reached 588 on a 540 canvas — cutting off the "Watch for" line
+ * written to guide exactly the choice being made on that screen — and the
+ * settings list ran its last two rows, Music Volume and Keyboard Bindings, off
+ * the bottom entirely while the controls legend was drawn through the row above.
+ */
+test("no title sub-screen runs off the canvas at the largest text size", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "yggdrasil-chronicles.settings.v2",
+      JSON.stringify({
+        version: 1, textSize: "large", highContrast: false, reducedMotion: false,
+        soundEnabled: false, soundVolume: 0.5, musicEnabled: false, musicVolume: 0.5
+      })
+    );
+  });
+  await page.goto("/");
+  const app = page.locator("#app");
+  await expect(app).toHaveAttribute("data-scene", "title", { timeout: 20000 });
+  await page.waitForTimeout(900);
+
+  const measure = async (): Promise<{ canvas: number; lowest: number; text: string; count: number }> =>
+    page.evaluate(() => {
+      const game = (window as unknown as { __YGG_GAME?: {
+        scale: { height: number };
+        scene: { scenes: { scene: { key: string }; children: { list: unknown[] } }[] };
+      } }).__YGG_GAME;
+      const scene = game?.scene.scenes.find((candidate) => candidate.scene.key === "title");
+      const texts = ((scene?.children.list ?? []) as {
+        type: string; y: number; height: number; visible: boolean; text?: string;
+      }[]).filter((child) => child.type === "Text" && child.visible);
+      const worst = texts.reduce(
+        (lowestSoFar, child) => child.y + child.height > lowestSoFar.y + lowestSoFar.height ? child : lowestSoFar,
+        texts[0] ?? { y: 0, height: 0, text: "" } as { y: number; height: number; text?: string }
+      );
+      return {
+        canvas: game?.scale.height ?? 0,
+        lowest: Math.round(worst.y + worst.height),
+        text: String(worst.text ?? "").slice(0, 40),
+        count: texts.length
+      };
+    });
+
+  // Character creation, reached with one confirm from NEW CHRONICLE.
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(700);
+  const creation = await measure();
+  expect(creation.count, "no creation text was found to measure").toBeGreaterThan(4);
+  expect(creation.lowest, `character creation overflows: "${creation.text}"`)
+    .toBeLessThanOrEqual(creation.canvas);
+
+  // Then settings, three rows down from the title.
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(500);
+  for (let step = 0; step < 3; step += 1) {
+    await page.keyboard.press("ArrowDown");
+    await page.waitForTimeout(140);
+  }
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(600);
+  const settings = await measure();
+  expect(settings.count, "no settings text was found to measure").toBeGreaterThan(4);
+  expect(settings.lowest, `the settings screen overflows: "${settings.text}"`)
+    .toBeLessThanOrEqual(settings.canvas);
+});

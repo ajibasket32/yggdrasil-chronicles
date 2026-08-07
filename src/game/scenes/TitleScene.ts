@@ -9,6 +9,7 @@ import {
 import type { CharacterCreationDraft, Difficulty, GameBridge, GameCommandResult } from "../bridge";
 import { gamepadButtonAction, pollStickDirection, type StickRepeatState } from "../gamepadControls";
 import { playMusic } from "../music";
+import { windowAround } from "../overlayWindow";
 import {
   keyboardActionForCode,
   keyboardActionLabel,
@@ -35,6 +36,39 @@ const DIFFICULTY_CHOICES: readonly { readonly id: Difficulty; readonly label: st
 /** Rows in the character creation flow: name, ancestry, calling, difficulty, begin. */
 const CREATION_ROW_COUNT = 5;
 
+/** How many times the title tree forks. Six gives a canopy dense enough to read as mass. */
+const BRANCH_DEPTH = 6;
+
+/** Blends two packed RGB colours, for gradients Phaser's Graphics cannot do itself. */
+function mixColour(from: number, to: number, ratio: number): number {
+  const t = Math.max(0, Math.min(1, ratio));
+  const blend = (shift: number): number => {
+    const a = (from >> shift) & 0xff;
+    const b = (to >> shift) & 0xff;
+    return Math.round(a + (b - a) * t) & 0xff;
+  };
+  return (blend(16) << 16) | (blend(8) << 8) | blend(0);
+}
+
+/**
+ * A small deterministic sequence, so the tree and its motes are the same shape
+ * on every launch. `Math.random` here would redraw the title art on each visit
+ * and make every title screenshot a false negative.
+ */
+/** Splits "LOAD CHRONICLE  —  0/4 SAVED" into its heading and its annotation. */
+function splitMenuLabel(label: string): [string, string | undefined] {
+  const parts = label.split("  —  ");
+  return [parts[0] ?? label, parts.length > 1 ? parts.slice(1).join("  —  ") : undefined];
+}
+
+function seededSequence(seed: number): () => number {
+  let value = seed >>> 0;
+  return () => {
+    value = (Math.imul(value, 1664525) + 1013904223) >>> 0;
+    return value / 0x1_0000_0000;
+  };
+}
+
 type TitleMode = "title" | "creation" | "load" | "settings" | "bindings";
 
 export class TitleScene extends Phaser.Scene {
@@ -48,6 +82,10 @@ export class TitleScene extends Phaser.Scene {
   private jobIndex = 0;
   private difficultyIndex = 1;
   private menuTexts: Phaser.GameObjects.Text[] = [];
+  /** Non-text menu furniture (selection bar, rules) cleared alongside the rows. */
+  private menuDecor: Phaser.GameObjects.GameObject[] = [];
+  /** Dims the artwork on the screens that put text over it. */
+  private modeScrim?: Phaser.GameObjects.Rectangle;
   private detailText?: Phaser.GameObjects.Text;
   private controlsText?: Phaser.GameObjects.Text;
   private creationTexts: Phaser.GameObjects.Text[] = [];
@@ -75,9 +113,26 @@ export class TitleScene extends Phaser.Scene {
     this.confirmingNewGame = false;
     this.cameras.main.setBackgroundColor(COLORS.ink);
     this.paintBackdrop();
-    this.add.text(64, 66, "YGGDRASIL", { ...TEXT.title, fontSize: fontPx(54), letterSpacing: 7 });
-    this.add.text(68, 126, "C H R O N I C L E S", { ...TEXT.body, color: COLORS.gold, letterSpacing: 4 });
-    this.add.text(68, 164, "The Severed Concord", { ...TEXT.heading, fontStyle: "italic", color: COLORS.muted });
+    // The title screen shows the tree; every other screen this scene draws puts
+    // text where the tree is — character creation's detail column sits directly
+    // over the canopy — so those dim it first.
+    this.modeScrim = this.add.rectangle(0, 0, 960, 540, COLORS.ink, 0.62).setOrigin(0).setVisible(false);
+    // Stacked from measured heights. "CHRONICLES" sat at a literal 126 while
+    // the wordmark above it ran to 134, so the two overlapped and the lockup
+    // read as cramped at every text size.
+    const wordmark = this.add.text(64, 56, "YGGDRASIL", { ...TEXT.title, fontSize: fontPx(56), letterSpacing: 8 });
+    const chronicles = this.add.text(68, wordmark.y + wordmark.height + 2, "C H R O N I C L E S", {
+      ...TEXT.body,
+      color: COLORS.gold,
+      letterSpacing: 5
+    });
+    const ruleY = chronicles.y + chronicles.height + 14;
+    this.add.rectangle(68, ruleY, 268, 1, COLORS.panelLight).setOrigin(0).setAlpha(0.9);
+    this.add.text(68, ruleY + 13, "The Severed Concord", {
+      ...TEXT.heading,
+      fontStyle: "italic",
+      color: COLORS.muted
+    });
     this.controlsText = this.add.text(68, 470, "", TEXT.small);
     this.refreshControlsText();
     this.drawTitleMenu();
@@ -86,26 +141,214 @@ export class TitleScene extends Phaser.Scene {
     playMusic(this, "music.title");
   }
 
+  /**
+   * The title backdrop: the world tree the game is named after.
+   *
+   * What stood here was three thick quads meeting at a point, a flat disc, and
+   * fourteen full-height diagonals — a slingshot in front of a circle, with
+   * lines that read as a rendering fault rather than as branches. The tree is
+   * now grown recursively from a fixed seed: identical on every launch, so
+   * screenshot comparisons stay meaningful, but with the uneven forking that
+   * makes a tree look like one.
+   *
+   * High Contrast gets a flat field instead. The setting exists so text is
+   * legible, and the most legible thing to put behind text is nothing.
+   */
   private paintBackdrop(): void {
+    const settings = gameSettingsStore.get();
     const graphics = this.add.graphics();
-    graphics.fillStyle(0x12202c).fillRect(0, 0, 960, 540);
-    graphics.fillStyle(0x172d34).fillCircle(790, 160, 250);
-    graphics.lineStyle(18, 0x335b4c, 0.45);
+
+    if (settings.highContrast) {
+      graphics.fillStyle(COLORS.ink, 1).fillRect(0, 0, 960, 540);
+      return;
+    }
+
+    // Sky in bands rather than one fill, so the horizon carries some warmth and
+    // the type at the top sits against the darkest part of the frame.
+    // Bands tile exactly. A fractional height with a +1 fudge overlaps its
+    // neighbour by a pixel, and sixty overlaps at differing alpha is visible as
+    // horizontal striping across the whole frame.
+    const bands = 60;
+    const bandHeight = 540 / bands;
+    for (let index = 0; index < bands; index += 1) {
+      graphics.fillStyle(mixColour(0x0a1220, 0x17333b, index / (bands - 1)), 1);
+      graphics.fillRect(0, index * bandHeight, 960, bandHeight);
+    }
+
+    // The glow behind the canopy: many faint discs, which reads as light. One
+    // opaque disc reads as a circle someone forgot to finish.
+    for (let index = 0; index < 24; index += 1) {
+      const ratio = index / 23;
+      graphics.fillStyle(0x2f6f68, 0.014 + ratio * 0.042);
+      graphics.fillCircle(688, 214, 252 - ratio * 196);
+    }
+
+    this.paintTree(graphics);
+
+    // Light falling through the canopy. Wide, nearly transparent, and stopping
+    // short of the ground so they read as shafts rather than as scan lines.
+    for (let index = 0; index < 4; index += 1) {
+      const top = 470 + index * 118;
+      graphics.fillStyle(0x9fe0c6, 0.022);
+      graphics.fillPoints([
+        new Phaser.Geom.Point(top, 0),
+        new Phaser.Geom.Point(top + 54, 0),
+        new Phaser.Geom.Point(top - 128, 540),
+        new Phaser.Geom.Point(top - 208, 540)
+      ], true);
+    }
+
+    // A scrim under the text column so every screen this scene draws — title,
+    // settings, load, character creation — has a readable field to sit on
+    // whatever the art behind it is doing.
+    for (let index = 0; index < 96; index += 1) {
+      graphics.fillStyle(COLORS.ink, 0.66 * (1 - index / 95) ** 1.6);
+      graphics.fillRect(index * 10, 0, 10, 540);
+    }
+    // And a low vignette, so the footer legend is never floating on open sky.
+    for (let index = 0; index < 45; index += 1) {
+      graphics.fillStyle(0x060c16, 0.46 * (1 - index / 44) ** 2.2);
+      graphics.fillRect(0, 540 - (index + 1) * 4, 960, 4);
+    }
+
+    if (!settings.reducedMotion) this.paintDrifting();
+  }
+
+  /** Roots, trunk and canopy, grown from one fixed seed. */
+  private paintTree(graphics: Phaser.GameObjects.Graphics): void {
+    const random = seededSequence(0x59_47_44_52);
+    const baseY = 486;
+    const forkY = 402;
+
+    // A bank of earth in three layers, so the tree stands on something. One
+    // flat polygon gave a hard black wedge with a corner in the middle of the
+    // frame; layering it puts a horizon behind the near ground.
+    for (const [offset, colour, alpha] of [
+      [26, 0x102630, 1], [12, 0x0d1f28, 1], [0, 0x0a1820, 1]
+    ] as const) {
+      graphics.fillStyle(colour, alpha);
+      graphics.fillPoints([
+        new Phaser.Geom.Point(0, 540),
+        new Phaser.Geom.Point(0, 528 + offset),
+        new Phaser.Geom.Point(180, 516 + offset),
+        new Phaser.Geom.Point(400, 502 + offset),
+        new Phaser.Geom.Point(560, 492 + offset),
+        new Phaser.Geom.Point(688, 488 + offset),
+        new Phaser.Geom.Point(830, 494 + offset),
+        new Phaser.Geom.Point(960, 508 + offset),
+        new Phaser.Geom.Point(960, 540)
+      ], true);
+    }
+
+    // Roots flaring out of that bank, drawn before the trunk so the trunk
+    // covers where they meet.
+    // Roots as tapered wedges. Stroked polylines gave square caps and a
+    // constant width, so they read as six flat sticks pushed under the trunk
+    // rather than as the trunk spreading into the ground.
+    for (const [spread, drop, width] of [
+      [-74, 26, 15], [-44, 17, 12], [-106, 34, 10], [56, 21, 14], [84, 29, 11], [112, 38, 9]
+    ] as const) {
+      graphics.fillStyle(mixColour(0x1b3833, 0x22463c, Math.abs(spread) / 112), 1);
+      graphics.fillPoints([
+        new Phaser.Geom.Point(688, baseY - 18),
+        new Phaser.Geom.Point(688 + spread * 0.3, baseY + drop * 0.35 + width * 0.5),
+        new Phaser.Geom.Point(688 + spread, baseY + drop),
+        new Phaser.Geom.Point(688 + spread * 0.94, baseY + drop - width * 0.35),
+        new Phaser.Geom.Point(688 + spread * 0.26, baseY + drop * 0.2 - width * 0.5)
+      ], true);
+    }
+
+    // The trunk in thin horizontal slices. A tapered polygon has straight edges
+    // and the highlight laid over it left a hard diagonal seam — the whole
+    // thing read as cut paper. Slicing lets the width, the lean and the colour
+    // all vary smoothly, and no two shapes meet along a visible line.
+    for (let y = baseY + 8; y > forkY; y -= 2) {
+      const ratio = (baseY + 8 - y) / (baseY + 8 - forkY);
+      const halfWidth = 40 - 25 * ratio ** 0.7;
+      const centre = 688 + Math.sin(ratio * 1.35) * 7;
+      graphics.fillStyle(mixColour(0x1b3833, 0x336052, ratio), 1);
+      graphics.fillRect(centre - halfWidth, y, halfWidth * 2, 2);
+      // Light from the canopy side, feathered by riding the same taper.
+      graphics.fillStyle(0x437a63, 0.5);
+      graphics.fillRect(centre + halfWidth * 0.42, y, halfWidth * 0.5, 2);
+    }
+
+    // A faint mass behind the branches, so the canopy holds together instead of
+    // reading as a scatter of separate discs.
+    for (const [x, y, radius] of [[688, 250, 150], [600, 286, 104], [782, 282, 110], [688, 200, 118]] as const) {
+      graphics.fillStyle(0x2c6350, 0.05);
+      graphics.fillCircle(x, y, radius);
+    }
+
+    this.paintBranch(graphics, random, 688 + Math.sin(1.35) * 7, forkY + 4, -Math.PI / 2, 92, 21, 0);
+  }
+
+  /**
+   * One branch, then the branches it forks into. Depth is bounded, so this
+   * terminates; every length, angle and canopy radius comes from the seeded
+   * sequence, so the shape never changes between runs.
+   */
+  private paintBranch(
+    graphics: Phaser.GameObjects.Graphics,
+    random: () => number,
+    x: number,
+    y: number,
+    angle: number,
+    length: number,
+    width: number,
+    depth: number
+  ): void {
+    const endX = x + Math.cos(angle) * length;
+    const endY = y + Math.sin(angle) * length;
+    const ratio = depth / BRANCH_DEPTH;
+    graphics.lineStyle(Math.max(1.6, width), mixColour(0x24463f, 0x4f8466, ratio), 0.95);
     graphics.beginPath();
-    graphics.moveTo(790, 540);
-    graphics.lineTo(774, 300);
-    graphics.lineTo(710, 220);
-    graphics.moveTo(780, 326);
-    graphics.lineTo(870, 230);
-    graphics.moveTo(760, 275);
-    graphics.lineTo(675, 185);
+    graphics.moveTo(x, y);
+    graphics.lineTo(endX, endY);
     graphics.strokePath();
-    graphics.lineStyle(3, 0x78a777, 0.3);
-    for (let index = 0; index < 14; index += 1) {
-      graphics.beginPath();
-      graphics.moveTo(610 + index * 26, 0);
-      graphics.lineTo(520 + index * 31, 540);
-      graphics.strokePath();
+
+    if (depth >= BRANCH_DEPTH) {
+      // Foliage as many small, faint, unevenly sized discs. Few large discs at
+      // high alpha read as bubbles — which is what the first attempt looked
+      // like; the mass has to come from overlap, not from any one circle.
+      for (let index = 0; index < 6; index += 1) {
+        graphics.fillStyle(mixColour(0x1f4a3c, 0x6aa870, random() ** 1.6), 0.13);
+        graphics.fillCircle(
+          endX + (random() - 0.5) * 26,
+          endY + (random() - 0.5) * 22,
+          4 + random() * 8
+        );
+      }
+      return;
+    }
+
+    const spread = 0.40 + random() * 0.28;
+    const lean = (random() - 0.5) * 0.18;
+    this.paintBranch(graphics, random, endX, endY, angle - spread + lean, length * (0.74 + random() * 0.1), width * 0.66, depth + 1);
+    this.paintBranch(graphics, random, endX, endY, angle + spread + lean, length * (0.72 + random() * 0.1), width * 0.64, depth + 1);
+    // A third shoot now and then, so the silhouette is not a clean binary fan.
+    if (depth === 1 || (depth === 2 && random() < 0.55)) {
+      this.paintBranch(graphics, random, endX, endY, angle + lean * 2, length * 0.64, width * 0.48, depth + 1);
+    }
+  }
+
+  /** Slow motes rising through the canopy. Skipped entirely under Reduced Motion. */
+  private paintDrifting(): void {
+    const random = seededSequence(0x4c_45_41_46);
+    for (let index = 0; index < 16; index += 1) {
+      const x = 470 + random() * 440;
+      const y = 90 + random() * 380;
+      const mote = this.add.circle(x, y, 1 + random() * 1.8, 0xd8e9b8, 0.5);
+      this.tweens.add({
+        targets: mote,
+        y: y - 40 - random() * 50,
+        alpha: 0.05,
+        duration: 5200 + random() * 4200,
+        delay: random() * 3600,
+        repeat: -1,
+        yoyo: true,
+        ease: "Sine.easeInOut"
+      });
     }
   }
 
@@ -184,9 +427,12 @@ export class TitleScene extends Phaser.Scene {
     this.menuTexts.forEach((text) => text.destroy());
     this.creationTexts.forEach((text) => text.destroy());
     this.detailText?.destroy();
+    this.menuDecor.forEach((item) => item.destroy());
+    this.menuDecor = [];
     this.detailText = undefined;
     this.creationTexts = [];
     this.refreshControlsText();
+    this.modeScrim?.setVisible(false);
     const snapshot = this.bridge.getSnapshot();
     const hasSave = snapshot.hasSave;
     const savedCount = MANUAL_SLOTS.filter((slot) => this.hasSlot(slot)).length;
@@ -196,14 +442,41 @@ export class TitleScene extends Phaser.Scene {
       `LOAD CHRONICLE  —  ${savedCount}/${MANUAL_SLOTS.length} SAVED`,
       "SETTINGS  —  ACCESSIBILITY & AUDIO"
     ];
-    this.menuTexts = choices.map((label, index) =>
-      this.add.text(72, 245 + index * 48, label, {
+    // Rows carry a cursor and a lit bar, not just a colour change. Colour alone
+    // is the one signal a player with a colour vision deficiency cannot read,
+    // and it was the only signal this screen had. The annotation after the
+    // em dash drops to small muted type so the row reads as a choice rather
+    // than as a line of configuration.
+    this.menuTexts = choices.map((label, index) => {
+      const y = 245 + index * 48;
+      const selected = index === this.titleIndex;
+      const unavailable = index === 1 && !hasSave;
+      const [heading, annotation] = splitMenuLabel(label);
+
+      if (selected) {
+        // `COLORS.gold` is a CSS string for text styles; shapes want a number.
+        const gold = Phaser.Display.Color.HexStringToColor(COLORS.gold).color;
+        // The bar fades out rather than ending on a hard edge, which over the
+        // artwork read as a stray rectangle rather than as a highlight.
+        for (let step = 0; step < 22; step += 1) {
+          this.menuDecor.push(
+            this.add.rectangle(52 + step * 22, y - 9, 22, 40, gold, 0.1 * (1 - step / 21) ** 1.4).setOrigin(0)
+          );
+        }
+        this.menuDecor.push(this.add.rectangle(52, y - 9, 3, 40, gold, 0.85).setOrigin(0));
+      }
+      const row = this.add.text(74, y, heading, {
         ...TEXT.heading,
-        color: index === this.titleIndex
-          ? COLORS.gold
-          : index === 1 && !hasSave ? "#64727a" : COLORS.cream
-      })
-    );
+        color: selected ? COLORS.gold : unavailable ? "#64727a" : COLORS.cream
+      });
+      if (annotation) {
+        this.menuDecor.push(this.add.text(74 + row.width + 16, y + row.height - 17, annotation, {
+          ...TEXT.small,
+          color: unavailable ? "#5c6a72" : COLORS.muted
+        }));
+      }
+      return row;
+    });
     const notice = message ?? (snapshot.storageAvailable
       ? undefined
       : "Saving is unavailable in this browser session. The game is fully playable, but progress will not persist.");
@@ -239,6 +512,8 @@ export class TitleScene extends Phaser.Scene {
     this.menuTexts.forEach((text) => text.destroy());
     this.creationTexts.forEach((text) => text.destroy());
     this.detailText?.destroy();
+    this.menuDecor.forEach((item) => item.destroy());
+    this.menuDecor = [];
     this.creationTexts = [];
     this.refreshControlsText();
     this.mode = "settings";
@@ -253,25 +528,46 @@ export class TitleScene extends Phaser.Scene {
       `MUSIC VOLUME        ${Math.round(settings.musicVolume * 100)}%`,
       "KEYBOARD BINDINGS"
     ];
-    // The list flows from measured heights: the Text Size row made six rows,
-    // and 40px fixed spacing ran the last one into the hint text below.
+    this.modeScrim?.setVisible(true);
     const heading = this.add.text(72, 210, "SETTINGS", { ...TEXT.heading, color: COLORS.gold });
-    let rowY = 248;
-    const rows = choices.map((label, index) => {
-      const row = this.add.text(72, rowY, `${index === this.settingsIndex ? "›" : " "} ${label}`, {
-        ...TEXT.heading,
-        color: index === this.settingsIndex ? COLORS.gold : COLORS.cream
-      });
-      rowY += row.height + 9;
-      return row;
-    });
+
+    // The list windows to what actually fits. Flowing eight rows from measured
+    // heights was still eight rows: at the largest text size the last two —
+    // Music Volume and Keyboard Bindings — ran off the bottom of a canvas that
+    // does not grow, and at every size the fixed controls legend at y 470 was
+    // drawn straight through the final row.
+    const pitchProbe = this.add.text(-500, -500, "M", TEXT.heading);
+    const pitch = pitchProbe.height + 9;
+    pitchProbe.destroy();
+    const firstRowY = 248;
+    const listBottom = 448;
+    const capacity = Math.max(3, Math.floor((listBottom - firstRowY) / pitch));
+    const view = windowAround(choices.map((label, index) => ({ label, index })), this.settingsIndex, capacity);
+
+    let rowY = firstRowY;
+    const rows: Phaser.GameObjects.Text[] = [];
+    const addRow = (label: string, selected: boolean, small = false): void => {
+      const row = this.add.text(72, rowY, label, small
+        ? { ...TEXT.small, color: COLORS.muted }
+        : { ...TEXT.heading, color: selected ? COLORS.gold : COLORS.cream });
+      rowY += row.height + (small ? 4 : 9);
+      rows.push(row);
+    };
+    if (view.hasBefore) addRow("  ▲ more above", false, true);
+    for (const { label, index } of view.items) {
+      addRow(`${index === this.settingsIndex ? "›" : " "} ${label}`, index === this.settingsIndex);
+    }
+    if (view.hasAfter) addRow("  ▼ more below", false, true);
+
     this.menuTexts = [heading, ...rows];
     this.detailText = this.add.text(
       72,
-      rowY + 12,
+      rowY + 10,
       "Enter / A toggles options. Left / Right changes volume. Esc / B returns.",
       TEXT.small
     );
+    // And the legend follows the list rather than sitting at a fixed height.
+    this.controlsText?.setY(this.detailText.y + this.detailText.height + 8);
     const selectedSetting = choices[this.settingsIndex] ?? choices[0];
     announceGameStatus(`Settings. ${selectedSetting}. Use up and down to choose an option.`);
   }
@@ -280,9 +576,12 @@ export class TitleScene extends Phaser.Scene {
     this.menuTexts.forEach((text) => text.destroy());
     this.creationTexts.forEach((text) => text.destroy());
     this.detailText?.destroy();
+    this.menuDecor.forEach((item) => item.destroy());
+    this.menuDecor = [];
     this.creationTexts = [];
     this.refreshControlsText();
     this.mode = "bindings";
+    this.modeScrim?.setVisible(true);
     const bindings = gameSettingsStore.get().keyBindings;
     const heading = this.add.text(72, 172, "KEYBOARD BINDINGS", { ...TEXT.heading, color: COLORS.gold });
     // Fifteen actions plus a reset row have to fit above the legend on a
@@ -340,8 +639,11 @@ export class TitleScene extends Phaser.Scene {
     this.menuTexts.forEach((text) => text.destroy());
     this.creationTexts.forEach((text) => text.destroy());
     this.detailText?.destroy();
+    this.menuDecor.forEach((item) => item.destroy());
+    this.menuDecor = [];
     this.creationTexts = [];
     this.mode = "load";
+    this.modeScrim?.setVisible(true);
     const heading = this.add.text(72, 210, "LOAD A CHRONICLE", { ...TEXT.heading, color: COLORS.gold });
     const slotTexts = MANUAL_SLOTS.map((slot, index) => {
       const available = this.hasSlot(slot);
@@ -391,8 +693,11 @@ export class TitleScene extends Phaser.Scene {
     this.menuTexts.forEach((text) => text.destroy());
     this.creationTexts.forEach((text) => text.destroy());
     this.detailText?.destroy();
+    this.menuDecor.forEach((item) => item.destroy());
+    this.menuDecor = [];
     this.menuTexts = [];
     this.mode = "creation";
+    this.modeScrim?.setVisible(true);
     const difficulty = DIFFICULTY_CHOICES[this.difficultyIndex];
     const values = [
       ["NAME", NAME_CHOICES[this.nameIndex]],
@@ -428,14 +733,28 @@ export class TitleScene extends Phaser.Scene {
         `Watch for: ${preview.counters.join("; ")}`
       ].join("\n")
       : "";
-    this.detailText = this.add.text(
-      516,
-      226,
-      this.creationRow === 3
-        ? (difficulty?.description ?? "")
-        : `${ancestry?.trait ?? ""}\n${job?.role ?? ""}  ·  Branches: ${job?.branches.join(" / ") ?? ""}\n\n${previewText}`,
-      { ...TEXT.body, fontSize: fontPx(12), wordWrap: { width: 360 }, lineSpacing: 6, color: COLORS.muted }
-    );
+    const detail = this.creationRow === 3
+      ? (difficulty?.description ?? "")
+      : `${ancestry?.trait ?? ""}\n${job?.role ?? ""}  ·  Branches: ${job?.branches.join(" / ") ?? ""}\n\n${previewText}`;
+    // Starts under the wordmark rather than level with the first choice: the
+    // whole upper right was empty while this column ran off the bottom.
+    this.detailText = this.add.text(516, 158, detail, {
+      ...TEXT.body,
+      fontSize: fontPx(12),
+      wordWrap: { width: 368 },
+      lineSpacing: 6,
+      color: COLORS.muted
+    });
+    // Then fitted to the frame. At the largest text size this column reached
+    // 588 on a 540 canvas, so the "Watch for" line — the one written to guide
+    // exactly this choice — was cut off on the screen where it is chosen.
+    const bottomLimit = 528;
+    if (this.detailText.y + this.detailText.height > bottomLimit) {
+      this.detailText.setLineSpacing(2);
+    }
+    if (this.detailText.y + this.detailText.height > bottomLimit) {
+      this.detailText.setText(detail.replace("\n\n", "\n"));
+    }
   }
 
   private move(delta: number): void {
