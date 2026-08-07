@@ -344,6 +344,8 @@ export interface GameSnapshot {
    */
   storageAvailable: boolean;
   chronicleHint: string;
+  /** Every main-story quest is done, which is what unseals postgame content. */
+  campaignComplete?: boolean;
 }
 
 export interface RemedyView {

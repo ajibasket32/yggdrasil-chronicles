@@ -441,7 +441,8 @@ export class EngineGameBridge implements GameBridge {
       autosave: this.#autosave,
       autosaveSlot: this.#autosaveSlot,
       storageAvailable: this.#storageAvailable,
-      chronicleHint: this.#state.world.chronicle.at(-1)?.body ?? "The road is waiting."
+      chronicleHint: this.#state.world.chronicle.at(-1)?.body ?? "The road is waiting.",
+      campaignComplete: this.isCampaignComplete(this.#state)
     };
   }
 

@@ -738,7 +738,7 @@ export class WorldScene extends Phaser.Scene {
   private spawnEncounter(locationId: string): void {
     this.encounterSprite?.destroy();
     const activeQuest = this.snapshot.quests.find(({ state }) => state === "active");
-    const encounter = selectEncounterForLocation(locationId, activeQuest);
+    const encounter = selectEncounterForLocation(locationId, activeQuest, this.snapshot.campaignComplete);
     if (!encounter) return;
     const point = ENCOUNTER_POINTS[locationId] ?? { x: 14, y: 8 };
     // The marker is the encounter's own first foe — the same sprite and tint

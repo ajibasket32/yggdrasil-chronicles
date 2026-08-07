@@ -6,6 +6,7 @@ import {
   locationFinds,
   locations,
   npcs,
+  postgameEncounterIds,
   worldRoutes,
   type RouteDirection
 } from "../content";
@@ -160,19 +161,34 @@ export function getObjectiveGuidance(snapshot: Readonly<GameSnapshot>): Objectiv
 
 export function selectEncounterForLocation(
   locationId: string,
-  quest: QuestView | undefined
+  quest: QuestView | undefined,
+  campaignComplete = false
 ): string | undefined {
   const availableIds = locationEncounters[locationId] ?? [];
-  if (!quest?.objectiveTargetId) return availableIds[0];
+  /**
+   * Which encounter a location falls back to when no active objective picks one.
+   *
+   * A postgame encounter is listed last at its location and named by no quest,
+   * so neither branch below could ever reach it and the fallback was always
+   * `availableIds[0]` — the Echo of Severance was authored, levelled, given its
+   * own skills and sprite, gated behind finishing the campaign, and then left
+   * unreachable by every path the world had. Once the campaign is complete it
+   * becomes the location's default; an active objective still wins, so a side
+   * quest at the same location is not shouldered aside by it.
+   */
+  const fallbackId = campaignComplete
+    ? availableIds.find((encounterId) => postgameEncounterIds.includes(encounterId)) ?? availableIds[0]
+    : availableIds[0];
+  if (!quest?.objectiveTargetId) return fallbackId;
   if (quest.objectiveKind === "defeat") {
     return availableIds.find((encounterId) =>
       encounters.find(({ id }) => id === encounterId)?.enemyIds.includes(quest.objectiveTargetId ?? "")
-    ) ?? availableIds[0];
+    ) ?? fallbackId;
   }
   if (quest.objectiveKind === "collect") {
     return availableIds.find((encounterId) =>
       encounterFinds[encounterId]?.some(([itemId]) => itemId === quest.objectiveTargetId)
-    ) ?? availableIds[0];
+    ) ?? fallbackId;
   }
-  return availableIds[0];
+  return fallbackId;
 }
