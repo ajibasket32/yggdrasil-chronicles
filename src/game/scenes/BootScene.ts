@@ -61,9 +61,14 @@ export class BootScene extends Phaser.Scene {
     this.load.audio("sfx.coin", `${audio}/handleCoins2.ogg`);
     this.load.audio("sfx.cursor", `${audio}/cloth1.ogg`);
     this.load.audio("sfx.miss", `${audio}/cloth3.ogg`);
-    // The score: five CC0 tracks catalogued in ASSETS.md. Loaded like any
-    // other asset so the release audit sees the paths.
-    for (const [key, path] of Object.entries(MUSIC_TRACKS)) this.load.audio(key, path);
+    // The score: five CC0 tracks catalogued in ASSETS.md. Only the title theme
+    // is fetched here — the other four are loaded the first time a place asks
+    // for them (see `playMusic`). Decoding all five up front held tens of
+    // megabytes of PCM apiece before the title screen had drawn a pixel, most
+    // of it for places the player had not reached and might never reach, on the
+    // phones the touch build exists for. The full table still lives in music.ts,
+    // so the release audit sees every path.
+    this.load.audio("music.title", MUSIC_TRACKS["music.title"]);
   }
 
   create(): void {

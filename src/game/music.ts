@@ -86,13 +86,29 @@ function fadeSound(
  * audio (a stripped dev build, a failed decode) degrades to silence rather
  * than an error — music must never be the reason the game stops.
  */
+/** Tracks already requested, so a failed or in-flight load is not asked for again. */
+const requested = new Set<MusicKey>();
+
 export function playMusic(scene: Phaser.Scene, key: MusicKey): void {
   const game = scene.game;
   const current = game.registry.get(CURRENT_KEY) as CurrentMusic | undefined;
   if (current?.key === key && current.sound.isPlaying) {
     return;
   }
-  if (!scene.cache.audio.exists(key)) return;
+  if (!scene.cache.audio.exists(key)) {
+    // Not preloaded. BootScene fetches only the title theme, so a place's own
+    // score arrives when the place does. Requested once: a track that fails to
+    // load leaves the game silent rather than retrying on every redraw, and
+    // every scene declares its music on every redraw.
+    if (requested.has(key)) return;
+    requested.add(key);
+    scene.load.audio(key, MUSIC_TRACKS[key]);
+    scene.load.once("complete", () => {
+      if (scene.cache.audio.exists(key)) playMusic(scene, key);
+    });
+    scene.load.start();
+    return;
+  }
 
   if (current?.sound.isPlaying) {
     const fading = current.sound;

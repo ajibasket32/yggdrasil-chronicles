@@ -341,3 +341,31 @@ test("the canvas keeps its aspect ratio at any window shape", async ({ page }) =
   }
 });
 
+test("only the title theme is fetched up front; a place's score arrives with it", async ({ page }) => {
+  await page.goto("/");
+  const app = page.locator("#app");
+  await expect(page.locator("canvas")).toBeVisible();
+  await expect(app).toHaveAttribute("data-scene", "title");
+
+  const cached = async (): Promise<Record<string, boolean>> =>
+    page.evaluate(() => {
+      const game = (window as unknown as { __YGG_GAME?: { cache: { audio: { exists(key: string): boolean } } } }).__YGG_GAME;
+      const keys = ["music.title", "music.town", "music.road", "music.dungeon", "music.battle"];
+      return Object.fromEntries(keys.map((key) => [key, game?.cache.audio.exists(key) ?? false]));
+    });
+
+  // Decoding all five tracks before the title drew held tens of megabytes of
+  // PCM apiece for places the player had not reached.
+  const atTitle = await cached();
+  expect(atTitle["music.title"]).toBe(true);
+  expect(atTitle["music.town"]).toBe(false);
+  expect(atTitle["music.dungeon"]).toBe(false);
+
+  await startNewChronicle(page);
+  await expect(app).toHaveAttribute("data-location-id", "location.hearthcross");
+  // The town theme is fetched on arrival, so the town is scored either way.
+  await expect.poll(async () => (await cached())["music.town"], { timeout: 15_000 }).toBe(true);
+  // And the places still ahead have cost nothing yet.
+  expect((await cached())["music.dungeon"]).toBe(false);
+});
+
