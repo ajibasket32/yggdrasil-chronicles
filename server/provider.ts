@@ -21,6 +21,9 @@ const completionResponseSchema = z.object({
   })).min(1)
 });
 
+/** Generous for this patch schema, and small enough that a runaway body cannot hurt. */
+const MAX_RESPONSE_BYTES = 256 * 1024;
+
 const SYSTEM_PROMPT = `You are the optional narrative generator for Yggdrasil Chronicles.
 Return exactly one JSON object and no Markdown. Generate optional dialogue, local NPCs,
 quests, events, and only whitelisted effects. Never invent raw damage, stats, XP,
@@ -79,7 +82,19 @@ export class OpenAiCompatibleProvider implements NarrativeProvider {
     if (!response.ok) {
       throw new Error(`Narrative provider returned HTTP ${response.status}.`);
     }
-    const completion = completionResponseSchema.parse(await response.json());
+    // Inbound requests are capped at 64kb; nothing guarded the outbound leg. A
+    // misconfigured base URL, or an upstream having a bad day, could dribble a
+    // large body for the whole timeout and be buffered whole and then parsed
+    // twice — in the same process that serves the game's own files.
+    const declaredLength = Number.parseInt(response.headers.get("content-length") ?? "", 10);
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {
+      throw new Error("Narrative provider response was too large.");
+    }
+    const body = await response.text();
+    if (body.length > MAX_RESPONSE_BYTES) {
+      throw new Error("Narrative provider response was too large.");
+    }
+    const completion = completionResponseSchema.parse(JSON.parse(body));
     const content = completion.choices[0]?.message.content;
     if (content === undefined) {
       throw new Error("Narrative provider returned no content.");
@@ -89,9 +104,16 @@ export class OpenAiCompatibleProvider implements NarrativeProvider {
 }
 
 export function providerFromEnvironment(): OpenAiCompatibleProvider {
+  // Blank means unset, the way AI_API_KEY and AI_MODEL already treat it and the
+  // way `.env.example` — which ships those two blank — teaches. `??` only falls
+  // back on undefined, so clearing AI_BASE_URL to "get the default" made the
+  // empty string the base URL: every request failed to parse its own URL while
+  // `configured` still reported true, so the clean not-configured path was
+  // never taken and each call burned a request producing a scripted fallback.
+  const baseUrl = process.env.AI_BASE_URL;
   return new OpenAiCompatibleProvider({
     apiKey: process.env.AI_API_KEY,
-    baseUrl: process.env.AI_BASE_URL,
+    baseUrl: baseUrl !== undefined && baseUrl.length > 0 ? baseUrl : undefined,
     model: process.env.AI_MODEL
   });
 }

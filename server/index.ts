@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import express, { type Express, type Request } from "express";
+import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import {
   contextSchema,
   validateProviderPatch,
@@ -27,13 +27,39 @@ export interface ServerOptions {
   distDirectory?: string;
 }
 
+/** Field separator for the request hash; a control character cannot appear in the fields. */
+const SEPARATOR = "\u001f";
+
+/**
+ * Content-addresses a request.
+ *
+ * Deliberately excludes `trigger.id`, which is a fresh UUID minted per
+ * checkpoint: including it made every key unique, so the response cache and the
+ * in-flight dedupe below could never hit once. The cache was not a cache, it
+ * was accumulation, and the dedupe never collapsed two identical asks.
+ */
 function requestKey(context: NarrativeContext): string {
   return createHash("sha256").update([
-    context.trigger.id,
     context.trigger.kind,
+    context.trigger.summary,
     context.worldDigest,
     context.promptVersion
-  ].join("\u001f")).digest("hex");
+  ].join(SEPARATOR)).digest("hex");
+}
+
+/** Distinct callers to keep response caches for. Localhost only, so this is generous. */
+const MAX_CACHED_CLIENTS = 32;
+
+const DEFAULT_TIMEOUT_MS = 15_000;
+
+/**
+ * `.env.example` has always advertised AI_TIMEOUT_MS and nothing ever read it,
+ * so an operator pointing the proxy at a slow local model could not lengthen
+ * the timeout no matter what they set.
+ */
+function environmentTimeoutMs(): number {
+  const parsed = Number.parseInt(process.env.AI_TIMEOUT_MS ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TIMEOUT_MS;
 }
 
 function clientKey(request: Request): string {
@@ -46,10 +72,15 @@ function clientKey(request: Request): string {
 export function createServer(options: ServerOptions = {}): Express {
   const app = express();
   const provider = options.provider ?? providerFromEnvironment();
-  const timeoutMs = options.timeoutMs ?? 15_000;
+  const timeoutMs = options.timeoutMs ?? environmentTimeoutMs();
   const activeByClient = new Map<string, { key: string; promise: Promise<NarrativeResponse> }>();
   const cacheByClient = new Map<string, Map<string, NarrativeResponse>>();
-  const distDirectory = options.distDirectory ?? resolve(process.cwd(), "dist");
+  // Resolved from this module, not the working directory. `npm start` only
+  // worked because npm sets cwd to the package root; run the same build from a
+  // service manager whose WorkingDirectory is / and `dist` resolved to /dist,
+  // so the static middleware was never mounted at all.
+  const distDirectory = options.distDirectory
+    ?? resolve(fileURLToPath(new URL("..", import.meta.url)), "dist");
 
   app.disable("x-powered-by");
   app.use(express.json({ limit: "64kb", strict: true }));
@@ -65,6 +96,13 @@ export function createServer(options: ServerOptions = {}): Express {
     const key = requestKey(context);
     const clientCache = cacheByClient.get(client) ?? new Map<string, NarrativeResponse>();
     cacheByClient.set(client, clientCache);
+    // The per-client cache is bounded below, but the map of clients was not, and
+    // its key comes partly from a caller-supplied header. Oldest client out.
+    while (cacheByClient.size > MAX_CACHED_CLIENTS) {
+      const oldest = cacheByClient.keys().next().value;
+      if (oldest === undefined || oldest === client) break;
+      cacheByClient.delete(oldest);
+    }
     const cached = clientCache.get(key);
     if (cached !== undefined) {
       response.json(cached);
@@ -156,7 +194,22 @@ export function createServer(options: ServerOptions = {}): Express {
       }
       response.sendFile(resolve(distDirectory, "index.html"));
     });
+  } else {
+    // Say so once. Without this the process logs that it is listening, answers
+    // /api/narrative perfectly, and returns a bare 404 for the game itself —
+    // healthy-looking and completely unplayable, with no clue why.
+    console.warn(`No release package at ${distDirectory}; serving the API only.`);
   }
+
+  // Last, so it catches everything above. Express's default handler renders the
+  // stack trace and a slice of the request into the response body; this proxy
+  // sits in front of a narrative provider and a player's own save data, and
+  // neither belongs in an HTTP response.
+  app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
+    console.error("Unhandled error in the narrative proxy", error);
+    if (response.headersSent) return;
+    response.status(500).json({ error: "Narrative service failed." });
+  });
 
   return app;
 }
