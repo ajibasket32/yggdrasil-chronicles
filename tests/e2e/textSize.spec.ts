@@ -253,4 +253,19 @@ test("no title sub-screen runs off the canvas at the largest text size", async (
   expect(settings.count, "no settings text was found to measure").toBeGreaterThan(4);
   expect(settings.lowest, `the settings screen overflows: "${settings.text}"`)
     .toBeLessThanOrEqual(settings.canvas);
+
+  // And key bindings, the last row of settings. Sixteen rows in one column
+  // forced a pitch smaller than a row is tall at this size, so they drew
+  // through each other — on the screen a player reaches precisely when their
+  // controls have stopped working.
+  for (let step = 0; step < 7; step += 1) {
+    await page.keyboard.press("ArrowDown");
+    await page.waitForTimeout(120);
+  }
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(600);
+  const bindings = await measure();
+  expect(bindings.count, "no bindings text was found to measure").toBeGreaterThan(10);
+  expect(bindings.lowest, `the key bindings screen overflows: "${bindings.text}"`)
+    .toBeLessThanOrEqual(bindings.canvas);
 });

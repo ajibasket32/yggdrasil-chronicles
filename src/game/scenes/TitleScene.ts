@@ -86,6 +86,10 @@ export class TitleScene extends Phaser.Scene {
   private menuDecor: Phaser.GameObjects.GameObject[] = [];
   /** Dims the artwork on the screens that put text over it. */
   private modeScrim?: Phaser.GameObjects.Rectangle;
+  /** Rule and subtitle: decorative, and hidden on the screens that need the room. */
+  private lockupExtras: Phaser.GameObjects.GameObject[] = [];
+  /** Bottom of the wordmark block, so dense screens can start right under it. */
+  private lockupBottom = 0;
   private detailText?: Phaser.GameObjects.Text;
   private controlsText?: Phaser.GameObjects.Text;
   private creationTexts: Phaser.GameObjects.Text[] = [];
@@ -126,13 +130,16 @@ export class TitleScene extends Phaser.Scene {
       color: COLORS.gold,
       letterSpacing: 5
     });
+    this.lockupBottom = chronicles.y + chronicles.height;
     const ruleY = chronicles.y + chronicles.height + 14;
-    this.add.rectangle(68, ruleY, 268, 1, COLORS.panelLight).setOrigin(0).setAlpha(0.9);
-    this.add.text(68, ruleY + 13, "The Severed Concord", {
-      ...TEXT.heading,
-      fontStyle: "italic",
-      color: COLORS.muted
-    });
+    this.lockupExtras = [
+      this.add.rectangle(68, ruleY, 268, 1, COLORS.panelLight).setOrigin(0).setAlpha(0.9),
+      this.add.text(68, ruleY + 13, "The Severed Concord", {
+        ...TEXT.heading,
+        fontStyle: "italic",
+        color: COLORS.muted
+      })
+    ];
     this.controlsText = this.add.text(68, 470, "", TEXT.small);
     this.refreshControlsText();
     this.drawTitleMenu();
@@ -423,6 +430,11 @@ export class TitleScene extends Phaser.Scene {
     else if (action === "cancel") this.back();
   }
 
+  /** The rule and subtitle, hidden only where a screen needs their room. */
+  private setLockupVisible(visible: boolean): void {
+    for (const extra of this.lockupExtras) (extra as Phaser.GameObjects.Text).setVisible(visible);
+  }
+
   private drawTitleMenu(message?: string): void {
     this.menuTexts.forEach((text) => text.destroy());
     this.creationTexts.forEach((text) => text.destroy());
@@ -433,6 +445,7 @@ export class TitleScene extends Phaser.Scene {
     this.creationTexts = [];
     this.refreshControlsText();
     this.modeScrim?.setVisible(false);
+    this.setLockupVisible(true);
     const snapshot = this.bridge.getSnapshot();
     const hasSave = snapshot.hasSave;
     const savedCount = MANUAL_SLOTS.filter((slot) => this.hasSlot(slot)).length;
@@ -517,6 +530,7 @@ export class TitleScene extends Phaser.Scene {
     this.creationTexts = [];
     this.refreshControlsText();
     this.mode = "settings";
+    this.setLockupVisible(true);
     const settings = gameSettingsStore.get();
     const choices = [
       `HIGH CONTRAST       ${settings.highContrast ? "ON" : "OFF"}`,
@@ -583,23 +597,29 @@ export class TitleScene extends Phaser.Scene {
     this.mode = "bindings";
     this.modeScrim?.setVisible(true);
     const bindings = gameSettingsStore.get().keyBindings;
-    const heading = this.add.text(72, 172, "KEYBOARD BINDINGS", { ...TEXT.heading, color: COLORS.gold });
-    // Fifteen actions plus a reset row have to fit above the legend on a
-    // 540-tall canvas. At the old 20px pitch the reset row landed at y 534 and
-    // was clipped off the bottom edge — and it is the only way back from a
-    // binding that has made the game unplayable. Spacing is derived from the
-    // space actually available so the type scale cannot push it off again.
-    const firstRowY = 202;
-    const lastRowY = 470;
-    const rowCount = REBINDABLE_ACTIONS.length + 1;
-    const pitch = Math.max(14, Math.floor((lastRowY - firstRowY) / rowCount));
+    // This screen is the densest one here, so it reclaims the decorative rule
+    // and subtitle. The heading was drawn at y 172, straight through them.
+    this.setLockupVisible(false);
+    const heading = this.add.text(72, Math.max(156, this.lockupBottom + 10), "KEYBOARD BINDINGS", { ...TEXT.heading, color: COLORS.gold });
+
+    // Two columns, with the pitch measured rather than divided out of the
+    // remaining height. Sixteen rows in one column forced a 16px pitch, which
+    // is less than a row is tall at the largest text size — so the rows drew
+    // through each other on the screen a player visits precisely when their
+    // controls have stopped working.
+    const pitchProbe = this.add.text(-500, -500, "M", { ...TEXT.body, fontSize: fontPx(12) });
+    const pitch = pitchProbe.height + 7;
+    pitchProbe.destroy();
+    const firstRowY = heading.y + heading.height + 14;
+    const perColumn = Math.ceil(REBINDABLE_ACTIONS.length / 2);
+
     const rows = REBINDABLE_ACTIONS.map((action, index) => {
       const selected = index === this.bindingIndex;
       const value = selected && this.capturingBinding ? "PRESS A KEY…" : keyboardBindingLabel(bindings[action]);
       return this.add.text(
-        72,
-        firstRowY + index * pitch,
-        `${selected ? "›" : " "} ${keyboardActionLabel(action).padEnd(24)} ${value}`,
+        72 + Math.floor(index / perColumn) * 430,
+        firstRowY + (index % perColumn) * pitch,
+        `${selected ? "›" : " "} ${keyboardActionLabel(action).padEnd(22)} ${value}`,
         {
           ...TEXT.body,
           fontSize: fontPx(12),
@@ -608,21 +628,23 @@ export class TitleScene extends Phaser.Scene {
       );
     });
     const resetSelected = this.bindingIndex === REBINDABLE_ACTIONS.length;
+    const resetY = firstRowY + perColumn * pitch + 10;
     rows.push(this.add.text(
       72,
-      firstRowY + REBINDABLE_ACTIONS.length * pitch + 6,
+      resetY,
       `${resetSelected ? "›" : " "} Reset all bindings to defaults`,
       { ...TEXT.body, fontSize: fontPx(12), color: resetSelected ? COLORS.gold : COLORS.cream }
     ));
     this.menuTexts = [heading, ...rows];
     this.detailText = this.add.text(
       72,
-      500,
+      resetY + pitch + 8,
       this.capturingBinding
         ? "Press the new key, or press Escape to keep the current one."
         : "Select an action and confirm, then press its new key. Conflicts swap automatically.",
-      TEXT.small
+      { ...TEXT.small, wordWrap: { width: 800 } }
     );
+    this.controlsText?.setY(this.detailText.y + this.detailText.height + 8);
     const selectedAction = REBINDABLE_ACTIONS[this.bindingIndex];
     // The reset row is announced too. Skipping it left the one recovery route
     // both drawn off-canvas and silent to a screen reader.
@@ -643,6 +665,7 @@ export class TitleScene extends Phaser.Scene {
     this.menuDecor = [];
     this.creationTexts = [];
     this.mode = "load";
+    this.setLockupVisible(true);
     this.modeScrim?.setVisible(true);
     const heading = this.add.text(72, 210, "LOAD A CHRONICLE", { ...TEXT.heading, color: COLORS.gold });
     const slotTexts = MANUAL_SLOTS.map((slot, index) => {
@@ -655,6 +678,7 @@ export class TitleScene extends Phaser.Scene {
       });
     });
     this.menuTexts = [heading, ...slotTexts];
+    this.controlsText?.setY(470);
     const selectedSlot = MANUAL_SLOTS[this.loadIndex];
     const selectedAvailable = selectedSlot ? this.hasSlot(selectedSlot) : false;
     this.detailText = this.add.text(
@@ -697,6 +721,7 @@ export class TitleScene extends Phaser.Scene {
     this.menuDecor = [];
     this.menuTexts = [];
     this.mode = "creation";
+    this.setLockupVisible(true);
     this.modeScrim?.setVisible(true);
     const difficulty = DIFFICULTY_CHOICES[this.difficultyIndex];
     const values = [
@@ -748,6 +773,7 @@ export class TitleScene extends Phaser.Scene {
     // Then fitted to the frame. At the largest text size this column reached
     // 588 on a 540 canvas, so the "Watch for" line — the one written to guide
     // exactly this choice — was cut off on the screen where it is chosen.
+    this.controlsText?.setY(470);
     const bottomLimit = 528;
     if (this.detailText.y + this.detailText.height > bottomLimit) {
       this.detailText.setLineSpacing(2);
