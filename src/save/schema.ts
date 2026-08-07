@@ -111,7 +111,25 @@ const worldStateSchema = z.object({
   chronicle: z.array(chronicleEntrySchema),
   worldMinutes: z.number().int().nonnegative(),
   playSeconds: z.number().int().nonnegative()
-}).strict();
+}).strict().superRefine((world, context) => {
+  // `flags` is deliberately loose — generated story flags need booleans,
+  // numbers and strings alike — but the party's marks live in it too, and
+  // nothing downstream expects anything but a whole number there. Every reader
+  // is `Number(flags.currency ?? 0)`, so a string answers NaN, and `NaN < price`
+  // is false: the affordability check would pass, the purchase would go
+  // through, and the balance would stay NaN for the life of the save.
+  // Importing a save is a route the player drives with a file from disk, so
+  // this is where that has to be caught.
+  const currency = world.flags.currency;
+  if (currency === undefined) return;
+  if (typeof currency !== "number" || !Number.isInteger(currency) || currency < 0) {
+    context.addIssue({
+      code: "custom",
+      message: "world.flags.currency must be a non-negative whole number",
+      path: ["flags", "currency"]
+    });
+  }
+});
 
 export const gameStateSchema = z.object({
   schemaVersion: z.literal(CURRENT_GAME_SCHEMA_VERSION),

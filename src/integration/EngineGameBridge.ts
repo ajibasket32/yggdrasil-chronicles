@@ -153,6 +153,22 @@ function commandFailure(message: string): GameCommandResult {
 }
 
 /**
+ * The party's marks, as a number the rest of the game can do arithmetic with.
+ *
+ * `world.flags` is typed `boolean | number | string` for generated story flags,
+ * and the balance shares that bag. The schema now refuses anything else, but a
+ * bare `Number(...)` answers NaN for a value that predates the rule or arrives
+ * by some other route — and NaN is worse than a wrong number here, because
+ * `NaN < price` is false and the shop's affordability check would wave it
+ * through, leaving an unlimited supply and a balance that can never display.
+ */
+export function readCurrency(flags: GameState["world"]["flags"]): number {
+  const raw = flags.currency;
+  const value = typeof raw === "number" ? raw : Number(raw ?? 0);
+  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+}
+
+/**
  * Carries a combatant's end-of-battle pool back onto the stored character.
  *
  * Battle stats are equipment-modified; stored stats are not, so the two cannot
@@ -386,7 +402,7 @@ export class EngineGameBridge implements GameBridge {
       locationId: this.#state.world.currentLocationId,
       locationName: location?.name ?? "Unknown road",
       worldMinutes: this.#state.world.worldMinutes + 480,
-      currency: Number(this.#state.world.flags.currency ?? 0),
+      currency: readCurrency(this.#state.world.flags),
       difficulty: difficultyOf(this.#state),
       party: party.map((member, index) => this.toPartyView(member, index)),
       reserve: this.#state.reserve.map((member, index) => this.toPartyView(member, party.length + index)),
@@ -548,7 +564,7 @@ export class EngineGameBridge implements GameBridge {
 
     // Read everything worth carrying before the state is replaced.
     const carriedLevel = Math.max(1, ...previous.party.map(({ level }) => level));
-    const carriedCurrency = Number(previous.world.flags.currency ?? 0);
+    const carriedCurrency = readCurrency(previous.world.flags);
     const carriedEquipment = previous.party
       .flatMap((member) => Object.values(member.equipment))
       .filter((itemId): itemId is string => typeof itemId === "string");
@@ -746,7 +762,7 @@ export class EngineGameBridge implements GameBridge {
     const itemRoll = randomInt(rng, 0, 99);
     const grantsItem = itemRoll.value < 45;
     const itemId = itemRoll.value < 20 ? "item.vesleaf" : "item.trail-rations";
-    const currency = Number(state.world.flags.currency ?? 0) + marksRoll.value;
+    const currency = readCurrency(state.world.flags) + marksRoll.value;
 
     this.#state = {
       ...state,
@@ -1656,7 +1672,7 @@ export class EngineGameBridge implements GameBridge {
     if (this.#battle) return commandFailure("The party cannot rest during a battle.");
 
     const inSettlement = locations.find(({ id }) => id === state.world.currentLocationId)?.kind === "town";
-    const currency = Number(state.world.flags.currency ?? 0);
+    const currency = readCurrency(state.world.flags);
     const price = REST_PRICE;
     const hasSupply = inventoryQuantity(state.inventory, CAMP_SUPPLY_ITEM) > 0;
 
@@ -1807,7 +1823,7 @@ export class EngineGameBridge implements GameBridge {
     if (inventoryQuantity(state.inventory, itemId) >= 99) {
       return commandFailure("There is no inventory space for another one of those.");
     }
-    const currency = Number(state.world.flags.currency ?? 0);
+    const currency = readCurrency(state.world.flags);
     if (currency < definition.value) {
       return commandFailure(`${vendor.shopName} wants ${definition.value} marks; the party carries only ${currency}.`);
     }
@@ -1836,7 +1852,7 @@ export class EngineGameBridge implements GameBridge {
       return commandFailure("The party does not carry a spare of that item.");
     }
     const sellPrice = Math.max(1, Math.round(definition.value * vendor.sellRate));
-    const currency = Number(state.world.flags.currency ?? 0);
+    const currency = readCurrency(state.world.flags);
     this.#state = {
       ...state,
       inventory: removeItem(state.inventory, itemId),
@@ -2039,7 +2055,7 @@ export class EngineGameBridge implements GameBridge {
         defeatedBossIds,
         flags: {
           ...flags,
-          currency: Number(flags.currency ?? 0) + reward.currency
+          currency: readCurrency(flags) + reward.currency
         },
         chronicle: encounter.boss ? [...state.world.chronicle, {
           id: crypto.randomUUID(),
@@ -2320,7 +2336,7 @@ export class EngineGameBridge implements GameBridge {
         flags = {
           ...flags,
           [rewardFlag]: true,
-          currency: Number(flags.currency ?? 0) + reward.currency
+          currency: readCurrency(flags) + reward.currency
         };
         chronicle = [...chronicle, {
           id: crypto.randomUUID(),
