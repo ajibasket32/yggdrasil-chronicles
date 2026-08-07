@@ -816,21 +816,44 @@ export class WorldScene extends Phaser.Scene {
       children.push(this.add.text(HUD_X + 61, y + 16, `HP ${member.hp}/${member.maxHp}  MP ${member.mp}/${member.maxMp}`, { ...TEXT.small, fontSize: fontPx(9) }));
     });
     const objective = snapshot.quests.find(({ state }) => state === "active");
-    children.push(this.add.text(HUD_X + 18, 393, "ACTIVE THREAD", { ...TEXT.small, color: COLORS.gold }));
-    children.push(this.add.text(HUD_X + 18, 415, objective ? `${objective.title}\n${objective.objective}` : "No active thread.", {
+    const guidance = getObjectiveGuidance(snapshot);
+    /*
+     * The lower half of the HUD flows from measured heights instead of the
+     * fixed offsets it used to carry (393, 415, 469, 486). At the largest text
+     * size the thread and route paragraphs each gain a line or two, so those
+     * literals ran the blocks through one another and pushed the save state off
+     * the bottom of a 540-tall canvas. The footer row stays pinned, and the
+     * route paragraph is clipped to whatever space is genuinely left above it,
+     * so nothing can overrun however long an authored quest title runs.
+     */
+    const FOOTER_Y = 524;
+    const threadLabel = this.add.text(HUD_X + 18, 0, "ACTIVE THREAD", { ...TEXT.small, color: COLORS.gold });
+    const threadBody = this.add.text(HUD_X + 18, 0, objective ? `${objective.title}
+${objective.objective}` : "No active thread.", {
       ...TEXT.small,
       color: COLORS.cream,
       wordWrap: { width: 188 },
       lineSpacing: 3
-    }));
-    const guidance = getObjectiveGuidance(snapshot);
-    children.push(this.add.text(HUD_X + 18, 469, "ROUTE", { ...TEXT.small, color: COLORS.gold }));
-    children.push(this.add.text(HUD_X + 18, 486, guidance?.message ?? "Explore and consult the journal.", {
+    });
+    const routeLabel = this.add.text(HUD_X + 18, 0, "ROUTE", { ...TEXT.small, color: COLORS.gold });
+    const routeBody = this.add.text(HUD_X + 18, 0, guidance?.message ?? "Explore and consult the journal.", {
       ...TEXT.small,
       color: guidance?.local ? "#ffe39a" : COLORS.cream,
       wordWrap: { width: 188 },
       lineSpacing: 2
-    }));
+    });
+
+    let flowY = 393;
+    for (const [text, gap] of [[threadLabel, 4], [threadBody, 10], [routeLabel, 4]] as const) {
+      text.setY(flowY);
+      flowY += text.height + gap;
+    }
+    routeBody.setY(flowY);
+    const routeSpace = FOOTER_Y - 6 - flowY;
+    if (routeSpace > 0 && routeBody.height > routeSpace) {
+      routeBody.setFixedSize(188, routeSpace);
+    }
+    children.push(threadLabel, threadBody, routeLabel, routeBody);
     const saveLabel = snapshot.autosave === "saving" ? "Saving…" : snapshot.autosave === "error" ? "Save failed" : snapshot.autosave === "saved" ? "✓ Autosaved" : "Offline";
     children.push(this.add.text(HUD_X + 18, 524, saveLabel, { ...TEXT.small, fontSize: fontPx(9), color: snapshot.autosave === "error" ? "#ef7882" : COLORS.muted }));
     const campaign = snapshot.campaign;
@@ -1353,7 +1376,10 @@ export class WorldScene extends Phaser.Scene {
     const openingSystem = kind === "system" && this.overlayKind !== "system";
     this.locked = true;
     this.overlayKind = kind;
-    if (openingSystem) this.systemIndex = 0;
+    if (openingSystem) {
+      this.systemIndex = 0;
+      announceGameStatus("System menu. Use up and down to choose, Enter to confirm, Escape to close.");
+    }
     if (kind === "inventory" || kind === "party") {
       this.interactiveMode = "browse";
       this.selectedInventoryItemId = undefined;
@@ -1399,7 +1425,24 @@ export class WorldScene extends Phaser.Scene {
               : "Esc / B  Close",
       TEXT.small
     );
-    this.overlay = this.add.container(0, 0, [scrim, panel, title, rule, body, bodyClip, hint]).setDepth(50);
+    const overflow = this.overflowMarker(body, 330);
+    this.overlay = this.add.container(0, 0, [scrim, panel, title, rule, body, bodyClip, hint, ...(overflow ? [overflow] : [])]).setDepth(50);
+  }
+
+  /**
+   * A marker for content the overlay window had to cut.
+   *
+   * The body is masked to the panel so a long list cannot spill onto the map —
+   * correct, but silent. At the largest text size the same list needs far more
+   * room, so the tail simply vanished with nothing to say it had. Returns the
+   * marker to add, or undefined when everything fits.
+   */
+  private overflowMarker(body: Phaser.GameObjects.Text, clipHeight: number): Phaser.GameObjects.Text | undefined {
+    if (body.height <= clipHeight) return undefined;
+    return this.add.text(88 + 584 - 8, 126 + clipHeight - 18, "▼ more below", {
+      ...TEXT.small,
+      color: COLORS.gold
+    }).setOrigin(1, 0);
   }
 
   private moveJournal(delta: number): void {
@@ -1604,7 +1647,26 @@ export class WorldScene extends Phaser.Scene {
         : "The travel pack is empty.";
     }
     if (this.systemPicker) return this.pickerBody(this.systemPicker);
-    const commands = [
+    const commands = this.systemCommandLabels();
+    // Windowed so fifteen commands fit the panel at any text size; the
+    // chronicle hint paragraph stepped aside — the HUD already carries it.
+    const view = windowAround(commands.map((label, index) => ({ label, index })), this.systemIndex, 11);
+    return [
+      view.hasBefore ? "  ▲ more above" : "",
+      ...view.items.map(({ label, index }) => `${index === this.systemIndex ? "›" : " "} ${label}`),
+      view.hasAfter ? "  ▼ more below" : ""
+    ].filter(Boolean).join("\n");
+  }
+
+  /**
+   * The system menu's rows, in order.
+   *
+   * Extracted so the rendered panel and the screen-reader announcement read
+   * from one list: the menu holds Delete a Save and Return to Title, and a
+   * player who cannot see the cursor was navigating those blind.
+   */
+  private systemCommandLabels(): string[] {
+    return [
       ...(["manual-1", "manual-2", "manual-3"] as const).map(
         (slot, index) => `Save to Manual Slot ${index + 1}${this.slotDetail(slot)}`
       ),
@@ -1628,14 +1690,36 @@ export class WorldScene extends Phaser.Scene {
       "Help & Codex",
       "Return to Title"
     ];
-    // Windowed so fifteen commands fit the panel at any text size; the
-    // chronicle hint paragraph stepped aside — the HUD already carries it.
-    const view = windowAround(commands.map((label, index) => ({ label, index })), this.systemIndex, 11);
-    return [
-      view.hasBefore ? "  ▲ more above" : "",
-      ...view.items.map(({ label, index }) => `${index === this.systemIndex ? "›" : " "} ${label}`),
-      view.hasAfter ? "  ▼ more below" : ""
-    ].filter(Boolean).join("\n");
+  }
+
+  /** Speaks the row the cursor is on, for players who cannot see it. */
+  private announceSystemSelection(): void {
+    const picker = this.systemPicker;
+    if (picker) {
+      const count = this.pickerLength(picker.action);
+      if (count === 0) {
+        announceGameStatus("Nothing to choose from. Press Escape to go back.");
+        return;
+      }
+      const label = picker.action === "restore"
+        ? (() => {
+            const backup = this.backupChoices[picker.index];
+            return backup ? `${backup.slotLabel}, ${backup.locationName}` : "";
+          })()
+        : (() => {
+            const slot = this.pickerSlots(picker.action)[picker.index];
+            return slot ? `${SAVE_SLOT_LABELS[slot]}${this.slotDetail(slot)}` : "";
+          })();
+      announceGameStatus(
+        `${label}. ${picker.index + 1} of ${count}.`
+        + (picker.armed ? " Confirm again to overwrite." : "")
+      );
+      return;
+    }
+    const commands = this.systemCommandLabels();
+    announceGameStatus(
+      `${commands[this.systemIndex] ?? ""}. ${this.systemIndex + 1} of ${commands.length}.`
+    );
   }
 
   private drawInteractiveOverlay(): void {
@@ -1660,7 +1744,8 @@ export class WorldScene extends Phaser.Scene {
     bodyClip.setVisible(false);
     body.setMask(bodyClip.createGeometryMask());
     const hint = this.add.text(88, 462, this.interactiveOverlayHint(), TEXT.small);
-    this.overlay = this.add.container(0, 0, [scrim, panel, title, rule, body, bodyClip, hint]).setDepth(50);
+    const overflow = this.overflowMarker(body, 330);
+    this.overlay = this.add.container(0, 0, [scrim, panel, title, rule, body, bodyClip, hint, ...(overflow ? [overflow] : [])]).setDepth(50);
   }
 
   private interactiveOverlayContent(): string {
@@ -2100,6 +2185,7 @@ export class WorldScene extends Phaser.Scene {
     this.overlay?.destroy();
     this.overlay = undefined;
     this.toggleOverlay("system");
+    this.announceSystemSelection();
   }
 
   private async confirmSystemCommand(): Promise<void> {

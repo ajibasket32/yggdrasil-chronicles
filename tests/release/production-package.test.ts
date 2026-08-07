@@ -56,6 +56,23 @@ describe("production package audit", () => {
     ]);
   });
 
+  it("catches an asset the bundle loads but source discovery never declared", () => {
+    const { root, dist } = fixtureRoot();
+    // The shipped bundle asks for a second sprite. Nothing else in the package
+    // knows about it: the source scan never saw it, so it is not a declared
+    // runtime asset, and being absent from dist it cannot trip the
+    // unexpected-file check either. Before the bundle was read, every gate
+    // passed and players got a 404.
+    writeFileSync(
+      join(dist, "assets", "index.js"),
+      "console.log('fixture'); load('/assets/vendor/kenney-rpg-audio/undeclared.png');"
+    );
+
+    const issues = auditReleasePackage(root, dist).issues;
+    expect(issues.map((issue) => issue.code)).toEqual(["release-missing-file"]);
+    expect(issues[0]?.message).toContain("undeclared.png");
+  });
+
   it("serves the static release and history fallback through the production server", async () => {
     const { dist } = fixtureRoot();
     const server = createServer({ distDirectory: dist }).listen(0, "127.0.0.1");

@@ -215,6 +215,23 @@ export class TitleScene extends Phaser.Scene {
         lineSpacing: 5
       });
     }
+    // Place the legend from the notice's measured height rather than a literal.
+    // At the largest text size the overwrite warning wraps to two lines and ran
+    // straight through the legend at y 470 — so a player arming a destructive
+    // overwrite read two paragraphs drawn on top of each other. At medium both
+    // fit on one line, which is why it was never seen.
+    this.controlsText?.setStyle(TEXT.small);
+    this.controlsText?.setY(this.detailText
+      ? Math.max(470, this.detailText.y + this.detailText.height + 8)
+      : 470);
+    // Which entry is selected was signalled by colour alone, and the settings
+    // and bindings screens both announce themselves while the first screen the
+    // player meets said nothing at all.
+    announceGameStatus(
+      `Title menu. ${choices[this.titleIndex] ?? choices[0] ?? ""}.`
+      + ` ${this.titleIndex + 1} of ${choices.length}.`
+      + (notice ? ` ${notice}` : "")
+    );
     this.mode = "title";
   }
 

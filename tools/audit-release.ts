@@ -79,6 +79,30 @@ export function auditReleasePackage(
     }
   }
 
+  // Every asset path the shipped JavaScript actually names must exist in the
+  // release.
+  //
+  // The other direction was already covered — nothing unexpected ships, and
+  // each declared asset survives packaging — but both of those start from the
+  // declared list. Discovery of that list is a regex over source, so a
+  // reference written in a shape the regex does not match was simply never
+  // declared, pruned out of dist, and shipped as a 404 with every gate green.
+  // Reading the emitted bundle instead of the source closes that: by then the
+  // path is a plain literal whatever the source looked like.
+  for (const file of releaseFiles.filter((path) => extname(path) === ".js" || extname(path) === ".css")) {
+    const contents = readFileSync(file, "utf8");
+    for (const match of contents.matchAll(/["'`(](\/assets\/[A-Za-z0-9_\-./]+\.[A-Za-z0-9]{2,4})["'`)]/g)) {
+      const reference = match[1];
+      if (reference === undefined || /\.(js|css|map)$/.test(reference)) continue;
+      if (!existsSync(join(releaseDirectory, reference.replace(/^\//, "")))) {
+        issues.push({
+          code: "release-missing-file",
+          message: `Shipped JavaScript references an asset that is not in the release: ${reference} (from ${basename(file)}).`
+        });
+      }
+    }
+  }
+
   const catalog = join(projectRoot, "ASSETS.md");
   const packagedCatalog = join(releaseDirectory, "ASSETS.md");
   if (!existsSync(packagedCatalog) || hash(catalog) !== hash(packagedCatalog)) {
