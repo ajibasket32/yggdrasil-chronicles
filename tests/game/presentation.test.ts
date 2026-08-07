@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyPresentationSettings, COLORS, fontPx, TEXT } from "../../src/game/runtime";
+import { applyPresentationSettings, COLORS, fontPx, rowsThatFit, TEXT } from "../../src/game/runtime";
 import { DEFAULT_GAME_SETTINGS, nextTextSize, TEXT_SIZES } from "../../src/settings";
 
 function settings(patch: Partial<typeof DEFAULT_GAME_SETTINGS>) {
@@ -68,5 +68,29 @@ describe("presentation settings", () => {
     }
     expect(seen.size).toBe(TEXT_SIZES.length);
     expect(size).toBe(TEXT_SIZES[0]);
+  });
+
+  /**
+   * Panels are masked to a fixed height while their rows grow with the text
+   * setting. A budget counted once at `medium` overflowed at `large`, and what
+   * got clipped was the panel's own "more below" line — the only sign that
+   * anything had been cut.
+   */
+  it("shrinks a panel's row budget as the text size grows", () => {
+    applyPresentationSettings(settings({ textSize: "medium" }));
+    const atMedium = rowsThatFit(11);
+
+    applyPresentationSettings(settings({ textSize: "large" }));
+    const atLarge = rowsThatFit(11);
+
+    applyPresentationSettings(settings({ textSize: "small" }));
+    const atSmall = rowsThatFit(11);
+
+    expect(atMedium).toBe(11);
+    expect(atLarge).toBeLessThan(atMedium);
+    expect(atSmall).toBeGreaterThan(atMedium);
+    // Never zero rows, however large the text or small the budget.
+    expect(rowsThatFit(1)).toBeGreaterThanOrEqual(1);
+    applyPresentationSettings(settings({ textSize: "medium" }));
   });
 });

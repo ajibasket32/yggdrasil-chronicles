@@ -17,7 +17,7 @@ import { windowAround, windowFooter, type OverlayWindow } from "../overlayWindow
 import { BUILDING_TILES, groundTile, tileVariant, treeAt, TREE_TILES, type TileRef } from "../tileset";
 import { getNpcSpawnPoints } from "../npcPlacement";
 import { musicForLocation, playMusic, stopMusic } from "../music";
-import { announceGameStatus, announceScene, COLORS, fontPx, getBridge, motionDuration, playSound, setSceneFlag, TEXT } from "../runtime";
+import { announceGameStatus, announceScene, COLORS, fontPx, getBridge, motionDuration, playSound, rowsThatFit, setSceneFlag, TEXT } from "../runtime";
 import {
   getLocationExits,
   getObjectiveGuidance,
@@ -91,6 +91,14 @@ const SHOP_VISIBLE_ROWS = 5;
 
 type Point = { x: number; y: number };
 type InteractiveOverlayMode = "browse" | "target" | "jobs" | "equipment";
+
+/** Height reserved for the overflow marker so it never overlaps a row. */
+const OVERFLOW_STRIP = 16;
+
+interface OverflowWindow {
+  clipHeight: number;
+  marker?: Phaser.GameObjects.Text;
+}
 
 export class WorldScene extends Phaser.Scene {
   private bridge!: GameBridge;
@@ -1404,7 +1412,8 @@ ${objective.objective}` : "No active thread.", {
     });
     // The hint row starts at y 462; anything longer than the window clips
     // rather than spilling over the panel edge onto the map.
-    const bodyClip = this.add.graphics().fillStyle(0xffffff).fillRect(88, 126, 584, 330);
+    const overflow = this.overflowMarker(body, 330);
+    const bodyClip = this.add.graphics().fillStyle(0xffffff).fillRect(88, 126, 584, overflow.clipHeight);
     bodyClip.setVisible(false);
     body.setMask(bodyClip.createGeometryMask());
     const hint = this.add.text(
@@ -1425,8 +1434,7 @@ ${objective.objective}` : "No active thread.", {
               : "Esc / B  Close",
       TEXT.small
     );
-    const overflow = this.overflowMarker(body, 330);
-    this.overlay = this.add.container(0, 0, [scrim, panel, title, rule, body, bodyClip, hint, ...(overflow ? [overflow] : [])]).setDepth(50);
+    this.overlay = this.add.container(0, 0, [scrim, panel, title, rule, body, bodyClip, hint, ...(overflow.marker ? [overflow.marker] : [])]).setDepth(50);
   }
 
   /**
@@ -1437,12 +1445,20 @@ ${objective.objective}` : "No active thread.", {
    * room, so the tail simply vanished with nothing to say it had. Returns the
    * marker to add, or undefined when everything fits.
    */
-  private overflowMarker(body: Phaser.GameObjects.Text, clipHeight: number): Phaser.GameObjects.Text | undefined {
-    if (body.height <= clipHeight) return undefined;
-    return this.add.text(88 + 584 - 8, 126 + clipHeight - 18, "▼ more below", {
-      ...TEXT.small,
-      color: COLORS.gold
-    }).setOrigin(1, 0);
+  private overflowMarker(body: Phaser.GameObjects.Text, fullHeight: number): OverflowWindow {
+    if (body.height <= fullHeight) return { clipHeight: fullHeight };
+    // The marker gets a reserved strip rather than sharing the body's. Drawn
+    // inside the clip it landed on top of whatever row happened to be at that
+    // height — on the system menu at the largest text size, straight through
+    // "Sound: OFF".
+    const clipHeight = fullHeight - OVERFLOW_STRIP;
+    return {
+      clipHeight,
+      marker: this.add.text(88 + 584 - 8, 126 + clipHeight + 2, "▼ more below", {
+        ...TEXT.small,
+        color: COLORS.gold
+      }).setOrigin(1, 0)
+    };
   }
 
   private moveJournal(delta: number): void {
@@ -1547,7 +1563,7 @@ ${objective.objective}` : "No active thread.", {
       if (!remedies?.unlocked) return "The party has not learned trail remedies yet.";
       // Windowed like the journal: each entry takes three lines, and the
       // ledger may grow past what the panel holds.
-      const view = windowAround(remedies.recipes, this.remedyIndex, 2);
+      const view = windowAround(remedies.recipes, this.remedyIndex, rowsThatFit(2));
       const rows = view.items.map((recipe, index) => {
         const parts = recipe.inputs.map((input) => `${input.name} ${Math.min(input.have, 99)}/${input.need}`).join("  ·  ");
         const ready = recipe.craftable ? "" : "   (short)";
@@ -1592,7 +1608,7 @@ ${objective.objective}` : "No active thread.", {
     if (kind === "map") {
       const discovered = this.snapshot.discoveredLocations ?? [];
       if (discovered.length === 0) return "No roads are known yet.";
-      const view = windowAround(discovered, this.mapIndex, 4);
+      const view = windowAround(discovered, this.mapIndex, rowsThatFit(4));
       const rows = view.items.map((entry, index) => {
         const marker = index === view.cursor ? "›" : " ";
         const here = entry.current ? "  — the party is here" : "";
@@ -1613,7 +1629,7 @@ ${objective.objective}` : "No active thread.", {
       // summary line were invisible.
       const entries = this.snapshot.quests;
       if (entries.length === 0) return "The journal is empty.";
-      const view = windowAround(entries, this.journalIndex, 3);
+      const view = windowAround(entries, this.journalIndex, rowsThatFit(3));
       const marker = (state: string, first: boolean): string => {
         if (state === "active") return first ? "▸" : "◆";
         if (state === "available") return "◇";
@@ -1650,7 +1666,7 @@ ${objective.objective}` : "No active thread.", {
     const commands = this.systemCommandLabels();
     // Windowed so fifteen commands fit the panel at any text size; the
     // chronicle hint paragraph stepped aside — the HUD already carries it.
-    const view = windowAround(commands.map((label, index) => ({ label, index })), this.systemIndex, 11);
+    const view = windowAround(commands.map((label, index) => ({ label, index })), this.systemIndex, rowsThatFit(11));
     return [
       view.hasBefore ? "  ▲ more above" : "",
       ...view.items.map(({ label, index }) => `${index === this.systemIndex ? "›" : " "} ${label}`),
@@ -1739,19 +1755,25 @@ ${objective.objective}` : "No active thread.", {
       wordWrap: { width: 570 },
       lineSpacing: 6
     });
+    // Measured, not guessed: the panel is a fixed height while rows scale with
+    // the text setting, so whether the full layout fits depends on both the
+    // preference and the party. Ask for the compact one only once it does not.
+    if (body.height > 330) {
+      body.setText(this.interactiveOverlayContent(true));
+    }
     // Same clip as the static overlays: long lists page, they do not spill.
-    const bodyClip = this.add.graphics().fillStyle(0xffffff).fillRect(88, 126, 584, 330);
+    const overflow = this.overflowMarker(body, 330);
+    const bodyClip = this.add.graphics().fillStyle(0xffffff).fillRect(88, 126, 584, overflow.clipHeight);
     bodyClip.setVisible(false);
     body.setMask(bodyClip.createGeometryMask());
     const hint = this.add.text(88, 462, this.interactiveOverlayHint(), TEXT.small);
-    const overflow = this.overflowMarker(body, 330);
-    this.overlay = this.add.container(0, 0, [scrim, panel, title, rule, body, bodyClip, hint, ...(overflow ? [overflow] : [])]).setDepth(50);
+    this.overlay = this.add.container(0, 0, [scrim, panel, title, rule, body, bodyClip, hint, ...(overflow.marker ? [overflow.marker] : [])]).setDepth(50);
   }
 
-  private interactiveOverlayContent(): string {
+  private interactiveOverlayContent(compact = false): string {
     if (this.overlayKind === "inventory") return this.inventoryOverlayContent();
     if (this.overlayKind === "shop") return this.shopOverlayContent();
-    return this.partyOverlayContent();
+    return this.partyOverlayContent(compact);
   }
 
   private interactiveOverlayHint(): string {
@@ -1783,7 +1805,7 @@ ${objective.objective}` : "No active thread.", {
     }
     // Windowed: the pack holds up to ninety-nine distinct stacks, and without
     // this the cursor walks off the bottom of the panel.
-    const view = windowAround(inventory, this.inventoryIndex, INVENTORY_VISIBLE_ROWS);
+    const view = windowAround(inventory, this.inventoryIndex, rowsThatFit(INVENTORY_VISIBLE_ROWS));
     const rows = view.items.map((item, index) => {
       const kind = this.itemKind(item).toUpperCase();
       const equipped = item.equippedBy?.length ? `  EQUIPPED: ${item.equippedBy.join(", ")}` : "";
@@ -1797,7 +1819,7 @@ ${objective.objective}` : "No active thread.", {
     ].filter(Boolean).join("\n");
   }
 
-  private partyOverlayContent(): string {
+  private partyOverlayContent(compact: boolean): string {
     const member = this.selectedPartyMember();
     if (!member) return "No party members are available.";
     if (this.interactiveMode === "jobs") {
@@ -1821,7 +1843,28 @@ ${objective.objective}` : "No active thread.", {
       : "";
     // Progress toward the next level, which the game showed nowhere at all.
     const experienceLine = `EXP ${member.experienceIntoLevel}/${member.experienceForNextLevel} to level ${member.level + 1}`;
-    return `${this.snapshot.party.map((candidate, index) => `${index === this.partyIndex ? "›" : " "} ${candidate.name}  Lv ${candidate.level}  ${candidate.job}`).join("\n")}\n\n${member.name.toUpperCase()}\nHP ${member.hp}/${member.maxHp}    MP ${member.mp}/${member.maxMp}\n${experienceLine}\n${statLine}${member.trait ? `\n${member.trait}` : ""}\n\nEQUIPPED\nWeapon: ${equipment.weapon?.name ?? "Empty"}\nArmor: ${equipment.armor?.name ?? "Empty"}\nAccessory: ${equipment.accessory?.name ?? "Empty"}\n\nRight to review jobs · Left to manage equipment`;
+    // The roster windows like every other list, so a full party does not push
+    // the member's own details out of the panel.
+    const roster = windowAround(this.snapshot.party, this.partyIndex, rowsThatFit(4));
+    const rosterRows = [
+      roster.hasBefore ? "  ▲ more above" : "",
+      ...roster.items.map((candidate, index) =>
+        `${index === roster.cursor ? "›" : " "} ${candidate.name}  Lv ${candidate.level}  ${candidate.job}`),
+      roster.hasAfter ? "  ▼ more below" : ""
+    ].filter(Boolean).join("\n");
+    // Collapsed to a single line only when the full block will not fit, which
+    // at the largest text size it does not. Nothing is lost: every slot still
+    // reads here, and Left opens the same gear for editing.
+    const equipped = EQUIPMENT_SLOTS.map((slot) => equipment[slot]?.name ?? "Empty");
+    const equippedBlock = compact
+      // Slot names stay even collapsed: "Empty · Resin Vest · Empty" leaves the
+      // player guessing which of the three is which.
+      ? `\n\nEQUIPPED  ${EQUIPMENT_SLOTS.map((slot, index) =>
+          `${slot.charAt(0).toUpperCase()}${slot.slice(1)} ${equipped[index]}`).join(" · ")}`
+      : `\n\nEQUIPPED\nWeapon: ${equipped[0]}\nArmor: ${equipped[1]}\nAccessory: ${equipped[2]}`;
+    // The old trailing line repeated the hint row below the panel word for
+    // word, costing two of the rows that were being clipped away.
+    return `${rosterRows}\n\n${member.name.toUpperCase()}\nHP ${member.hp}/${member.maxHp}    MP ${member.mp}/${member.maxMp}\n${experienceLine}\n${statLine}${member.trait ? `\n${member.trait}` : ""}${equippedBlock}`;
   }
 
   private shopOverlayContent(): string {
@@ -1831,13 +1874,13 @@ ${objective.objective}` : "No active thread.", {
     if (this.shopMode === "sell") {
       const owned = shop.catalog.filter((entry) => entry.ownedQuantity > 0);
       if (!owned.length) return `${header}\n\nThe party carries nothing this shop will buy back.`;
-      const view = windowAround(owned, this.shopIndex, SHOP_VISIBLE_ROWS);
+      const view = windowAround(owned, this.shopIndex, rowsThatFit(SHOP_VISIBLE_ROWS));
       const rows = view.items.map((entry, index) =>
         `${index === view.cursor ? "›" : " "} ${entry.name}  —  sell ${entry.sellPrice ?? 0} marks  (owned ${entry.ownedQuantity})\n   ${entry.description}`);
       return this.windowedBody(header, rows, view);
     }
     if (!shop.catalog.length) return `${header}\n\nThis shop has nothing to sell right now.`;
-    const view = windowAround(shop.catalog, this.shopIndex, SHOP_VISIBLE_ROWS);
+    const view = windowAround(shop.catalog, this.shopIndex, rowsThatFit(SHOP_VISIBLE_ROWS));
     const rows = view.items.map((entry, index) => {
       // Show what the gear would do for the lead character: a price and a
       // description alone made buying equipment a guess.

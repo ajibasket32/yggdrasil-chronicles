@@ -128,6 +128,19 @@ export function fontPx(basePx: number): string {
   return `${Math.max(8, Math.round(basePx * textScale))}px`;
 }
 
+/**
+ * How many rows fit where `baseRows` fitted at the default text size.
+ *
+ * Every list panel is masked to a fixed panel height while its row height
+ * scales with the player's preference, so a row budget counted once at
+ * `medium` overflows at `large`: the tail is clipped, and the clipped tail
+ * includes the "▼ more below" line that was the only sign more existed.
+ * Panels ask for their budget through this instead of a constant.
+ */
+export function rowsThatFit(baseRows: number): number {
+  return Math.max(1, Math.floor(baseRows / textScale));
+}
+
 const BASE_TEXT_SIZES = { title: 38, heading: 20, body: 14, small: 11 } as const;
 
 export const TEXT = {
