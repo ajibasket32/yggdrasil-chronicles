@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
@@ -39,6 +39,16 @@ const runtimeAssetPaths = [
   "/assets/vendor/puny-characters/Puny-Characters/Warrior-Red.png"
 ] as const;
 
+/** Vendor packs that contribute at least one runtime asset, and so must ship their licence. */
+function vendorPacksInRelease(): Set<string> {
+  const packs = new Set<string>();
+  for (const assetPath of runtimeAssetPaths) {
+    const pack = /^\/assets\/vendor\/([^/]+)\//.exec(assetPath)?.[1];
+    if (pack) packs.add(pack);
+  }
+  return packs;
+}
+
 function copyReleaseAsset(source: string, destination: string): void {
   if (!existsSync(source)) {
     throw new Error(`Release asset source is missing: ${source}`);
@@ -65,10 +75,24 @@ function productionAssetPruning(): Plugin {
         );
       }
 
-      copyReleaseAsset(
-        resolve(projectRoot, "public", "assets", "vendor", "kenney-rpg-audio", "License.txt"),
-        resolve(vendorDestination, "kenney-rpg-audio", "License.txt")
-      );
+      // Every pack that contributes a runtime asset ships its own attribution.
+      // Naming one pack's License.txt here meant the rmSync above would prune a
+      // second pack's notice out of the release — an attribution-required asset
+      // shipping without the notice that is the condition of using it — and
+      // nothing downstream would object, because the audit named the same one
+      // file. Derived from what actually ships instead.
+      for (const pack of Array.from(vendorPacksInRelease())) {
+        const packSource = resolve(projectRoot, "public", "assets", "vendor", pack);
+        if (!existsSync(packSource)) continue;
+        for (const entry of readdirSync(packSource, { withFileTypes: true })) {
+          if (entry.isFile() && /^(license|copying|notice)(\.|$)/i.test(entry.name)) {
+            copyReleaseAsset(
+              resolve(packSource, entry.name),
+              resolve(vendorDestination, pack, entry.name)
+            );
+          }
+        }
+      }
       copyReleaseAsset(resolve(projectRoot, "ASSETS.md"), resolve(productionDirectory, "ASSETS.md"));
     }
   };

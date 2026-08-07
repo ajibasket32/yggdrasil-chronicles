@@ -12,16 +12,21 @@ function fixtureRoot(): { root: string; dist: string } {
   const root = mkdtempSync(join(tmpdir(), "yggdrasil-release-"));
   temporaryRoots.push(root);
   const dist = join(root, "dist");
+  // A coherent package: the asset lives inside the vendor pack whose licence
+  // travels with it, in both the source tree and the release. The licence
+  // expectation is derived from the pack that actually ships, so a fixture
+  // carrying a notice for a pack it never uses is itself an unused artifact.
   mkdirSync(join(root, "src"), { recursive: true });
-  mkdirSync(join(root, "public", "assets", "vendor"), { recursive: true });
+  mkdirSync(join(root, "public", "assets", "vendor", "kenney-rpg-audio"), { recursive: true });
   mkdirSync(join(dist, "assets", "vendor", "kenney-rpg-audio"), { recursive: true });
   mkdirSync(join(dist, "assets"), { recursive: true });
-  writeFileSync(join(root, "src", "main.ts"), "const sprite = '/assets/vendor/hero.png';");
-  writeFileSync(join(root, "public", "assets", "vendor", "hero.png"), "hero-bytes");
+  writeFileSync(join(root, "src", "main.ts"), "const sprite = '/assets/vendor/kenney-rpg-audio/hero.png';");
+  writeFileSync(join(root, "public", "assets", "vendor", "kenney-rpg-audio", "hero.png"), "hero-bytes");
+  writeFileSync(join(root, "public", "assets", "vendor", "kenney-rpg-audio", "License.txt"), "CC0");
   writeFileSync(join(root, "ASSETS.md"), "# Fixture attribution\n");
   writeFileSync(join(dist, "index.html"), '<script type="module" src="/assets/index.js"></script>');
   writeFileSync(join(dist, "assets", "index.js"), "console.log('fixture');");
-  writeFileSync(join(dist, "assets", "vendor", "hero.png"), "hero-bytes");
+  writeFileSync(join(dist, "assets", "vendor", "kenney-rpg-audio", "hero.png"), "hero-bytes");
   writeFileSync(join(dist, "assets", "vendor", "kenney-rpg-audio", "License.txt"), "CC0");
   writeFileSync(join(dist, "ASSETS.md"), "# Fixture attribution\n");
   return { root, dist };
@@ -60,7 +65,7 @@ describe("production package audit", () => {
     try {
       const [home, asset, route] = await Promise.all([
         fetch(`http://127.0.0.1:${port}/`),
-        fetch(`http://127.0.0.1:${port}/assets/vendor/hero.png`),
+        fetch(`http://127.0.0.1:${port}/assets/vendor/kenney-rpg-audio/hero.png`),
         fetch(`http://127.0.0.1:${port}/chronicle/continue`)
       ]);
       expect(home.status).toBe(200);

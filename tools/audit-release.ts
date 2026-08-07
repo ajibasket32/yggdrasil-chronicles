@@ -81,14 +81,45 @@ export function auditReleasePackage(
 
   const catalog = join(projectRoot, "ASSETS.md");
   const packagedCatalog = join(releaseDirectory, "ASSETS.md");
-  const kenneyLicense = join(releaseDirectory, "assets", "vendor", "kenney-rpg-audio", "License.txt");
-  if (!existsSync(packagedCatalog) || hash(catalog) !== hash(packagedCatalog) || !existsSync(kenneyLicense)) {
-    issues.push({ code: "release-license-missing", message: "Release package is missing matching ASSETS.md attribution or Kenney License.txt." });
+  if (!existsSync(packagedCatalog) || hash(catalog) !== hash(packagedCatalog)) {
+    issues.push({ code: "release-license-missing", message: "Release package is missing matching ASSETS.md attribution." });
+  }
+
+  // Derived from what actually ships, not from one pack's name. Naming a single
+  // License.txt meant a second attribution-required pack could be pruned out of
+  // the release with every gate still green — and because the file was then
+  // absent from dist it could not trip the unexpected-file check either.
+  //
+  // The rule is that a notice present in source must survive packaging. A pack
+  // with no notice of its own is not a failure: a CC0 pack carries its evidence
+  // in ASSETS.md, which audit-assets validates and which ships beside it.
+  const licenceFiles = new Set<string>();
+  const shippingPacks = new Set(
+    runtimeAssetReferences
+      .map((reference) => /^\/assets\/vendor\/([^/]+)\//.exec(reference)?.[1])
+      .filter((pack): pack is string => pack !== undefined)
+  );
+  for (const pack of shippingPacks) {
+    const sourceDirectory = join(projectRoot, "public", "assets", "vendor", pack);
+    if (!existsSync(sourceDirectory)) continue;
+    const notices = readdirSync(sourceDirectory, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && /^(license|copying|notice)(\.|$)/i.test(entry.name))
+      .map((entry) => entry.name);
+    for (const notice of notices) {
+      licenceFiles.add(`${pack}/${notice}`);
+      const packaged = join(releaseDirectory, "assets", "vendor", pack, notice);
+      if (!existsSync(packaged) || hash(join(sourceDirectory, notice)) !== hash(packaged)) {
+        issues.push({
+          code: "release-license-missing",
+          message: `Release package is missing '${pack}/${notice}', which ships with that pack.`
+        });
+      }
+    }
   }
 
   const expectedVendorFiles = new Set([
     ...runtimeAssetReferences.map((reference) => reference.replace(/^\/assets\/vendor\//, "")),
-    "kenney-rpg-audio/License.txt"
+    ...licenceFiles
   ]);
   for (const file of releaseFiles.filter((path) => isReleaseAsset(path) || relativePath(releaseDirectory, path).startsWith("assets/vendor/"))) {
     const path = relativePath(releaseDirectory, file);

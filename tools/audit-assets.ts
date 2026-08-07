@@ -138,11 +138,15 @@ function hasExtractedLicense(directory: string, rootDir: string): boolean {
   const vendorDirectory = join(rootDir, "public", "assets", "vendor");
   let candidate = directory;
   while (isWithin(candidate, vendorDirectory)) {
-    if (walkFiles(candidate).some((path) => /^(license|copying|notice)(\.|$)/i.test(basename(path)))) {
-      return true;
-    }
+    // Stop *before* inspecting the shared vendor root. `walkFiles` recurses, so
+    // listing that directory returns every pack's files at once — one pack's
+    // License.txt then satisfied this check for every other pack, and the
+    // check could not fail for any input. A pack's licence has to be its own.
     if (normalize(candidate) === normalize(vendorDirectory)) {
       break;
+    }
+    if (walkFiles(candidate).some((path) => /^(license|copying|notice)(\.|$)/i.test(basename(path)))) {
+      return true;
     }
     candidate = join(candidate, "..");
   }
