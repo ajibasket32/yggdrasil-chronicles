@@ -142,7 +142,10 @@ describe("core campaign content", () => {
     expect(result.activityBudget.authoredQuestCount).toBeGreaterThanOrEqual(35);
     expect(result.activityBudget.repeatableEncounterVictories).toBeGreaterThan(0);
     expect(result.activityBudget.minimumPlayerActions).toBeGreaterThan(0);
-    expect(result.warnings.some((warning) => warning.includes("not an hours estimate"))).toBe(true);
+    // Informational, so it belongs in notes: it fires on every healthy run, and
+    // a warning that always fires is one nobody reads.
+    expect(result.notes.some((note) => note.includes("not an hours estimate"))).toBe(true);
+    expect(result.warnings.some((warning) => warning.includes("not an hours estimate"))).toBe(false);
   });
 
   it("rejects a main-story collect objective when its authored sources are removed", () => {

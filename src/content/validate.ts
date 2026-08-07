@@ -47,6 +47,15 @@ export interface CampaignReadinessResult {
   readonly valid: boolean;
   readonly errors: string[];
   readonly warnings: string[];
+  /**
+   * Findings that are informational rather than actionable.
+   *
+   * The authored-activity figure was pushed onto `warnings`, so
+   * `validate:content` printed a `warning:` line on every single run of a
+   * perfectly healthy campaign. A warning that always fires is a warning
+   * nobody reads, and it would have hidden a real one.
+   */
+  readonly notes: string[];
   readonly mainQuestOrder: string[];
   readonly authoredQuestOrder: string[];
   readonly completedQuestIds: string[];
@@ -403,13 +412,14 @@ export function auditCampaignReadiness(
     itemSourceInteractions,
     minimumPlayerActions: routeTransitions + npcInteractions + encounterVictories
   };
-  warnings.push(
+  const notes = [
     `Authored minimum: ${activityBudget.minimumPlayerActions} world interactions across ${authoredObjectiveCount} authored objectives; this is not an hours estimate.`
-  );
+  ];
   return {
     valid: errors.length === 0,
     errors,
     warnings,
+    notes,
     mainQuestOrder,
     authoredQuestOrder,
     completedQuestIds: [...authoredCompleted],

@@ -30,6 +30,9 @@ for (const error of result.errors) {
 for (const warning of readiness.warnings) {
   console.warn(`warning: ${warning}`);
 }
+for (const note of readiness.notes) {
+  console.log(`note: ${note}`);
+}
 for (const error of readiness.errors) {
   console.error(`error: ${error}`);
 }

@@ -1,0 +1,35 @@
+# Line endings.
+#
+# Every text file in this repository is stored LF — `git ls-files --eol`
+# reports 185 files at `i/lf` and none at `i/crlf`. Without this file that is
+# only half a policy: on Windows `core.autocrlf=true` rewrites the working copy
+# to CRLF on checkout, so the working tree and the index disagree by default,
+# and every `git add` of a tool-written file prints
+#
+#   warning: in the working copy of '<path>', LF will be replaced by CRLF
+#
+# Pinning `eol=lf` makes the working tree match what is actually stored, on
+# every platform, whatever each contributor has set globally. The warning goes
+# away because the conversion it was warning about no longer happens.
+*                text=auto eol=lf
+
+# Windows-only scripts are the one exception: PowerShell is happiest with CRLF
+# and this one is never run anywhere else.
+*.ps1            text eol=crlf
+
+# Vendored assets are bytes. Declaring them stops any future `text=auto`
+# misdetection from corrupting a sprite sheet or an audio file, and keeps them
+# out of diffs.
+*.png            binary
+*.jpg            binary
+*.jpeg           binary
+*.gif            binary
+*.ico            binary
+*.ogg            binary
+*.mp3            binary
+*.wav            binary
+*.zip            binary
+*.woff           binary
+*.woff2          binary
+*.ttf            binary
+*.otf            binary
