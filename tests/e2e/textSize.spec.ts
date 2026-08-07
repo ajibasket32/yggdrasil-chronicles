@@ -125,3 +125,64 @@ test("no overlay outgrows its window at the largest text size", async ({ page })
 
   expect(CLIP_HEIGHT).toBe(330);
 });
+
+/**
+ * The same failure mode outside the overlays: the title screen and the world
+ * HUD both place text below a block whose height changes with the setting. At
+ * `large` the overwrite warning wraps to two lines and the HUD's route
+ * paragraph grows, and either can push what follows off the bottom of a canvas
+ * that never changes size.
+ */
+test("no title or HUD text falls off the canvas at the largest text size", async ({ page }) => {
+  await openWorldAtLargestText(page);
+  const app = page.locator("#app");
+
+  const hud = await page.evaluate(() => {
+    const game = (window as unknown as { __YGG_GAME?: {
+      scale: { height: number };
+      scene: { scenes: { scene: { key: string }; children: { list: unknown[] } }[] };
+    } }).__YGG_GAME;
+    const world = game?.scene.scenes.find((candidate) => candidate.scene.key === "world");
+    const texts = ((world?.children.list ?? []) as { type: string; x: number; y: number; height: number; text?: string }[])
+      .filter((child) => child.type === "Text" && child.x >= 700);
+    return {
+      canvasHeight: game?.scale.height ?? 0,
+      lowest: Math.max(0, ...texts.map((child) => Math.round(child.y + child.height))),
+      count: texts.length
+    };
+  });
+  expect(hud.count, "no HUD text was found to measure").toBeGreaterThan(0);
+  expect(hud.lowest, "HUD text runs past the bottom of the canvas").toBeLessThanOrEqual(hud.canvasHeight);
+
+  // Back to the title with a save on disk, so the overwrite warning renders and
+  // the controls legend has to sit below it.
+  await page.reload();
+  await expect(app).toHaveAttribute("data-scene", "title", { timeout: 20000 });
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(500);
+
+  const title = await page.evaluate(() => {
+    const game = (window as unknown as { __YGG_GAME?: {
+      scale: { height: number };
+      scene: { scenes: { scene: { key: string }; children: { list: unknown[] } }[] };
+    } }).__YGG_GAME;
+    const scene = game?.scene.scenes.find((candidate) => candidate.scene.key === "title");
+    const texts = ((scene?.children.list ?? []) as { type: string; y: number; height: number; text?: string }[])
+      .filter((child) => child.type === "Text");
+    const notice = texts.find((child) => String(child.text ?? "").includes("will be overwritten"));
+    const legend = texts.find((child) => String(child.text ?? "").includes("Navigate"));
+    return {
+      canvasHeight: game?.scale.height ?? 0,
+      noticeBottom: notice ? Math.round(notice.y + notice.height) : undefined,
+      legendTop: legend ? Math.round(legend.y) : undefined,
+      legendBottom: legend ? Math.round(legend.y + legend.height) : undefined
+    };
+  });
+  expect(title.noticeBottom, "the overwrite warning never appeared").toBeDefined();
+  expect(title.legendTop, "the controls legend never appeared").toBeDefined();
+  expect(title.legendTop!, "the legend is drawn through the overwrite warning")
+    .toBeGreaterThanOrEqual(title.noticeBottom!);
+  expect(title.legendBottom!, "the legend runs past the bottom of the canvas")
+    .toBeLessThanOrEqual(title.canvasHeight);
+});
