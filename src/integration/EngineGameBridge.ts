@@ -146,6 +146,26 @@ function commandFailure(message: string): GameCommandResult {
 }
 
 /**
+ * Carries a combatant's end-of-battle pool back onto the stored character.
+ *
+ * Battle stats are equipment-modified; stored stats are not, so the two cannot
+ * be compared directly. Carrying the *deficit* is right when a piece of gear
+ * raised the ceiling — the bonus pool is spent first, and unequipping does not
+ * hand back health that was never in the base pool. It is wrong when gear
+ * lowered one: a harness that cuts four maximum MP made a deficit measured
+ * against 42 land on a base of 46, so every fight quietly refunded the
+ * difference and the drawback cost nothing over a session.
+ *
+ * Taking the lower of the two readings — the raw end value, and the base pool
+ * minus the deficit — is correct in both directions and identical to the old
+ * behaviour when equipment changes no maxima at all.
+ */
+function carryBattlePool(endValue: number, battleMax: number, baseMax: number): number {
+  const deficit = Math.max(0, battleMax - endValue);
+  return Math.max(0, Math.min(endValue, baseMax - deficit));
+}
+
+/**
  * Describes one archived record, in isolation. A backup list is the recovery
  * route out of a bad save, so emptying the whole list on the first unreadable
  * archive hides exactly the records the player came looking for.
@@ -1536,12 +1556,10 @@ export class EngineGameBridge implements GameBridge {
         party: this.#state.party.map((member) => {
           const combatant = escapedParty.find(({ id }) => id === member.id);
           if (!combatant) return member;
-          const missingHp = Math.max(0, combatant.stats.maxHp - combatant.hp);
-          const missingMp = Math.max(0, combatant.stats.maxMp - combatant.mp);
           return {
             ...member,
-            hp: Math.max(1, member.stats.maxHp - missingHp),
-            mp: Math.max(0, member.stats.maxMp - missingMp),
+            hp: Math.max(1, carryBattlePool(combatant.hp, combatant.stats.maxHp, member.stats.maxHp)),
+            mp: carryBattlePool(combatant.mp, combatant.stats.maxMp, member.stats.maxMp),
             statuses: combatant.statuses
           };
         })
@@ -1903,16 +1921,14 @@ export class EngineGameBridge implements GameBridge {
     const party = active.state.party.map((member) => {
       const original = state.party.find(({ id }) => id === member.id);
       if (!original) return member as PlayerCharacter;
-      const missingHp = Math.max(0, member.stats.maxHp - member.hp);
-      const missingMp = Math.max(0, member.stats.maxMp - member.mp);
       // Floor at 1. resolveOutcome checks enemies before party, so a damage-over-time
       // tick that kills both sides in the same round reports "victory" with a dead
       // party; without this floor that 0 HP persists and the next startEncounter
       // throws "Combat requires at least one living combatant on each side".
       const result = grantExperience({
         ...original,
-        hp: Math.max(1, original.stats.maxHp - missingHp),
-        mp: Math.max(0, original.stats.maxMp - missingMp),
+        hp: Math.max(1, carryBattlePool(member.hp, member.stats.maxHp, original.stats.maxHp)),
+        mp: carryBattlePool(member.mp, member.stats.maxMp, original.stats.maxMp),
         statuses: member.statuses
       }, reward.experience);
       if (result.levelsGained > 0) {
