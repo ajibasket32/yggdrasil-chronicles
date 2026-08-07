@@ -124,6 +124,17 @@ let textScale = 1;
  * that need a size other than the four in `TEXT` use this instead of a literal,
  * so the setting reaches the 9px HP readouts too.
  */
+/** Blends two packed RGB colours, for gradients Phaser's Graphics cannot do itself. */
+export function mixColour(from: number, to: number, ratio: number): number {
+  const t = Math.max(0, Math.min(1, ratio));
+  const blend = (shift: number): number => {
+    const a = (from >> shift) & 0xff;
+    const b = (to >> shift) & 0xff;
+    return Math.round(a + (b - a) * t) & 0xff;
+  };
+  return (blend(16) << 16) | (blend(8) << 8) | blend(0);
+}
+
 export function fontPx(basePx: number): string {
   return `${Math.max(8, Math.round(basePx * textScale))}px`;
 }

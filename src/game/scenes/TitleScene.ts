@@ -17,7 +17,7 @@ import {
   keyboardCodeLabel,
   rebindKeyboardAction
 } from "../keyboardControls";
-import { announceGameStatus, announceScene, COLORS, fontPx, getBridge, motionDuration, playSound, TEXT } from "../runtime";
+import { announceGameStatus, announceScene, COLORS, fontPx, getBridge, mixColour, motionDuration, playSound, TEXT } from "../runtime";
 
 const NAME_CHOICES = ["Rowan", "Aster", "Marlowe", "Sage", "Kestrel", "Vale"] as const;
 /** Slots the load menu offers, in display order. `quick` is listed so a quick save is recoverable from the title. */
@@ -38,17 +38,6 @@ const CREATION_ROW_COUNT = 5;
 
 /** How many times the title tree forks. Six gives a canopy dense enough to read as mass. */
 const BRANCH_DEPTH = 6;
-
-/** Blends two packed RGB colours, for gradients Phaser's Graphics cannot do itself. */
-function mixColour(from: number, to: number, ratio: number): number {
-  const t = Math.max(0, Math.min(1, ratio));
-  const blend = (shift: number): number => {
-    const a = (from >> shift) & 0xff;
-    const b = (to >> shift) & 0xff;
-    return Math.round(a + (b - a) * t) & 0xff;
-  };
-  return (blend(16) << 16) | (blend(8) << 8) | blend(0);
-}
 
 /**
  * A small deterministic sequence, so the tree and its motes are the same shape

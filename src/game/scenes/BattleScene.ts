@@ -4,7 +4,7 @@ import type { BattleAction, BattleView, GameBridge, GameSnapshot } from "../brid
 import { gamepadButtonAction, pollStickDirection, type StickRepeatState } from "../gamepadControls";
 import { playMusic } from "../music";
 import { keyboardActionForCode, keyboardCodeLabel } from "../keyboardControls";
-import { announceGameStatus, announceScene, COLORS, fontPx, getBridge, motionDuration, playSound, TEXT } from "../runtime";
+import { announceGameStatus, announceScene, COLORS, fontPx, getBridge, mixColour, motionDuration, playSound, TEXT } from "../runtime";
 
 const ACTIONS: Array<{ id: BattleAction; label: string; hint: string }> = [
   { id: "attack", label: "ATTACK", hint: "A reliable physical strike." },
@@ -173,9 +173,38 @@ export class BattleScene extends Phaser.Scene {
   private paintArena(battle: BattleView): void {
     const graphics = this.add.graphics();
     graphics.fillGradientStyle(0x1e3235, 0x1e3235, 0x121a24, 0x121a24).fillRect(0, 0, 960, 340);
-    graphics.fillStyle(0x2b413e).fillEllipse(480, 305, 760, 120);
-    graphics.lineStyle(2, 0x698377, 0.25);
-    for (let ring = 0; ring < 6; ring += 1) graphics.strokeEllipse(480, 305, 240 + ring * 94, 42 + ring * 15);
+    // A lit patch of ground, built from filled ellipses that shrink and warm
+    // toward the centre. Six concentric *outlines* read as a shooting target,
+    // not as a clearing the fight is happening in.
+    // A treeline on the horizon. The upper third of the arena was empty dark,
+    // so every fight read as happening in a void with a rug in it.
+    for (let index = 0; index < 26; index += 1) {
+      // Positions from index arithmetic rather than a random source: the
+      // backdrop must be identical between runs for screenshot comparison.
+      const x = -20 + index * 39 + ((index * 37) % 23);
+      const height = 54 + ((index * 53) % 46);
+      const width = 26 + ((index * 29) % 18);
+      graphics.fillStyle(mixColour(0x16262e, 0x1d3a38, ((index * 17) % 11) / 10), 1);
+      graphics.fillEllipse(x, 196 - height * 0.35, width, height);
+      graphics.fillRect(x - 2, 196 - height * 0.2, 4, height * 0.4);
+    }
+    // Mist between the treeline and the clearing, to seat one behind the other.
+    for (let index = 0; index < 10; index += 1) {
+      graphics.fillStyle(0x27424a, 0.06);
+      graphics.fillRect(0, 190 + index * 5, 960, 6);
+    }
+
+    // A feathered outer edge first, so the clearing fades into the dark rather
+    // than ending on the hard rim of a single filled blob.
+    for (let halo = 0; halo < 10; halo += 1) {
+      graphics.fillStyle(0x1d3130, 0.07);
+      graphics.fillEllipse(480, 300, 880 - halo * 14, 176 - halo * 6);
+    }
+    for (let ring = 0; ring < 14; ring += 1) {
+      const ratio = ring / 13;
+      graphics.fillStyle(mixColour(0x223a39, 0x38594c, ratio), 1);
+      graphics.fillEllipse(480, 300, 760 - ratio * 300, 128 - ratio * 54);
+    }
     this.add.text(28, 22, battle.title.toUpperCase(), { ...TEXT.heading, color: COLORS.gold });
     this.add.text(28, 50, `ROUND ${battle.round}`, TEXT.small);
     if (battle.bossPhase) {
@@ -191,30 +220,38 @@ export class BattleScene extends Phaser.Scene {
     const enemies = battle.actors.filter(({ isParty }) => !isParty);
     // Recorded so the event pass can find who to animate and where.
     this.actorPositions.clear();
+    // One row a side, staggered slightly. Two rows put the back rank's readouts
+    // through the command panel at y 340, and the old spacing left both sides
+    // floating well above the ground they are meant to be standing on.
     party.forEach((actor, index) => {
-      const x = 160 + index * 96;
-      const y = 245 - (index % 2) * 45;
+      const x = 152 + index * 92;
+      const y = 262 - (index % 2) * 24;
       const key = actor.spriteKey && this.textures.exists(actor.spriteKey) ? actor.spriteKey : "sprite.player";
       const sprite = this.add.image(x, y, key).setScale(1.8).setFlipX(true);
       if (actor.tint !== undefined) sprite.setTint(actor.tint);
       if (!actor.alive) sprite.setTint(0x4d545d);
       this.actorPositions.set(actor.id, { x, y, sprite });
       this.drawActiveActorMarker(x, y, actor.id === battle.activeActorId, actor.name);
-      this.drawHealth(x - 48, y + 38, 96, actor.hp, actor.maxHp, actor.name, true);
-      this.drawResource(x - 48, y + 56, 96, actor.mp, actor.maxMp);
+      this.drawHealth(x - 48, y + 38, 96, actor.hp, actor.maxHp, true);
+      this.drawResource(x - 48, y + 47, 96, actor.mp, actor.maxMp);
+      this.drawActorLabel(x - 48, y + 54, `${actor.name}  ${actor.hp}/${actor.maxHp}`);
       this.drawStatuses(x - 48, y + 68, actor.statuses);
     });
     enemies.forEach((actor, index) => {
-      const x = 690 + (index % 2) * 105;
-      const y = 200 + Math.floor(index / 2) * 90;
+      const x = 596 + index * 90;
+      const y = 250 - (index % 2) * 24;
       const key = actor.spriteKey && this.textures.exists(actor.spriteKey) ? actor.spriteKey : "sprite.enemy.small";
-      const sprite = this.add.image(x, y, key).setScale(actor.maxHp > 80 ? 3 : 2.25);
+      // Enemy art is a smaller source texture than the party's, so matching
+      // scale factors did not give matching sizes: the foes rendered as specks
+      // beside a party member three times their height.
+      const sprite = this.add.image(x, y, key).setScale(actor.maxHp > 80 ? 4.6 : 3.6);
       if (actor.tint !== undefined) sprite.setTint(actor.tint);
       if (!actor.alive) sprite.setAlpha(0.25);
       this.actorPositions.set(actor.id, { x, y, sprite });
       this.drawActiveActorMarker(x, y, actor.id === battle.activeActorId, this.titleCase(actor.name));
-      this.drawHealth(x - 48, y + 42, 96, actor.hp, actor.maxHp, this.titleCase(actor.name), false);
-      this.drawStatuses(x - 48, y + 60, actor.statuses);
+      this.drawHealth(x - 48, y + 46, 96, actor.hp, actor.maxHp, false);
+      this.drawActorLabel(x - 48, y + 55, `${this.titleCase(actor.name)}  ${actor.hp}/${actor.maxHp}`);
+      this.drawStatuses(x - 48, y + 69, actor.statuses);
     });
   }
 
@@ -325,11 +362,20 @@ export class BattleScene extends Phaser.Scene {
     this.add.text(28, 74, `ACTING: ${name.toUpperCase()}`, { ...TEXT.small, color: COLORS.gold });
   }
 
-  private drawHealth(x: number, y: number, width: number, hp: number, maxHp: number, name: string, party: boolean): void {
+  private drawHealth(x: number, y: number, width: number, hp: number, maxHp: number, party: boolean): void {
     const ratio = maxHp > 0 ? Phaser.Math.Clamp(hp / maxHp, 0, 1) : 0;
     this.add.rectangle(x, y, width, 7, 0x11151c).setOrigin(0);
     this.add.rectangle(x, y, width * ratio, 7, party ? 0x64ba83 : 0xc95d63).setOrigin(0);
-    this.add.text(x, y + 9, `${name}  ${hp}/${maxHp}`, { ...TEXT.small, fontSize: fontPx(9) }).setOrigin(0);
+  }
+
+  /**
+   * The name and pool readout, below both bars rather than between them. It
+   * used to be drawn at a fixed nine pixels under the health bar, which is
+   * where the magic bar is, so every party member's name was painted across
+   * their own MP.
+   */
+  private drawActorLabel(x: number, y: number, label: string): void {
+    this.add.text(x, y, label, { ...TEXT.small, fontSize: fontPx(9) }).setOrigin(0);
   }
 
   private paintCommandPanel(battle: BattleView): void {
