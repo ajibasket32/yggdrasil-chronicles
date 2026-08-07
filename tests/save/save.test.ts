@@ -3,7 +3,8 @@ import { createInitialGameState, CURRENT_GAME_SCHEMA_VERSION } from "../../src/e
 import { MemorySaveStorage } from "../../src/save/memory-storage";
 import { SaveRepository } from "../../src/save/repository";
 import { migrateGameState, validateGameState } from "../../src/save/schema";
-import type { SaveRecord } from "../../src/save/types";
+import type { SaveRecord, SaveSlot } from "../../src/save/types";
+import type { GameState } from "../../src/shared/types";
 import { makePlayerCharacter } from "../engine/fixtures";
 
 function makeState(seed = "save-seed") {
@@ -13,6 +14,30 @@ function makeState(seed = "save-seed") {
     party: [makePlayerCharacter()],
     contentPackVersions: { core: "1.0.0" }
   });
+}
+
+/**
+ * A record as an older or interrupted build would have left it on disk: put
+ * straight into storage, so it never passes the validation `save()` applies.
+ */
+function legacyRecord(
+  slot: SaveSlot,
+  schemaVersion: number,
+  damage: (state: Record<string, unknown>) => void
+): SaveRecord {
+  const state = structuredClone(makeState(slot)) as unknown as Record<string, unknown>;
+  state.schemaVersion = schemaVersion;
+  damage(state);
+  return {
+    slot,
+    schemaVersion,
+    seed: slot,
+    contentPackVersions: { core: "1.0.0" },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    checksum: "list() does not verify checksums",
+    state: state as unknown as GameState
+  };
 }
 
 describe("save repository", () => {
@@ -163,5 +188,32 @@ describe("save management", () => {
   it("refuses to restore a backup that no longer exists", async () => {
     const repository = new SaveRepository(new MemorySaveStorage());
     await expect(repository.restoreBackup("missing")).rejects.toThrow(/no longer exists/);
+  });
+
+  it("migrates a pre-v3 record for the slot list instead of reporting NaN play time", async () => {
+    const storage = new MemorySaveStorage();
+    const repository = new SaveRepository(storage);
+    await storage.put(legacyRecord("manual-1", 2, (state) => {
+      delete (state.world as Record<string, unknown>).playSeconds;
+    }));
+    const [summary] = await repository.list();
+    expect(Number.isNaN(summary?.playTimeMinutes ?? NaN)).toBe(false);
+    expect(summary?.playTimeMinutes).toBe(0);
+    expect(summary?.damaged).toBeUndefined();
+  });
+
+  it("keeps listing readable slots when one record on disk is unreadable", async () => {
+    const storage = new MemorySaveStorage();
+    const repository = new SaveRepository(storage);
+    await repository.save("manual-1", makeState("intact"));
+    // A partial write: the record is present but its party never landed.
+    await storage.put(legacyRecord("manual-2", 3, (state) => {
+      delete state.party;
+    }));
+
+    const summaries = await repository.list();
+    expect(summaries).toHaveLength(2);
+    expect(summaries.find(({ slot }) => slot === "manual-1")?.damaged).toBeUndefined();
+    expect(summaries.find(({ slot }) => slot === "manual-2")?.damaged).toBe(true);
   });
 });

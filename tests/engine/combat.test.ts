@@ -233,3 +233,63 @@ describe("deterministic combat", () => {
     expect(first).toEqual(second);
   });
 });
+
+/** A self-buff shaped exactly like the authored Rallying Strike / Pathfinder's Stride. */
+const selfBuff: CombatSkill = {
+  id: "skill.self-buff",
+  name: "Self Buff",
+  element: "physical",
+  power: 0,
+  accuracy: 1,
+  mpCost: 4,
+  target: "self",
+  status: { id: "fortify", chance: 1, turns: 3, potency: 0.3 }
+};
+
+describe("self-targeted forms", () => {
+  function castSelfBuff(seed = "self-buff") {
+    const hero = makeCombatant("hero-one", { skills: [selfBuff.id] });
+    const foe = makeCombatant("foe");
+    const state = createCombatState([hero], [foe], seed);
+    return resolveCombatAction(
+      state,
+      { type: "skill", actorId: hero.id, targetId: hero.id, skillId: selfBuff.id },
+      { [selfBuff.id]: selfBuff }
+    );
+  }
+
+  it("buffs the caster instead of wounding them", () => {
+    const { state, events } = castSelfBuff();
+    const hero = state.party[0]!;
+    expect(hero.hp).toBe(baseStats.maxHp);
+    expect(events.some((event) => event.type === "damage")).toBe(false);
+    expect(hero.statuses.map(({ id }) => id)).toContain("fortify");
+  });
+
+  it("charges the caster its MP cost rather than refunding it", () => {
+    const { state } = castSelfBuff();
+    expect(state.party[0]!.mp).toBe(baseStats.maxMp - selfBuff.mpCost);
+  });
+
+  it("still charges MP for a self-targeted heal", () => {
+    const selfHeal: CombatSkill = {
+      id: "skill.self-mend",
+      name: "Self Mend",
+      element: "radiant",
+      power: 10,
+      accuracy: 1,
+      mpCost: 5,
+      target: "self",
+      healing: true
+    };
+    const hero = makeCombatant("hero-one", { skills: [selfHeal.id], hp: 40 });
+    const foe = makeCombatant("foe");
+    const { state } = resolveCombatAction(
+      createCombatState([hero], [foe], "self-heal"),
+      { type: "skill", actorId: hero.id, targetId: hero.id, skillId: selfHeal.id },
+      { [selfHeal.id]: selfHeal }
+    );
+    expect(state.party[0]!.mp).toBe(baseStats.maxMp - selfHeal.mpCost);
+    expect(state.party[0]!.hp).toBeGreaterThan(40);
+  });
+});

@@ -326,6 +326,9 @@ export class TitleScene extends Phaser.Scene {
     const stamp = Number.isNaN(saved.getTime())
       ? ""
       : `  ${saved.toLocaleDateString()} ${saved.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    // An occupied-but-unreadable slot says so. Reporting it as empty would
+    // invite the player to overwrite the one copy of a chronicle.
+    if (summary.damaged) return `DAMAGED — cannot be read${stamp}`;
     // Play time is real time at the controls, not the in-fiction clock: a
     // night of camping advances the world by eight hours and the player by none.
     const hours = Math.floor(summary.playTimeMinutes / 60);

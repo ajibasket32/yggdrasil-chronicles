@@ -96,7 +96,7 @@ import type {
   ShopView,
   SnapshotListener
 } from "../game";
-import { SaveRepository, type SaveSlot } from "../save";
+import { SaveRepository, type SaveBackup, type SaveSlot } from "../save";
 import type {
   Combatant,
   Element,
@@ -143,6 +143,30 @@ const STATUS_CURE_ITEMS: Readonly<Record<string, readonly StatusInstance["id"][]
 
 function commandFailure(message: string): GameCommandResult {
   return { success: false, message };
+}
+
+/**
+ * Describes one archived record, in isolation. A backup list is the recovery
+ * route out of a bad save, so emptying the whole list on the first unreadable
+ * archive hides exactly the records the player came looking for.
+ */
+function describeBackup(backup: SaveBackup): BackupView {
+  const base = {
+    id: backup.id,
+    slot: backup.sourceSlot,
+    slotLabel: slotLabel(backup.sourceSlot),
+    backedUpAt: backup.backedUpAt
+  };
+  try {
+    const world = backup.record.state.world;
+    return {
+      ...base,
+      locationName: locations.find(({ id }) => id === world.currentLocationId)?.name ?? world.currentLocationId,
+      partyLevel: backup.record.state.party.reduce((best, member) => Math.max(best, member.level), 1)
+    };
+  } catch {
+    return { ...base, locationName: "unreadable archive", partyLevel: 0, damaged: true };
+  }
 }
 
 function jobUnlockFlag(memberId: string, jobId: string): string {
@@ -209,7 +233,14 @@ export class EngineGameBridge implements GameBridge {
   #lastPlayClockMs: number;
   #saveSummaries: SaveSlotSummaryView[] = [];
   /** A scripted scene waiting for the presentation layer to play it. */
-  #pendingScene?: PendingSceneView;
+  /**
+   * Scripted scenes waiting to play, oldest first; the head is what the world
+   * scene shows. This was a single slot, and `queueScene` returned early when
+   * it was occupied — so a trigger that fired while another scene waited was
+   * dropped, and a one-shot trigger (a boss falling) never came round again to
+   * re-queue it. The authored beat was gone from that chronicle for good.
+   */
+  #sceneQueue: PendingSceneView[] = [];
   readonly #narrative = new NarrativeCheckpointQueue({
     validationCatalog: {
       knownEntityIds: new Set([
@@ -280,7 +311,8 @@ export class EngineGameBridge implements GameBridge {
       locationName: locations.find(({ id }) => id === record.locationId)?.name ?? record.locationId,
       partyLevel: record.partyLevel,
       playTimeMinutes: record.playTimeMinutes,
-      worldMinutes: record.worldMinutes
+      worldMinutes: record.worldMinutes,
+      damaged: record.damaged
     }));
     this.#hasSave = this.#saveSlots.has("autosave");
   }
@@ -323,7 +355,7 @@ export class EngineGameBridge implements GameBridge {
       difficulty: difficultyOf(this.#state),
       party: party.map((member, index) => this.toPartyView(member, index)),
       reserve: this.#state.reserve.map((member, index) => this.toPartyView(member, party.length + index)),
-      pendingScene: this.#pendingScene,
+      pendingScene: this.#sceneQueue[0],
       discoveredLocations: this.#state.world.discoveredLocationIds
         .map((id) => locations.find((candidate) => candidate.id === id))
         .filter((candidate): candidate is (typeof locations)[number] => candidate !== undefined)
@@ -454,6 +486,9 @@ export class EngineGameBridge implements GameBridge {
     };
     this.#state = state;
     this.#battle = undefined;
+    // A scene left waiting by the previous chronicle used to block this one's
+    // prologue outright, because queueScene refused to queue while one pended.
+    this.#sceneQueue = [];
     this.queueScene((trigger) => trigger.kind === "campaign_start");
     await this.persist("autosave");
   }
@@ -555,6 +590,10 @@ export class EngineGameBridge implements GameBridge {
       return { success: false, message: `${slotLabel(slot)} is empty.` };
     }
     this.#state = loaded;
+    // Whatever the previous chronicle was in the middle of does not belong to
+    // this one: a half-finished battle and a queued scene both survived a load.
+    this.#battle = undefined;
+    this.#sceneQueue = [];
     this.#saveSlots.add(slot);
     this.#hasSave = true;
     this.#lastPlayClockMs = this.#now();
@@ -1125,11 +1164,13 @@ export class EngineGameBridge implements GameBridge {
    */
   private queueScene(matches: (trigger: SceneTrigger) => boolean): void {
     const state = this.#state;
-    if (!state || this.#pendingScene) return;
+    if (!state) return;
     const scene = scenesForTrigger(matches).find((candidate) =>
-      candidate.repeatable === true || state.world.flags[sceneFlagFor(candidate.id)] !== true);
+      (candidate.repeatable === true || state.world.flags[sceneFlagFor(candidate.id)] !== true)
+      // Already waiting its turn: queue it once, not once per trigger check.
+      && !this.#sceneQueue.some((queued) => queued.id === candidate.id));
     if (!scene) return;
-    this.#pendingScene = {
+    this.#sceneQueue.push({
       id: scene.id,
       lines: scene.lines.map((line) => ({
         speaker: line.speaker,
@@ -1137,12 +1178,12 @@ export class EngineGameBridge implements GameBridge {
         ...(line.portraitTag ? { portraitTag: line.portraitTag } : {})
       })),
       ...(scene.trigger.kind === "location_first_visit" ? { locationId: scene.trigger.locationId } : {})
-    };
+    });
   }
 
   async acknowledgeScene(sceneId: string): Promise<void> {
-    if (this.#pendingScene?.id !== sceneId) return;
-    this.#pendingScene = undefined;
+    if (this.#sceneQueue[0]?.id !== sceneId) return;
+    this.#sceneQueue.shift();
     const state = this.#state;
     if (!state) {
       this.emit();
@@ -1767,15 +1808,7 @@ export class EngineGameBridge implements GameBridge {
     try {
       const backups = await this.#saves.backups();
       return backups
-        .map((backup) => ({
-          id: backup.id,
-          slot: backup.sourceSlot,
-          slotLabel: slotLabel(backup.sourceSlot),
-          backedUpAt: backup.backedUpAt,
-          locationName: locations.find(({ id }) => id === backup.record.state.world.currentLocationId)?.name
-            ?? backup.record.state.world.currentLocationId,
-          partyLevel: Math.max(...backup.record.state.party.map((member) => member.level))
-        }))
+        .map((backup) => describeBackup(backup))
         .sort((left, right) => right.backedUpAt.localeCompare(left.backedUpAt));
     } catch (error) {
       console.error("Could not read save backups.", error);
@@ -1799,12 +1832,12 @@ export class EngineGameBridge implements GameBridge {
       await this.#saves.importJson(slot, json);
       const state = await this.#saves.load(slot);
       if (!state) throw new Error(`Imported save slot '${slot}' could not be loaded`);
-      const summaries = await this.#saves.list();
       this.#state = state;
       this.#battle = undefined;
-      this.#saveSlots.clear();
-      for (const summary of summaries) this.#saveSlots.add(summary.slot);
-      this.#hasSave = this.#saveSlots.has("autosave");
+      // Rebuilds slots, summaries and the has-save flag together. Doing it by
+      // hand here refreshed the slot set but left `#saveSummaries` holding the
+      // pre-import rows, so the load menu described the save that was replaced.
+      await this.refreshSaveIndex();
       this.#autosave = "saved";
       this.emit();
       return { success: true, message: `Imported save into ${slot}.` };
@@ -2135,7 +2168,23 @@ export class EngineGameBridge implements GameBridge {
           averageLevel,
           `${state.seed}:quest:${definition.id}`
         );
-        party = party.map((member) => grantExperience(member, reward.experience).character);
+        // Quest experience levels a character exactly as battle experience does,
+        // so it has to teach that level's forms too. Dropping `levelsGained`
+        // here lost them permanently: the next battle computes what was learned
+        // from the level the character had *after* the quest, so the skipped
+        // level never falls inside a `skillsLearnedBetween` window again.
+        const leveled: Array<{ name: string; level: number; learned: string[] }> = [];
+        party = party.map((member) => {
+          const result = grantExperience(member, reward.experience);
+          if (result.levelsGained > 0) {
+            leveled.push({
+              name: result.character.name,
+              level: result.character.level,
+              learned: this.applyLevelUpSkills(result.character, member.level)
+            });
+          }
+          return this.withLearnedSkills(result.character, member.level);
+        });
         if (reward.itemRoll < 350) {
           inventory = this.addWithinStackLimit(inventory, "item.root-tonic", 1);
         }
@@ -2151,6 +2200,21 @@ export class EngineGameBridge implements GameBridge {
           body: `The party claimed the reward for ${definition.title}.`,
           tags: ["quest", "reward", definition.rewardTier]
         }];
+        // A quest can be handed in outside a battle, where there is no combat
+        // log to speak into, so growth earned this way is recorded in the
+        // chronicle rather than passing silently.
+        for (const levelUp of leveled) {
+          const learned = levelUp.learned.map((skillId) => SKILLS[skillId]?.name ?? skillId);
+          chronicle = [...chronicle, {
+            id: crypto.randomUUID(),
+            worldMinute: state.world.worldMinutes,
+            title: `${levelUp.name} reaches level ${levelUp.level}`,
+            body: learned.length > 0
+              ? `${levelUp.name} learns ${learned.join(", ")}.`
+              : `${levelUp.name} grows steadier for the road ahead.`,
+            tags: ["progression", "level"]
+          }];
+        }
       }
     }
 

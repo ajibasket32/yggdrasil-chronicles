@@ -403,8 +403,13 @@ export function resolveCombatAction(
     ...actorMatch.combatant,
     mp: actorMatch.combatant.mp - skill.mpCost
   });
-  // Self-targeted forms (all healing) never miss against their own actor;
-  // evasion only applies when striking a genuinely separate combatant.
+  // Every result below is built from the target as it stands *after* the cost
+  // is paid. Building from the pre-deduction snapshot silently refunded the MP
+  // whenever a skill targeted its own actor: the target write lands on the same
+  // index as the actor write and carries the old, undeducted MP with it.
+  const liveTarget = findCombatant(state, action.targetId)?.combatant ?? targetMatch.combatant;
+  // Self-targeted forms never miss against their own actor; evasion only
+  // applies when striking a genuinely separate combatant.
   const evasion = skill.target === "self" ? 0 : targetMatch.combatant.stats.agility * 0.002;
   const hitRoll = randomChance(state.rng, skill.accuracy + actorMatch.combatant.stats.dexterity * 0.002 - evasion);
   state = { ...state, rng: hitRoll.rng };
@@ -418,14 +423,14 @@ export function resolveCombatAction(
   if (skill.healing) {
     // Hearthfire is on the RECEIVER: any mender goes further on a hearthborn,
     // which makes the trait matter in every party composition.
-    const hearthfire = hasTrait(targetMatch.combatant, "trait.hearthfire") ? 1.2 : 1;
+    const hearthfire = hasTrait(liveTarget, "trait.hearthfire") ? 1.2 : 1;
     const amount = Math.max(
       1,
       Math.round((skill.power + actorMatch.combatant.stats.wisdom * 1.5) * (0.95 + varianceRoll.value * 0.1) * hearthfire)
     );
     const healed = {
-      ...targetMatch.combatant,
-      hp: Math.min(targetMatch.combatant.stats.maxHp, targetMatch.combatant.hp + amount)
+      ...liveTarget,
+      hp: Math.min(liveTarget.stats.maxHp, liveTarget.hp + amount)
     };
     return {
       state: withCombatant(state, targetMatch.side, targetMatch.index, healed),
@@ -433,14 +438,42 @@ export function resolveCombatAction(
         type: "healing",
         actorId: action.actorId,
         targetId: action.targetId,
-        amount: healed.hp - targetMatch.combatant.hp
+        amount: healed.hp - liveTarget.hp
       }]
     };
   }
-  const damage = calculateDamage(actorMatch.combatant, targetMatch.combatant, skill, 0.9 + varianceRoll.value * 0.2, criticalRoll.value);
+
+  /**
+   * A self-targeted form that does not heal is a buff: it puts its status on
+   * the caster and deals nothing at all.
+   *
+   * Without this branch such a skill fell through to the damage path and
+   * `calculateDamage` was handed the caster as its own target, so Rallying
+   * Strike and Pathfinder's Stride — both authored with `power: 0` — wounded
+   * the character who used them for their own strength stat. The rolls above
+   * are still consumed so seeded battles elsewhere resolve identically.
+   */
+  if (skill.target === "self") {
+    if (!skill.status) {
+      return { state, events: [] };
+    }
+    // Self-inflicted, so neither the hit chance nor status resistance applies:
+    // a character cannot resist their own stance.
+    const buffed = addOrRefreshStatus(liveTarget, {
+      id: skill.status.id,
+      remainingTurns: skill.status.turns,
+      potency: Math.max(0, skill.status.potency)
+    });
+    return {
+      state: withCombatant(state, targetMatch.side, targetMatch.index, buffed),
+      events: [{ type: "status_applied", targetId: buffed.id, status: skill.status.id }]
+    };
+  }
+
+  const damage = calculateDamage(actorMatch.combatant, liveTarget, skill, 0.9 + varianceRoll.value * 0.2, criticalRoll.value);
   let target = applyDamageStatusRules({
-    ...targetMatch.combatant,
-    hp: Math.max(0, targetMatch.combatant.hp - damage)
+    ...liveTarget,
+    hp: Math.max(0, liveTarget.hp - damage)
   });
   const events: CombatEvent[] = [{
     type: "damage",

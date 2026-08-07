@@ -1,5 +1,5 @@
 import type { InventoryStack } from "../shared/types";
-import { addItem, inventoryQuantity, removeItem } from "./inventory";
+import { addItem, inventoryQuantity, MAX_STACK_QUANTITY, removeItem } from "./inventory";
 
 /**
  * Trail remedies: field crafting over the existing inventory.
@@ -25,7 +25,25 @@ export interface RecipeDefinition {
 }
 
 export function canCraft(inventory: readonly InventoryStack[], recipe: RecipeDefinition): boolean {
-  return recipe.inputs.every((input) => inventoryQuantity(inventory, input.itemId) >= input.quantity);
+  const hasInputs = recipe.inputs.every((input) => inventoryQuantity(inventory, input.itemId) >= input.quantity);
+  return hasInputs && outputFits(inventory, recipe);
+}
+
+/**
+ * Whether the result has room in the pack once the inputs are consumed.
+ *
+ * `craftRecipe` finishes with `addItem`, which throws when a stack would pass
+ * its limit — so a recipe whose output the player already holds 99 of was
+ * offered as craftable and then threw out of what the contract above promises
+ * is a plain `crafted: false`. An input that is also the output frees its own
+ * room first, so it is discounted here rather than counted against the cap.
+ */
+function outputFits(inventory: readonly InventoryStack[], recipe: RecipeDefinition): boolean {
+  const consumedFromOutput = recipe.inputs
+    .filter((input) => input.itemId === recipe.outputItemId)
+    .reduce((total, input) => total + input.quantity, 0);
+  const heldAfterInputs = inventoryQuantity(inventory, recipe.outputItemId) - consumedFromOutput;
+  return heldAfterInputs + recipe.outputQuantity <= MAX_STACK_QUANTITY;
 }
 
 /**

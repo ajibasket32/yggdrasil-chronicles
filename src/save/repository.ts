@@ -45,6 +45,44 @@ async function createRecord(
 }
 
 /**
+ * Builds one slot's summary without letting it take the load menu down.
+ *
+ * The stored record is raw on two counts: it may predate the current schema, so
+ * fields a later version added are simply absent, and a partially written or
+ * hand-edited one may be missing whole arrays. Reading it directly produced a
+ * `NaN` play time for any pre-v3 save, and threw outright when `party` was gone
+ * — and because the caller catches at whole-collection granularity, that throw
+ * hid every *other* save and reported storage as unavailable. So each record is
+ * migrated in isolation, and a record that cannot be read still yields a slot
+ * the player can see.
+ */
+function summarise(record: SaveRecord): SaveSummary {
+  try {
+    const state = migrateGameState(record.state);
+    return {
+      slot: record.slot,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      locationId: state.world.currentLocationId,
+      partyLevel: state.party.reduce((best, character) => Math.max(best, character.level), 1),
+      playTimeMinutes: Math.floor(state.world.playSeconds / 60),
+      worldMinutes: state.world.worldMinutes
+    };
+  } catch {
+    return {
+      slot: record.slot,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      locationId: "",
+      partyLevel: 0,
+      playTimeMinutes: 0,
+      worldMinutes: 0,
+      damaged: true
+    };
+  }
+}
+
+/**
  * Slots whose overwrite is archived. Deliberate player saves only — see
  * `SaveRepository.save`.
  */
@@ -105,15 +143,7 @@ export class SaveRepository {
   async list(): Promise<SaveSummary[]> {
     const records = await this.#storage.getAll();
     return records
-      .map((record) => ({
-        slot: record.slot,
-        createdAt: record.createdAt,
-        updatedAt: record.updatedAt,
-        locationId: record.state.world.currentLocationId,
-        partyLevel: Math.max(...record.state.party.map((character) => character.level)),
-        playTimeMinutes: Math.floor(record.state.world.playSeconds / 60),
-        worldMinutes: record.state.world.worldMinutes
-      }))
+      .map((record) => summarise(record))
       .sort((left, right) => SAVE_SLOTS.indexOf(left.slot) - SAVE_SLOTS.indexOf(right.slot));
   }
 

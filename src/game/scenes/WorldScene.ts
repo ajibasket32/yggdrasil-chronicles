@@ -1987,6 +1987,7 @@ export class WorldScene extends Phaser.Scene {
     const stamp = Number.isNaN(saved.getTime())
       ? ""
       : `  ·  ${saved.toLocaleDateString()} ${saved.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    if (summary.damaged) return `   — damaged, cannot be read${stamp}`;
     return `   — Lv ${summary.partyLevel}  ${summary.locationName}  ·  ${formatPlayTime(summary.playTimeMinutes)} played${stamp}`;
   }
 
@@ -2019,7 +2020,10 @@ export class WorldScene extends Phaser.Scene {
           const stamp = new Date(backup.backedUpAt);
           const when = Number.isNaN(stamp.getTime()) ? backup.backedUpAt : stamp.toLocaleString();
           const armed = picker.armed === backup.id ? "   ⚠ confirm again to replace the slot" : "";
-          return `${index === picker.index ? "›" : " "} ${backup.slotLabel}  —  Lv ${backup.partyLevel}  ${backup.locationName}  ·  ${when}${armed}`;
+          const detail = backup.damaged
+            ? "damaged, cannot be read"
+            : `Lv ${backup.partyLevel}  ${backup.locationName}`;
+          return `${index === picker.index ? "›" : " "} ${backup.slotLabel}  —  ${detail}  ·  ${when}${armed}`;
         })
       : this.pickerSlots(picker.action).map((slot, index) => {
           const occupied = (this.snapshot.saveSlots ?? []).includes(slot);

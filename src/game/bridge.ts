@@ -365,6 +365,8 @@ export interface SaveSlotSummaryView {
   playTimeMinutes: number;
   /** In-fiction clock; rest and fast travel advance it in leaps. */
   worldMinutes: number;
+  /** The slot is occupied but unreadable; shown so it is not overwritten blind. */
+  damaged?: boolean;
 }
 
 /** An archived save record, offered as a recovery route. */
@@ -375,6 +377,8 @@ export interface BackupView {
   backedUpAt: string;
   locationName: string;
   partyLevel: number;
+  /** The archive is unreadable; listed anyway so it is not silently dropped. */
+  damaged?: boolean;
 }
 
 export type SnapshotListener = (snapshot: Readonly<GameSnapshot>) => void;

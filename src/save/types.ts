@@ -31,6 +31,12 @@ export interface SaveSummary {
   readonly playTimeMinutes: number;
   /** In-fiction clock, which rest and fast travel advance in leaps. */
   readonly worldMinutes: number;
+  /**
+   * The slot holds a record that could not be read as a game state — a partial
+   * write, or an edited file. The slot is still listed, because a player who
+   * cannot see an occupied slot will overwrite it.
+   */
+  readonly damaged?: boolean;
 }
 
 export interface SaveBackup {

@@ -124,6 +124,42 @@ describe("scenes fire on their trigger and only once", () => {
   });
 });
 
+describe("a scene queued behind another is not lost", () => {
+  it("keeps a boss introduction that fires while an arrival beat is still waiting", async () => {
+    const { bridge } = createBridge();
+    await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "vanguard", difficulty: "normal" });
+    await bridge.acknowledgeScene("scene.prologue");
+
+    await bridge.travel("location.mossroad");
+    await bridge.travel("location.hollow-root");
+    // Deliberately leave the arrival beat unacknowledged.
+    expect(bridge.getSnapshot().pendingScene?.id).toBe("scene.hollow-root-arrival");
+
+    bridge.startEncounter("encounter.mire-antler");
+    // The arrival beat is still the one on screen...
+    expect(bridge.getSnapshot().pendingScene?.id).toBe("scene.hollow-root-arrival");
+
+    // ...and the boss introduction is behind it rather than discarded. The
+    // boss falls only once, so a dropped intro could never be re-triggered.
+    await bridge.acknowledgeScene("scene.hollow-root-arrival");
+    expect(bridge.getSnapshot().pendingScene?.id).toBe("scene.mire-antler-intro");
+  });
+
+  it("does not let a chronicle's leftover scene suppress the next chronicle's prologue", async () => {
+    const { bridge } = createBridge();
+    await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "vanguard", difficulty: "normal" });
+    expect(bridge.getSnapshot().pendingScene?.id).toBe("scene.prologue");
+
+    // Start over without ever acknowledging the first prologue.
+    await bridge.newGame({ name: "Bram", ancestryId: "hearthborn", jobId: "vanguard", difficulty: "normal" });
+    const pending = bridge.getSnapshot().pendingScene;
+    expect(pending?.id).toBe("scene.prologue");
+    // Exactly one copy: the abandoned chronicle's queue does not carry over.
+    await bridge.acknowledgeScene("scene.prologue");
+    expect(bridge.getSnapshot().pendingScene).toBeUndefined();
+  });
+});
+
 describe("arrival scenes wait for their location", () => {
   it("tags a first-visit scene with its location and keeps it pending elsewhere", async () => {
     const bridge = new EngineGameBridge(
