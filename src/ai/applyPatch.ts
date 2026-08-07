@@ -32,6 +32,20 @@ export function applyGeneratedPatch(
   if (state.generatedPatches.some((candidate) => candidate.id === patch.id)) {
     return { applied: false, state, reason: "Patch was already applied." };
   }
+  // A patch that carries nothing durable is not recorded at all. The scripted
+  // fallback runs on every checkpoint the provider cannot answer — which,
+  // offline, is every single one — and travel raises a checkpoint per crossing.
+  // Recording those grew `generatedPatches` without bound inside a save that is
+  // checksummed and rewritten on each autosave, and triggered a second autosave
+  // per crossing to store it.
+  if (
+    patch.effects.length === 0
+    && patch.quests.length === 0
+    && patch.npcs.length === 0
+    && patch.dialogue.length === 0
+  ) {
+    return { applied: false, state, reason: "Patch carries no durable content." };
+  }
 
   const flags = { ...state.world.flags };
   let relationships: Relationship[] = state.world.relationships.map((entry) => ({ ...entry }));

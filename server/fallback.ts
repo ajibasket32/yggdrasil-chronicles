@@ -19,10 +19,11 @@ export function scriptedFallback(context: NarrativeContext): NarrativePatch {
       title: "A Quiet Echo",
       description: `The distant boughs remain silent. ${context.trigger.summary}`.slice(0, 1200)
     }],
-    effects: [{
-      type: "add_chronicle_entry",
-      title: "A Quiet Echo",
-      body: context.trigger.summary.slice(0, 1000)
-    }]
+    // No effects. This is the reaction shown when the provider cannot answer,
+    // and offline that is every checkpoint — one per crossing. Writing a
+    // chronicle entry each time buried the entries that mattered under an
+    // identical line and grew the save forever. The event above still carries
+    // the colour; nothing durable is recorded.
+    effects: []
   };
 }
