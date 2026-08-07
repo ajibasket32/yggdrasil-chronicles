@@ -222,6 +222,8 @@ function withBonusSkill(skills: readonly string[], bonusSkillId: string): string
 
 interface ActiveBattle {
   encounterId: string;
+  /** Which engagement of this encounter it is; folded into the seeds so repeats differ. */
+  engagement: number;
   state: CombatState;
   phase: BattleView["phase"];
   log: string[];
@@ -1304,9 +1306,26 @@ export class EngineGameBridge implements GameBridge {
         traits: traitIdsForAncestry(member.raceId)
       };
     });
+    // How many times this encounter has been engaged, kept in world state so it
+    // survives a save. Both seeds below carried nothing that changes between two
+    // fights of the same encounter: the battle seed varied only with the world
+    // clock, which fighting does not advance, and the reward seed varied not at
+    // all — so a repeatable encounter's item roll was fixed for the life of a
+    // chronicle. It always dropped, or it never did. Counting engagements makes
+    // successive fights differ while a reload still replays one exactly.
+    const engagementFlag = `progress.encounter.${encounterId}`;
+    const engagement = Number(state.world.flags[engagementFlag] ?? 0) + 1;
+    this.#state = {
+      ...state,
+      world: {
+        ...state.world,
+        flags: { ...state.world.flags, [engagementFlag]: engagement }
+      }
+    };
     const active: ActiveBattle = {
       encounterId,
-      state: createCombatState(party, enemies, `${state.seed}:${encounterId}:${state.world.worldMinutes}`),
+      engagement,
+      state: createCombatState(party, enemies, `${state.seed}:${encounterId}:${state.world.worldMinutes}:${engagement}`),
       phase: "choosing",
       log: [`${encounter.name} bars the road.`],
       partyTurnIndex: this.firstLivingPartyIndex(party),
@@ -1947,7 +1966,11 @@ export class EngineGameBridge implements GameBridge {
     const encounter = encounters.find(({ id }) => id === active.encounterId);
     if (!encounter) return;
     const averageLevel = Math.max(1, Math.round(active.state.enemies.reduce((sum, enemy) => sum + enemy.level, 0) / active.state.enemies.length));
-    const baseReward = calculateBattleReward(encounter.rewardTier, averageLevel, `${state.seed}:${active.encounterId}`);
+    const baseReward = calculateBattleReward(
+      encounter.rewardTier,
+      averageLevel,
+      `${state.seed}:${active.encounterId}:${active.engagement}`
+    );
     const rewardScale = DIFFICULTY_REWARD_MULTIPLIER[difficultyOf(state)];
     const reward = {
       ...baseReward,

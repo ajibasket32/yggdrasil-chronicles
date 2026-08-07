@@ -103,3 +103,37 @@ describe("the same seed and the same actions produce the same game", () => {
     }
   });
 });
+
+describe("a repeatable encounter is not the same lottery every time", () => {
+  it("records and increments an engagement count that survives the save", async () => {
+    const { bridge, saves } = createBridge("engagement-seed");
+    await bridge.newGame(DRAFT);
+
+    // Two engagements; a third is refused while the party is in no state to
+    // fight, which is its own correct behaviour and not what this asserts.
+    for (let fight = 0; fight < 2; fight += 1) {
+      await fightToEnd(bridge, "encounter.mossroad-foragers");
+      await bridge.leaveBattle();
+    }
+
+    const stored = await saves.load("autosave");
+    expect(stored?.world.flags["progress.encounter.encounter.mossroad-foragers"]).toBe(2);
+  });
+
+  it("varies the reward roll across engagements of the same encounter", () => {
+    // The reward seed was `${chronicle}:${encounter}` and nothing else, so
+    // `itemRoll` was fixed for the life of a chronicle: a repeatable encounter
+    // always dropped, or never did. The engagement count is what moves it.
+    const rolls = new Set(
+      [1, 2, 3, 4, 5, 6].map((engagement) =>
+        calculateBattleReward("standard", 4, `chronicle:encounter.mossroad-foragers:${engagement}`).itemRoll)
+    );
+    expect(rolls.size).toBeGreaterThan(1);
+  });
+
+  it("still pays the same reward for the same engagement, so a reload is not a reroll", () => {
+    const first = calculateBattleReward("standard", 4, "chronicle:encounter.mossroad-foragers:2");
+    const second = calculateBattleReward("standard", 4, "chronicle:encounter.mossroad-foragers:2");
+    expect(first).toEqual(second);
+  });
+});
