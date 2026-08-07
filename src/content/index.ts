@@ -5,5 +5,6 @@ export * from "./growth";
 export * from "./ancestryTraits";
 export * from "./recipes";
 export * from "./combatSkills";
+export * from "./enemyAppearance";
 export * from "./portraits";
 export * from "./scenes";

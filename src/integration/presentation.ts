@@ -1,4 +1,6 @@
 import { advancedJobs } from "../content";
+// Re-exported so the bridge keeps one import site for appearance lookups.
+export { spriteForEnemyId } from "../content";
 import type { StatusId } from "../shared/types";
 import type { GameSaveSlot } from "../game";
 
@@ -38,54 +40,6 @@ export const ANCESTRY_TINTS: Readonly<Record<string, number>> = {
   stonekin: 0xc2a878,
   wayfarer: 0xe8c992
 };
-
-/**
- * Enemy portraits use a small/humanoid/boss silhouette split (creature packs,
- * armed humanoids, named bosses) plus a per-enemy-ID tint so every authored
- * enemy reads as visually distinct rather than one repeated red silhouette.
- */
-const ENEMY_SPRITE_KEYS: Readonly<Record<string, string>> = {
-  "enemy.briar-wolf": "sprite.enemy.small",
-  "enemy.root-gnawer": "sprite.enemy.small",
-  "enemy.mireling": "sprite.enemy.small",
-  "enemy.ash-mote": "sprite.enemy.small",
-  "enemy.cinder-hound": "sprite.enemy.small",
-  "enemy.rime-stag": "sprite.enemy.small",
-  "enemy.frost-moth": "sprite.enemy.small",
-  "enemy.star-echo": "sprite.enemy.small",
-  "enemy.cinder-wraith": "sprite.enemy.humanoid",
-  "enemy.brass-sentinel": "sprite.enemy.humanoid",
-  "enemy.pale-custodian": "sprite.enemy.humanoid",
-  "enemy.mire-antler": "sprite.enemy.boss",
-  "enemy.kiln-heart": "sprite.enemy.boss",
-  "enemy.varn-rootless": "sprite.enemy.boss",
-  "enemy.varn-echo": "sprite.enemy.boss"
-};
-
-const ENEMY_TINTS: Readonly<Record<string, number>> = {
-  "enemy.briar-wolf": 0xb0a08c,
-  "enemy.root-gnawer": 0x8a9a6e,
-  "enemy.mireling": 0x6f8f7a,
-  "enemy.ash-mote": 0xd98c5a,
-  "enemy.cinder-hound": 0xb8563f,
-  "enemy.rime-stag": 0xb9c8d6,
-  "enemy.frost-moth": 0xd8e6ec,
-  "enemy.star-echo": 0xb0a2d8,
-  "enemy.cinder-wraith": 0x8a5c8c,
-  "enemy.brass-sentinel": 0xc9a24a,
-  "enemy.pale-custodian": 0x9fb0c2,
-  "enemy.mire-antler": 0x6f8f5a,
-  "enemy.kiln-heart": 0xd9762f,
-  "enemy.varn-rootless": 0x8c3a46,
-  "enemy.varn-echo": 0x6f4a86
-};
-
-export function spriteForEnemyId(enemyId: string): { spriteKey: string; tint: number } {
-  return {
-    spriteKey: ENEMY_SPRITE_KEYS[enemyId] ?? "sprite.enemy.small",
-    tint: ENEMY_TINTS[enemyId] ?? 0xffffff
-  };
-}
 
 /**
  * Player-facing status names. The game previously never explained what any

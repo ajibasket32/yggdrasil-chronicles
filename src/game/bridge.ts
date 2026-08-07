@@ -214,6 +214,13 @@ export interface SceneLineView {
 export interface PendingSceneView {
   id: string;
   lines: SceneLineView[];
+  /**
+   * Set for arrival scenes: the location whose first visit queued this. The
+   * world scene holds the beat until the party is actually there — a player
+   * who steps out before the narration begins should not hear Hollow Root's
+   * dripping water described on the open Mossroad.
+   */
+  locationId?: string;
 }
 
 export interface InteractionView {

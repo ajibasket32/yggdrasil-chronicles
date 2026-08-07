@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { npcs, startingBuildLoadouts } from "../../src/content/campaign";
+import { encounters, npcs, startingBuildLoadouts } from "../../src/content/campaign";
+import { knownEnemyAppearanceIds, spriteForEnemyId } from "../../src/content/enemyAppearance";
 import { knownPortraitTags, portraitAppearance } from "../../src/content/portraits";
 import { scenes } from "../../src/content/scenes";
 
@@ -62,5 +63,22 @@ describe("authored build affinities", () => {
       byAncestry.set(loadout.ancestryId, JSON.stringify(loadout.elementalAffinities));
     }
     expect(new Set(byAncestry.values()).size).toBe(byAncestry.size);
+  });
+});
+
+describe("enemy appearance", () => {
+  it("maps every enemy any encounter fields, explicitly", () => {
+    const known = new Set(knownEnemyAppearanceIds());
+    const fielded = new Set(encounters.flatMap(({ enemyIds }) => enemyIds));
+    for (const enemyId of fielded) {
+      expect(known.has(enemyId), enemyId).toBe(true);
+    }
+  });
+
+  it("draws only from sheets BootScene loads", () => {
+    for (const enemyId of knownEnemyAppearanceIds()) {
+      const look = spriteForEnemyId(enemyId);
+      expect(["sprite.enemy.small", "sprite.enemy.humanoid", "sprite.enemy.boss"]).toContain(look.spriteKey);
+    }
   });
 });

@@ -185,13 +185,19 @@ test.describe("@playtest", () => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.waitForTimeout(400);
 
-    // Back to town; find the vendor (Joryn, the innkeeper) and open the shop.
-    await pressRepeatedly(page, "ArrowLeft", 14);
+    // Back to town. Battle return now resumes the fight's tile rather than
+    // teleporting to the border, so walk west until the crossing registers.
+    for (let step = 0; step < 30; step += 1) {
+      if (await app.getAttribute("data-location-id") === "location.hearthcross") break;
+      await page.keyboard.press("ArrowLeft");
+      await page.waitForTimeout(150);
+    }
     await expect(app).toHaveAttribute("data-location-id", "location.hearthcross");
     await shot(page, "33-town-return");
 
-    // Joryn keeps the inn and the shop: seven tiles east, five south.
-    await pressRepeatedly(page, "ArrowRight", 7);
+    // Joryn keeps the inn and the shop: from the east-edge arrival, six west
+    // and five south.
+    await pressRepeatedly(page, "ArrowLeft", 6);
     await pressRepeatedly(page, "ArrowDown", 5);
     await page.keyboard.press("e");
     await page.waitForTimeout(400);

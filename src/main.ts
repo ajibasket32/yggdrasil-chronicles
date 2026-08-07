@@ -36,6 +36,9 @@ if (app) {
   bridge.subscribe(reflectSnapshot);
 }
 const game = createYggdrasilGame({ parent: "app", bridge });
+// For the sprite-audit harness: lets a test sweep every scene's display list
+// for __MISSING textures. Reading it mutates nothing.
+(window as unknown as { __YGG_GAME?: unknown }).__YGG_GAME = game;
 // The 720px breakpoint in styles.css has always promised a phone build. On a
 // touch device the game now has controls to match it; on a desktop pointer
 // nothing is mounted, so the pad never covers a canvas nobody is tapping.

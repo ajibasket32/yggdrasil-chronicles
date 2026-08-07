@@ -1135,7 +1135,8 @@ export class EngineGameBridge implements GameBridge {
         speaker: line.speaker,
         text: line.text,
         ...(line.portraitTag ? { portraitTag: line.portraitTag } : {})
-      }))
+      })),
+      ...(scene.trigger.kind === "location_first_visit" ? { locationId: scene.trigger.locationId } : {})
     };
   }
 

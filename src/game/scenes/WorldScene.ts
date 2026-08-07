@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { codexSections, locations, npcs, portraitAppearance, vendorProfiles } from "../../content";
+import { codexSections, encounters, locations, npcs, portraitAppearance, spriteForEnemyId, vendorProfiles } from "../../content";
 import { gameSettingsStore, nextTextSize } from "../../settings";
 import type {
   BackupView,
@@ -123,6 +123,8 @@ export class WorldScene extends Phaser.Scene {
   private systemBusy = false;
   /** Set when a palette or type-scale change needs the map repainted on exit. */
   private restyleOnClose = false;
+  /** Where the party stood when a battle began; scene fields survive the scene restart. */
+  private battleReturnGrid?: Point;
   /**
    * The system menu's sub-view. While set, the command list is replaced by a
    * list of save slots (or archived backups) and every key routes to it.
@@ -212,6 +214,9 @@ export class WorldScene extends Phaser.Scene {
   private playPendingScene(): void {
     const scene = this.snapshot.pendingScene;
     if (!scene || this.activeScene || this.activeInteraction) return;
+    // An arrival beat waits for the party to actually be there. It stays
+    // pending, so stepping back into the place plays it then.
+    if (scene.locationId && scene.locationId !== this.snapshot.locationId) return;
     this.activeScene = { id: scene.id, index: 0 };
     this.locked = true;
     this.publishUiState();
@@ -469,7 +474,17 @@ export class WorldScene extends Phaser.Scene {
     this.prompt = undefined;
     this.encounterSprite = undefined;
     this.locked = false;
-    if (resetPlayerPosition) this.playerGrid = this.arrivalPoint();
+    if (resetPlayerPosition) {
+      // Returning from a battle resumes the tile the fight started on. The
+      // scene previously fell through to the arrival point, teleporting a
+      // party two-thirds across a map back to its border after every fight.
+      if (this.battleReturnGrid) {
+        this.playerGrid = this.battleReturnGrid;
+        this.battleReturnGrid = undefined;
+      } else {
+        this.playerGrid = this.arrivalPoint();
+      }
+    }
     const location = locations.find(({ id }) => id === this.snapshot.locationId) ?? locations[0];
     if (!location) return;
 
@@ -496,7 +511,7 @@ export class WorldScene extends Phaser.Scene {
     this.paintLandmarks(kind, regionId);
     this.paintExits(location.id);
     this.spawnNpcs(location.id);
-    if (kind !== "town") this.spawnEncounter(location.id, kind);
+    if (kind !== "town") this.spawnEncounter(location.id);
     this.spawnCurio(location.id);
     this.player = this.add.image(this.playerGrid.x * TILE + 16, this.playerGrid.y * TILE + 16, "sprite.player");
     this.player.setDepth(10);
@@ -720,15 +735,20 @@ export class WorldScene extends Phaser.Scene {
     });
   }
 
-  private spawnEncounter(locationId: string, kind: "wilderness" | "dungeon"): void {
+  private spawnEncounter(locationId: string): void {
     this.encounterSprite?.destroy();
     const activeQuest = this.snapshot.quests.find(({ state }) => state === "active");
     const encounter = selectEncounterForLocation(locationId, activeQuest);
     if (!encounter) return;
     const point = ENCOUNTER_POINTS[locationId] ?? { x: 14, y: 8 };
-    this.encounterSprite = this.add.image(point.x * TILE + 16, point.y * TILE + 16, "sprite.enemy").setDepth(8);
+    // The marker is the encounter's own first foe — the same sprite and tint
+    // battle will show — not a placeholder standing in for "monster".
+    const firstEnemyId = encounters.find(({ id }) => id === encounter)?.enemyIds[0];
+    const look = spriteForEnemyId(firstEnemyId ?? "");
+    this.encounterSprite = this.add.image(point.x * TILE + 16, point.y * TILE + 16, look.spriteKey, 0)
+      .setDepth(8)
+      .setTint(look.tint);
     this.encounterSprite.setData("encounterId", encounter);
-    if (kind === "dungeon") this.encounterSprite.setTint(0xd98c73);
     const guidance = getObjectiveGuidance(this.snapshot);
     if (guidance?.local && (activeQuest?.objectiveKind === "defeat" || activeQuest?.objectiveKind === "collect")) {
       this.add.text(point.x * TILE + 16, point.y * TILE - 15, "◆ OBJECTIVE", {
@@ -2263,6 +2283,7 @@ export class WorldScene extends Phaser.Scene {
       this.showToast("No foe is close enough to engage.");
       return;
     }
+    this.battleReturnGrid = { ...this.playerGrid };
     this.locked = true;
     this.transitioning = true;
     try {

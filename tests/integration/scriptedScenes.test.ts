@@ -123,3 +123,32 @@ describe("scenes fire on their trigger and only once", () => {
     expect(bridge.getSnapshot().pendingScene).toBeUndefined();
   });
 });
+
+describe("arrival scenes wait for their location", () => {
+  it("tags a first-visit scene with its location and keeps it pending elsewhere", async () => {
+    const bridge = new EngineGameBridge(
+      new SaveRepository(new MemorySaveStorage()),
+      () => "scene-location-fixture"
+    );
+    await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "vanguard", difficulty: "normal" });
+    // Clear the campaign-start prologue first.
+    const prologue = bridge.getSnapshot().pendingScene;
+    if (prologue) await bridge.acknowledgeScene(prologue.id);
+
+    // Reaching the Mossroad then Hollow Root queues the arrival beat, tagged.
+    await bridge.travel("location.mossroad");
+    await bridge.travel("location.hollow-root");
+    const arrival = bridge.getSnapshot().pendingScene;
+    expect(arrival?.id).toBe("scene.hollow-root-arrival");
+    expect(arrival?.locationId).toBe("location.hollow-root");
+
+    // Stepping straight back out leaves the beat pending, still tagged for
+    // Hollow Root — the presentation layer holds it rather than narrating a
+    // dripping cavern on the open road.
+    await bridge.travel("location.mossroad");
+    const held = bridge.getSnapshot().pendingScene;
+    expect(held?.id).toBe("scene.hollow-root-arrival");
+    expect(held?.locationId).toBe("location.hollow-root");
+    expect(bridge.getSnapshot().locationId).toBe("location.mossroad");
+  });
+});
