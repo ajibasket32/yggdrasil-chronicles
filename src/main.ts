@@ -1,5 +1,12 @@
 import "./styles.css";
-import { applyMusicSettings, applyPresentationSettings, createYggdrasilGame, mountTouchControls, prefersTouchControls } from "./game";
+import {
+  applyMusicSettings,
+  applyPresentationSettings,
+  createYggdrasilGame,
+  loadKeyboardLayoutLabels,
+  mountTouchControls,
+  prefersTouchControls
+} from "./game";
 import { EngineGameBridge } from "./integration/EngineGameBridge";
 import { MemorySaveStorage, SaveRepository } from "./save";
 import { applySettingsToPhaserGame, gameSettingsStore } from "./settings";
@@ -72,6 +79,10 @@ if (app && prefersTouchControls()) {
   app.dataset.touchControls = "on";
   mountTouchControls(app);
 }
+// Ask the browser what this keyboard actually prints, so the control legends
+// name the keys in front of the player rather than their US-layout positions.
+// Resolves after the first draw; every legend is rebuilt on redraw anyway.
+void loadKeyboardLayoutLabels();
 // The canvas palette and type scale are preferences too, and they have to be
 // in place before the first scene draws.
 applyPresentationSettings(gameSettingsStore.get());

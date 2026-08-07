@@ -131,6 +131,16 @@ export class TitleScene extends Phaser.Scene {
   private onKeyboard(event: KeyboardEvent): void {
     if (this.capturingBinding) {
       event.preventDefault();
+      // Escape backs out instead of becoming the binding. Capture accepted any
+      // key at all, so the one key every player reaches for to cancel was the
+      // one that committed — and a player who opened capture by accident had no
+      // way out that did not rebind something.
+      if (event.code === "Escape") {
+        this.capturingBinding = false;
+        playSound(this, "sfx.cursor");
+        this.drawBindings();
+        return;
+      }
       const action = REBINDABLE_ACTIONS[this.bindingIndex];
       if (!action) return;
       const bindings = rebindKeyboardAction(gameSettingsStore.get().keyBindings, action, event.code);
@@ -257,13 +267,22 @@ export class TitleScene extends Phaser.Scene {
     this.refreshControlsText();
     this.mode = "bindings";
     const bindings = gameSettingsStore.get().keyBindings;
-    const heading = this.add.text(72, 190, "KEYBOARD BINDINGS", { ...TEXT.heading, color: COLORS.gold });
+    const heading = this.add.text(72, 172, "KEYBOARD BINDINGS", { ...TEXT.heading, color: COLORS.gold });
+    // Fifteen actions plus a reset row have to fit above the legend on a
+    // 540-tall canvas. At the old 20px pitch the reset row landed at y 534 and
+    // was clipped off the bottom edge — and it is the only way back from a
+    // binding that has made the game unplayable. Spacing is derived from the
+    // space actually available so the type scale cannot push it off again.
+    const firstRowY = 202;
+    const lastRowY = 470;
+    const rowCount = REBINDABLE_ACTIONS.length + 1;
+    const pitch = Math.max(14, Math.floor((lastRowY - firstRowY) / rowCount));
     const rows = REBINDABLE_ACTIONS.map((action, index) => {
       const selected = index === this.bindingIndex;
       const value = selected && this.capturingBinding ? "PRESS A KEY…" : keyboardBindingLabel(bindings[action]);
       return this.add.text(
         72,
-        226 + index * 20,
+        firstRowY + index * pitch,
         `${selected ? "›" : " "} ${keyboardActionLabel(action).padEnd(24)} ${value}`,
         {
           ...TEXT.body,
@@ -275,7 +294,7 @@ export class TitleScene extends Phaser.Scene {
     const resetSelected = this.bindingIndex === REBINDABLE_ACTIONS.length;
     rows.push(this.add.text(
       72,
-      226 + REBINDABLE_ACTIONS.length * 20 + 8,
+      firstRowY + REBINDABLE_ACTIONS.length * pitch + 6,
       `${resetSelected ? "›" : " "} Reset all bindings to defaults`,
       { ...TEXT.body, fontSize: fontPx(12), color: resetSelected ? COLORS.gold : COLORS.cream }
     ));
@@ -283,15 +302,21 @@ export class TitleScene extends Phaser.Scene {
     this.detailText = this.add.text(
       72,
       500,
-      "Select an action and confirm, then press its new key. Conflicts swap automatically.",
+      this.capturingBinding
+        ? "Press the new key, or press Escape to keep the current one."
+        : "Select an action and confirm, then press its new key. Conflicts swap automatically.",
       TEXT.small
     );
     const selectedAction = REBINDABLE_ACTIONS[this.bindingIndex];
-    if (selectedAction) {
-      announceGameStatus(this.capturingBinding
-        ? `Press a new key for ${keyboardActionLabel(selectedAction)}.`
-        : `Keyboard bindings. ${keyboardActionLabel(selectedAction)} is assigned to ${keyboardBindingLabel(bindings[selectedAction])}.`);
-    }
+    // The reset row is announced too. Skipping it left the one recovery route
+    // both drawn off-canvas and silent to a screen reader.
+    announceGameStatus(
+      this.capturingBinding && selectedAction
+        ? `Press a new key for ${keyboardActionLabel(selectedAction)}, or Escape to cancel.`
+        : selectedAction
+          ? `Keyboard bindings. ${keyboardActionLabel(selectedAction)} is assigned to ${keyboardBindingLabel(bindings[selectedAction])}.`
+          : "Keyboard bindings. Reset all bindings to defaults."
+    );
   }
 
   private drawLoadMenu(message?: string): void {
@@ -551,7 +576,7 @@ export class TitleScene extends Phaser.Scene {
       this.loading = false;
     }
     if (!result.success) {
-      playSound(this, "sfx.cancel");
+      playSound(this, "sfx.cursor");
       if (this.mode === "load") this.drawLoadMenu(`${result.message} Choose another chronicle, or return with Esc / B.`);
       else this.drawTitleMenu(result.message);
       return;

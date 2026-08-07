@@ -138,16 +138,35 @@ export function getBrowserSettingsStorage(): SettingsStorage | null {
 }
 
 /** Loads valid preferences or returns defaults when browser storage is unavailable or corrupt. */
+/**
+ * Whether the operating system has already been asked to reduce motion.
+ *
+ * The in-game toggle existed and this signal was never read, so a player who
+ * had set the preference at the system level — the people most likely to need
+ * it — still met a game full of movement and had to find the setting again.
+ * Only used as the starting value: once a preference has been saved here, the
+ * player's own choice wins, including choosing to turn it back off.
+ */
+export function systemPrefersReducedMotion(
+  windowRef: Window | undefined = typeof window === "undefined" ? undefined : window
+): boolean {
+  return windowRef?.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+}
+
+function untouchedDefaults(): GameSettings {
+  return { ...copySettings(DEFAULT_GAME_SETTINGS), reducedMotion: systemPrefersReducedMotion() };
+}
+
 export function loadGameSettings(storage: SettingsStorage | null = getBrowserSettingsStorage()): GameSettings {
   if (!storage) {
-    return copySettings(DEFAULT_GAME_SETTINGS);
+    return untouchedDefaults();
   }
 
   try {
     const raw = storage.getItem(SETTINGS_STORAGE_KEY);
-    return raw === null ? copySettings(DEFAULT_GAME_SETTINGS) : sanitizeGameSettings(JSON.parse(raw) as unknown);
+    return raw === null ? untouchedDefaults() : sanitizeGameSettings(JSON.parse(raw) as unknown);
   } catch {
-    return copySettings(DEFAULT_GAME_SETTINGS);
+    return untouchedDefaults();
   }
 }
 

@@ -44,7 +44,37 @@ export function keyboardActionLabel(action: KeyboardAction): string {
   return ACTION_LABELS[action];
 }
 
+/** What this keyboard actually prints on each key, where the browser will say. */
+let layoutLabels: ReadonlyMap<string, string> | undefined;
+
+/**
+ * Asks the browser which characters this keyboard prints.
+ *
+ * A `KeyboardEvent.code` names a physical position on a US layout, so deriving
+ * the label from it told an AZERTY player to press "W" for the key their
+ * keyboard prints as "Z", and misdirected a Dvorak player on nearly every
+ * letter. Resolved once at startup; where the API is absent or refused, the
+ * code-derived label below stands, which is the best guess available.
+ */
+export async function loadKeyboardLayoutLabels(
+  navigatorRef: Navigator | undefined = typeof navigator === "undefined" ? undefined : navigator
+): Promise<void> {
+  const keyboard = (navigatorRef as {
+    keyboard?: { getLayoutMap?: () => Promise<ReadonlyMap<string, string>> };
+  } | undefined)?.keyboard;
+  if (!keyboard?.getLayoutMap) return;
+  try {
+    layoutLabels = await keyboard.getLayoutMap();
+  } catch {
+    // Unsupported or refused; the positional label remains.
+  }
+}
+
 export function keyboardCodeLabel(code: string): string {
+  const printed = layoutLabels?.get(code);
+  if (printed !== undefined && printed.length > 0 && printed.length <= 2) {
+    return printed.toUpperCase();
+  }
   if (code.startsWith("Key") && code.length === 4) return code.slice(3);
   if (code.startsWith("Digit") && code.length === 6) return code.slice(5);
   return code
