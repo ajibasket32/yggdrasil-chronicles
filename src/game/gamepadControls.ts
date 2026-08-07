@@ -13,6 +13,7 @@ export type GamepadAction =
   | "journal"
   | "party"
   | "inventory"
+  | "map"
   | "system";
 
 const BUTTON_ACTIONS: Readonly<Record<number, GamepadAction>> = {
@@ -21,6 +22,9 @@ const BUTTON_ACTIONS: Readonly<Record<number, GamepadAction>> = {
   2: "journal", // X / Square
   3: "party", // Y / Triangle
   4: "inventory", // left bumper
+  // The world map had no pad button at all, so a gamepad player could not open
+  // it; the right bumper was the free one beside inventory.
+  5: "map", // right bumper
   8: "system", // Back / Select
   9: "system", // Start / Menu
   12: "up",

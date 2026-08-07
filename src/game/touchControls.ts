@@ -30,7 +30,13 @@ const PAD_BUTTONS: ReadonlyArray<{
   { action: "down", label: "▼", title: "Move down", className: "pad-down", repeats: true },
   { action: "confirm", label: "A", title: "Confirm or interact", className: "pad-a", repeats: false },
   { action: "cancel", label: "B", title: "Cancel, or open the system menu", className: "pad-b", repeats: false },
-  { action: "journal", label: "J", title: "Journal", className: "pad-j", repeats: false }
+  { action: "journal", label: "J", title: "Journal", className: "pad-j", repeats: false },
+  // Without these three, the inventory, the party screen and the world map were
+  // reachable only from a physical keyboard — three of the game's main screens
+  // simply absent on the device the 720px breakpoint has always promised.
+  { action: "inventory", label: "I", title: "Inventory", className: "pad-i", repeats: false },
+  { action: "party", label: "P", title: "Party", className: "pad-p", repeats: false },
+  { action: "map", label: "M", title: "World map", className: "pad-m", repeats: false }
 ];
 
 /** Matches the keyboard auto-repeat the scenes are already tuned for. */

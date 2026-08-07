@@ -9,6 +9,13 @@ describe("standard gamepad controls", () => {
       "confirm", "cancel", "journal", "party", "inventory", "system"
     ]);
   });
+
+  it("gives the world map a button, which it did not have", () => {
+    // Journal, party and inventory were all mapped and the map was not, so a
+    // gamepad player could not open it at all. The right bumper sits beside
+    // inventory on the left.
+    expect(gamepadButtonAction(5)).toBe("map");
+  });
 });
 
 describe("NPC placement", () => {

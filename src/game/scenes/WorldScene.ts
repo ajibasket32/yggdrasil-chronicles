@@ -423,6 +423,7 @@ export class WorldScene extends Phaser.Scene {
     else if (action === "journal") this.toggleOverlay("journal");
     else if (action === "party") this.toggleOverlay("party");
     else if (action === "inventory") this.toggleOverlay("inventory");
+    else if (action === "map") this.toggleOverlay("map");
     else if (action === "system") this.toggleOverlay("system");
   }
 

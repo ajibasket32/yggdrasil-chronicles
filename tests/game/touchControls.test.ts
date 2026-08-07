@@ -218,4 +218,24 @@ describe("touch controls", () => {
     }
     controls.destroy();
   });
+
+  it("offers the screens that used to need a physical keyboard", () => {
+    const { controls, codes } = mount();
+    // Inventory, party and the world map had no touch control at all, so three
+    // of the game's main screens were unreachable on the device the stylesheet
+    // has promised a build for since the first commit.
+    for (const [className, action] of [
+      ["pad-i", "inventory"],
+      ["pad-p", "party"],
+      ["pad-m", "map"]
+    ] as const) {
+      codes.length = 0;
+      const control = button(controls, className);
+      expect(control, className).toBeDefined();
+      control.fire("pointerdown");
+      expect(codes).toEqual([DEFAULT_KEYBOARD_BINDINGS[action][0]]);
+    }
+    controls.destroy();
+  });
 });
+

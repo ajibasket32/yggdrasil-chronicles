@@ -132,6 +132,12 @@ body {
 .pad-a { right: 1.25rem; bottom: 5rem; }
 .pad-b { right: 5rem; bottom: 2rem; }
 .pad-j { right: 1.25rem; bottom: 10rem; width: 2.75rem; height: 2.75rem; font-size: 0.95rem; }
+/* Inventory, party and the world map had no touch control at all, so three of
+   the game's main screens were reachable only from a physical keyboard. Stacked
+   above the face buttons, in the same smaller size as the journal key. */
+.pad-i { right: 4.5rem; bottom: 10rem; width: 2.75rem; height: 2.75rem; font-size: 0.95rem; }
+.pad-p { right: 7.75rem; bottom: 10rem; width: 2.75rem; height: 2.75rem; font-size: 0.95rem; }
+.pad-m { right: 11rem; bottom: 10rem; width: 2.75rem; height: 2.75rem; font-size: 0.95rem; }
 
 /* A pointer-driven browser never mounts the pad, but hide it if one is forced. */
 @media (pointer: fine) and (min-width: 721px) {
