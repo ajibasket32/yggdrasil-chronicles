@@ -36,6 +36,49 @@ test.describe("@playtest", () => {
     }
   }
 
+  /** Reads the world scene's player tile, straight from the game. */
+  async function grid(page: Page): Promise<{ x: number; y: number } | undefined> {
+    return page.evaluate(() => {
+      const game = (window as unknown as { __YGG_GAME?: { scene: { getScene(key: string): unknown } } }).__YGG_GAME;
+      const world = game?.scene.getScene("world") as { playerGrid?: { x: number; y: number } } | undefined;
+      return world?.playerGrid;
+    });
+  }
+
+  /** The current map's encounter tile, if a foe is spawned. */
+  async function encounterTile(page: Page): Promise<{ x: number; y: number } | undefined> {
+    return page.evaluate(() => {
+      const game = (window as unknown as { __YGG_GAME?: { scene: { getScene(key: string): unknown } } }).__YGG_GAME;
+      const world = game?.scene.getScene("world") as { encounterSprite?: { x: number; y: number } } | undefined;
+      const sprite = world?.encounterSprite;
+      return sprite ? { x: Math.round((sprite.x - 16) / 32), y: Math.round((sprite.y - 16) / 32) } : undefined;
+    });
+  }
+
+  /**
+   * Greedy grid walk that re-reads the party's tile after every step, so a
+   * press swallowed by the movement tween costs a step rather than the walk.
+   * Jiggles perpendicular when a villager blocks the lane.
+   */
+  async function walkToTile(page: Page, target: { x: number; y: number }): Promise<void> {
+    for (let step = 0; step < 80; step += 1) {
+      const at = await grid(page);
+      if (!at || (at.x === target.x && at.y === target.y)) return;
+      const key = Math.abs(target.x - at.x) >= Math.abs(target.y - at.y)
+        ? (target.x > at.x ? "ArrowRight" : "ArrowLeft")
+        : (target.y > at.y ? "ArrowDown" : "ArrowUp");
+      await page.keyboard.press(key);
+      await page.waitForTimeout(150);
+      const after = await grid(page);
+      if (after && at.x === after.x && at.y === after.y) {
+        await page.keyboard.press(Math.abs(target.x - at.x) >= Math.abs(target.y - at.y)
+          ? (step % 2 === 0 ? "ArrowDown" : "ArrowUp")
+          : (step % 2 === 0 ? "ArrowRight" : "ArrowLeft"));
+        await page.waitForTimeout(150);
+      }
+    }
+  }
+
   test("full first-session walkthrough with screenshots", async ({ page }) => {
     const errors: string[] = [];
     page.on("console", (message) => {
@@ -147,9 +190,17 @@ test.describe("@playtest", () => {
     await pressRepeatedly(page, "ArrowRight", 17);
     await expect(app).toHaveAttribute("data-location-id", "location.mossroad");
     await shot(page, "24-mossroad");
-    // Two of the town presses crossed into the road, so eleven more reach the
-    // foe at (14,8) from here.
-    await pressRepeatedly(page, "ArrowRight", 11);
+    // Walk to the foe by reading where the party actually is, not by counting
+    // presses. This step used to be "eleven more rights reach the foe at
+    // (14,8)", which assumes every press lands: a step is a 95ms tween and
+    // tryMove drops anything pressed while it runs, so one dropped frame left
+    // the party a tile short, `b` no-opped through isNearEncounter, and the
+    // walkthrough failed here with data-scene still "world". It is the one
+    // place in this file that counted keypresses against a moving target, and
+    // it was the only intermittent failure in the suite.
+    const foe = await encounterTile(page);
+    expect(foe, "an encounter should be spawned on the Mossroad").toBeDefined();
+    await walkToTile(page, { x: foe!.x - 1, y: foe!.y });
     await shot(page, "25-near-encounter");
     await page.keyboard.press("b");
     await expect(app).toHaveAttribute("data-scene", "battle");
