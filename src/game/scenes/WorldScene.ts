@@ -26,6 +26,20 @@ import {
 } from "../worldNavigation";
 
 const TILE = 32;
+
+/**
+ * The hero sheet is 24 columns by 8 rows of 32x32 cells, so a row starts every
+ * 24 frames. Row 0 is the front pose, row 2 and row 6 are the two profiles and
+ * row 4 is the back — checked by rendering each of these four on screen rather
+ * than counted off the image, because an off-by-one row here would walk the
+ * character around in the death pose and no test in the suite could tell.
+ */
+const PLAYER_FACING_FRAMES: Readonly<Record<"up" | "down" | "left" | "right", number>> = {
+  down: 0,
+  right: 48,
+  up: 96,
+  left: 144
+};
 const MAP_COLUMNS = 23;
 const MAP_ROWS = 17;
 
@@ -105,6 +119,8 @@ export class WorldScene extends Phaser.Scene {
   private snapshot!: Readonly<GameSnapshot>;
   private player!: Phaser.GameObjects.Image;
   private playerGrid: Point = { x: 5, y: 9 };
+  /** Kept on the scene so a battle or a location change cannot reset it. */
+  private facing: "up" | "down" | "left" | "right" = "down";
   private moving = false;
   private locked = false;
   /**
@@ -549,6 +565,10 @@ export class WorldScene extends Phaser.Scene {
     this.spawnCurio(location.id);
     this.player = this.add.image(this.playerGrid.x * TILE + 16, this.playerGrid.y * TILE + 16, "sprite.player");
     this.player.setDepth(10);
+    // renderLocation destroys and rebuilds the avatar on every location change
+    // and on every return from a battle, so the facing has to be re-applied
+    // here or the hero snaps back to south after each one.
+    this.facePlayer(this.facing);
     this.applyDayTint();
     playMusic(this, musicForLocation(kind));
     this.renderHud();
@@ -877,8 +897,32 @@ ${objective.objective}` : "No active thread.", {
     this.hud = this.add.container(0, 0, children).setDepth(20);
   }
 
+  /**
+   * Points the avatar the way it is walking.
+   *
+   * The sheet loaded for the hero holds 192 frames — eight facings of six
+   * four-frame cycles — and the game rendered frame 0 of it for the entire
+   * campaign. Walking north, south, east and west all drew the identical
+   * front-facing picture, so the character the player looks at for twenty
+   * hours slid between tiles like a chess piece and never turned.
+   *
+   * Facing is orientation, not motion, so it is applied unconditionally: under
+   * Reduced Motion the hero still turns, it simply does not animate doing it.
+   * Guarded on the frame existing, because BootScene falls back to a single
+   * generated 32x32 texture when the sheet is unavailable.
+   */
+  private facePlayer(direction: "up" | "down" | "left" | "right"): void {
+    this.facing = direction;
+    const frame = PLAYER_FACING_FRAMES[direction];
+    if (!this.player || !this.textures.get("sprite.player").has(String(frame))) return;
+    this.player.setFrame(frame);
+  }
+
   private async tryMove(direction: "up" | "down" | "left" | "right"): Promise<void> {
     if (this.locked || this.moving) return;
+    // Turn before stepping, and turn even when the step is refused — a player
+    // walking into a wall has still expressed which way they mean to face.
+    this.facePlayer(direction);
     const delta: Record<typeof direction, Point> = {
       up: { x: 0, y: -1 },
       down: { x: 0, y: 1 },
