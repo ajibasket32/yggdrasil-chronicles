@@ -17,6 +17,31 @@ Runtime downloads are forbidden. Every committed asset must have a verified lice
 
 Additional battle sprites, UI, and VFX remain blocked until a CC0/public-domain source is verified. Do not use search-preview images or files whose license applies ambiguously.
 
+## Code dependency licences
+
+Every asset above is CC0. One **code** dependency is not, and it is recorded
+here because the consequence is easy to discover far too late.
+
+| Package | Version | Licence | Bundled into the shipped game? |
+| --- | --- | --- | --- |
+| `grapify` | 1.0.7 | **GPL-3.0** | Yes — imported from `src/grapify-boot.ts` |
+
+Installed at the owner's explicit instruction, after the licence, the
+chart-library purpose and the self-referential manifest were all raised. What
+that means in practice, stated plainly:
+
+- GPL-3.0 is a copyleft licence. Because grapify's code is bundled into the
+  JavaScript this game ships, **distributing that build carries GPL-3.0
+  obligations for the whole game** — including publishing its source under
+  GPL-3.0 to anyone who receives it.
+- Nothing conflicts *today*: this project declares no licence of its own, and
+  nothing has been distributed. The obligation attaches the moment a build is
+  handed to anyone else.
+- It is fully reversible. `npm uninstall grapify` plus deleting
+  `src/grapify-boot.ts`, `src/types/grapify.d.ts` and the two lines that call
+  it in `src/main.ts` removes the obligation entirely. Nothing a player can see
+  depends on it.
+
 ## Verified license evidence
 
 - `puny-characters`: the original [Puny Characters source listing](https://opengameart.org/content/puny-characters) identifies Shade's pack as CC0. The committed `puny-characters.zip` checksum above is the archive used to populate the extracted directory.

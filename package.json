@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "express": "^5.1.0",
+    "grapify": "^1.0.7",
     "idb": "^8.0.3",
     "phaser": "^3.90.0",
     "zod": "^4.1.12"
