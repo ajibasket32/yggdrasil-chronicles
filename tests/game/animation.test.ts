@@ -5,15 +5,18 @@ import { gameSettingsStore } from "../../src/settings";
 /**
  * Reduced Motion is where animation code goes wrong in this project.
  *
- * It has already shipped one bug of exactly this shape: a zero-length tween was
- * asked to raise a toast's alpha back to 1, never ran, and the toast was
- * invisible rather than merely static. The same mistake in a scene transition
- * is worse — a fade to black that nothing clears is a game the player cannot
- * leave.
+ * It has already shipped one bug there: Reduced Motion left every toast
+ * invisible rather than merely static.
  *
- * So the rule these helpers encode is not "animate for zero milliseconds" but
- * "do not animate at all, and put the end state on screen immediately". These
- * tests hold them to it.
+ * What these tests pin is the rule the helpers encode — "do not animate at all,
+ * put the end state on screen immediately" rather than "animate for zero
+ * milliseconds". Worth being precise about why, since it was checked rather
+ * than assumed: Phaser *does* complete a zero-length tween, and *does* fire a
+ * zero-length camera fade's completion event, so the naive version happens to
+ * work today. The rule survives that because it does not depend on it — an
+ * object whose alpha is never touched cannot be caught at zero opacity by a
+ * caller that destroys it first, and a fade that is never started cannot leave
+ * the screen black.
  */
 
 /** These helpers read the live settings store, so the test drives that. */

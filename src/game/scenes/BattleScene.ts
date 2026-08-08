@@ -145,6 +145,16 @@ export class BattleScene extends Phaser.Scene {
    * releases both.
    */
   private clearDisplayList(): void {
+    // Tweens do not die with their targets: Phaser's GameObject.destroy never
+    // touches the tween manager, so a tween outlives the object it animates and
+    // keeps running against a corpse. A repaint destroys every object in the
+    // scene, which makes every tween still in flight one of those — so they go
+    // together.
+    //
+    // Without this the idle pulse on the active-actor ring, which repeats
+    // forever by design, gained one more permanent copy on every single
+    // repaint: measured at +2 per action, climbing for the whole fight.
+    this.tweens.killAll();
     this.children.removeAll(true);
   }
 

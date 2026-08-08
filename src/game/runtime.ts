@@ -54,8 +54,14 @@ export function motionDuration(milliseconds: number): number {
  * frame they were created.
  *
  * Under Reduced Motion the object is left exactly as built — fully visible.
- * Setting alpha to 0 first and relying on a zero-length tween to raise it again
- * is the shape that once made every toast in this game invisible.
+ *
+ * Measured, so the reason is on record rather than assumed: Phaser does
+ * complete a zero-length tween on the next update, so dropping alpha to 0 and
+ * tweening it back would in fact recover. The guard is not load-bearing for
+ * that. It is here because the recovery depends on the tween surviving to its
+ * next update, and the caller may destroy the target before then — which is
+ * how this project's one shipped Reduced Motion bug actually worked. Not
+ * touching alpha at all cannot fail that way.
  */
 export function revealObject(
   scene: Phaser.Scene,
@@ -87,13 +93,18 @@ export function fadeSceneIn(scene: Phaser.Scene, milliseconds = 220): void {
 /**
  * Fades out, then runs `action` — starting the next scene, usually.
  *
- * Two deliberate choices. `action` runs off a timer rather than the camera's
- * completion event, so a camera that never reports completion cannot stand
- * between the player and the next screen. And under Reduced Motion the fade is
- * skipped entirely and `action` runs immediately, rather than fading to black
- * over zero milliseconds and hoping something clears it — this project has
- * already shipped one bug where Reduced Motion made an element vanish instead
- * of appear, and a black screen you cannot leave is the worse version of it.
+ * Two deliberate choices, both defensive rather than load-bearing — a
+ * distinction worth stating, because overstating it would invite someone to
+ * "simplify" this later on the wrong grounds. Measured: Phaser fires
+ * `camerafadeoutcomplete` even for a zero-length fade, so the obvious
+ * alternative does work today.
+ *
+ * `action` still runs off a timer rather than that event, so the next screen
+ * never depends on a camera effect reporting back at all. And under Reduced
+ * Motion the fade is skipped outright instead of run at zero length, so there
+ * is no window — however brief — in which the screen is black and something
+ * else has to clear it. A black screen the player cannot leave is the worst
+ * failure this file can produce, and neither path can reach it.
  */
 export function fadeSceneOutThen(scene: Phaser.Scene, action: () => void, milliseconds = 200): void {
   const duration = motionDuration(milliseconds);
