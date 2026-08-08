@@ -79,6 +79,35 @@ test.describe("@playtest", () => {
     }
   }
 
+  /**
+   * Walks in one direction until a named location is reached, then stops.
+   *
+   * Counting presses is wrong in both directions: one press swallowed by the
+   * 95ms movement tween leaves the party short of the crossing, and one press
+   * too many carries it straight through to the next map. This walk failed
+   * exactly that way — 22 lefts overshot the Mossroad into Hearthcross.
+   * Jiggles perpendicular when a villager blocks the lane.
+   */
+  async function crossTo(
+    page: Page,
+    app: ReturnType<Page["locator"]>,
+    direction: "ArrowRight" | "ArrowLeft" | "ArrowUp" | "ArrowDown",
+    locationId: string
+  ): Promise<void> {
+    for (let step = 0; step < 60; step += 1) {
+      if (await app.getAttribute("data-location-id") === locationId) return;
+      const at = await grid(page);
+      await page.keyboard.press(direction);
+      await page.waitForTimeout(160);
+      const after = await grid(page);
+      if (at && after && at.x === after.x && at.y === after.y
+        && await app.getAttribute("data-location-id") !== locationId) {
+        await page.keyboard.press(step % 2 === 0 ? "ArrowDown" : "ArrowUp");
+        await page.waitForTimeout(150);
+      }
+    }
+  }
+
   test("full first-session walkthrough with screenshots", async ({ page }) => {
     const errors: string[] = [];
     page.on("console", (message) => {
@@ -187,7 +216,7 @@ test.describe("@playtest", () => {
     // East to the Mossroad and into a battle. After Orren (three rows below
     // Mara's lane) the party climbs back to the lane the encounter walk uses.
     await pressRepeatedly(page, "ArrowUp", 5);
-    await pressRepeatedly(page, "ArrowRight", 17);
+    await crossTo(page, app, "ArrowRight", "location.mossroad");
     await expect(app).toHaveAttribute("data-location-id", "location.mossroad");
     await shot(page, "24-mossroad");
     // Walk to the foe by reading where the party actually is, not by counting

@@ -121,6 +121,17 @@ export class WorldScene extends Phaser.Scene {
   private playerGrid: Point = { x: 5, y: 9 };
   /** Kept on the scene so a battle or a location change cannot reset it. */
   private facing: "up" | "down" | "left" | "right" = "down";
+  /**
+   * Which panel the reveal fade has already been spent on.
+   *
+   * Every keystroke in a menu rebuilds the whole overlay, so fading it in on
+   * each rebuild made it flash from transparent on every cursor move — sampled
+   * frame by frame, alpha went 1 → 0 → 0.56 → 1 on each press. A reveal belongs
+   * to opening a panel, not to redrawing one already open, and the panel's kind
+   * is what distinguishes those: `drawSystemOverlay` clears `overlay` itself
+   * before rebuilding, so the object's presence cannot tell them apart.
+   */
+  private revealedOverlayKind: OverlayKind | "scene" | "none" = "none";
   private moving = false;
   private locked = false;
   /**
@@ -329,8 +340,9 @@ export class WorldScene extends Phaser.Scene {
 
     this.overlay = this.add.container(0, 0, children).setDepth(70);
 
-    revealObject(this, this.overlay);
+    this.revealOverlay();
     this.overlayKind = undefined;
+    this.revealedOverlayKind = "none";
   }
 
   /**
@@ -518,6 +530,7 @@ export class WorldScene extends Phaser.Scene {
     this.hud = undefined;
     this.overlay = undefined;
     this.overlayKind = undefined;
+    this.revealedOverlayKind = "none";
     this.prompt = undefined;
     this.encounterSprite = undefined;
     // A repaint must not reopen input that something else is holding shut. This
@@ -911,6 +924,17 @@ ${objective.objective}` : "No active thread.", {
    * Guarded on the frame existing, because BootScene falls back to a single
    * generated 32x32 texture when the sheet is unavailable.
    */
+  /** Fades a panel in the first time it appears, and not on any redraw after. */
+  private revealOverlay(): void {
+    if (!this.overlay) return;
+    // A dialogue or scripted beat has no overlay kind, so it takes its own key
+    // rather than sharing the closed sentinel.
+    const kind = this.overlayKind ?? "scene";
+    if (this.revealedOverlayKind === kind) return;
+    this.revealedOverlayKind = kind;
+    revealObject(this, this.overlay);
+  }
+
   private facePlayer(direction: "up" | "down" | "left" | "right"): void {
     this.facing = direction;
     const frame = PLAYER_FACING_FRAMES[direction];
@@ -1266,7 +1290,7 @@ ${objective.objective}` : "No active thread.", {
       children.push(this.add.text(647, panelY + panelHeight - 30, "Enter ▾", TEXT.small));
     }
     this.overlay = this.add.container(0, 0, children).setDepth(40);
-    revealObject(this, this.overlay);
+    this.revealOverlay();
   }
 
   private async advanceDialogue(): Promise<void> {
@@ -1384,7 +1408,7 @@ ${objective.objective}` : "No active thread.", {
       color: COLORS.muted
     }).setOrigin(0.5));
     this.overlay = this.add.container(0, 0, children).setDepth(100);
-    revealObject(this, this.overlay);
+    this.revealOverlay();
   }
 
   /**
@@ -1419,7 +1443,7 @@ ${objective.objective}` : "No active thread.", {
     }).setOrigin(0.5, 0);
     const hint = this.add.text(480, 500, "Esc / B  Return to the road", { ...TEXT.small, color: COLORS.muted }).setOrigin(0.5);
     this.overlay = this.add.container(0, 0, [veil, title, body, hint]).setDepth(100);
-    revealObject(this, this.overlay);
+    this.revealOverlay();
     this.overlayKind = "ending";
   }
 
@@ -1500,7 +1524,7 @@ ${objective.objective}` : "No active thread.", {
       TEXT.small
     );
     this.overlay = this.add.container(0, 0, [scrim, panel, title, rule, body, bodyClip, hint, ...(overflow.marker ? [overflow.marker] : [])]).setDepth(50);
-    revealObject(this, this.overlay);
+    this.revealOverlay();
   }
 
   /**
@@ -1595,6 +1619,7 @@ ${objective.objective}` : "No active thread.", {
     this.overlay?.destroy();
     this.overlay = undefined;
     this.overlayKind = undefined;
+    this.revealedOverlayKind = "none";
     this.locked = false;
     this.toggleOverlay(kind);
   }
@@ -1834,7 +1859,7 @@ ${objective.objective}` : "No active thread.", {
     body.setMask(bodyClip.createGeometryMask());
     const hint = this.add.text(88, 462, this.interactiveOverlayHint(), TEXT.small);
     this.overlay = this.add.container(0, 0, [scrim, panel, title, rule, body, bodyClip, hint, ...(overflow.marker ? [overflow.marker] : [])]).setDepth(50);
-    revealObject(this, this.overlay);
+    this.revealOverlay();
   }
 
   private interactiveOverlayContent(compact = false): string {
@@ -2166,6 +2191,7 @@ ${objective.objective}` : "No active thread.", {
       this.overlay?.destroy();
       this.overlay = undefined;
       this.overlayKind = undefined;
+    this.revealedOverlayKind = "none";
       this.locked = false;
       this.renderLocation(false);
       // The early return skipped the publish the ordinary path does, so the
@@ -2177,6 +2203,7 @@ ${objective.objective}` : "No active thread.", {
     this.overlay?.destroy();
     this.overlay = undefined;
     this.overlayKind = undefined;
+    this.revealedOverlayKind = "none";
     this.activeInteraction = undefined;
     this.locked = false;
     this.publishUiState();

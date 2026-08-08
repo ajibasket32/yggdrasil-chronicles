@@ -30,6 +30,44 @@ test.describe("@playtest", () => {
     }
   }
 
+  /** Reads the world scene's player tile, straight from the game. */
+  async function grid(page: Page): Promise<{ x: number; y: number } | undefined> {
+    return page.evaluate(() => {
+      const game = (window as unknown as { __YGG_GAME?: { scene: { getScene(key: string): unknown } } }).__YGG_GAME;
+      const world = game?.scene.getScene("world") as { playerGrid?: { x: number; y: number } } | undefined;
+      return world?.playerGrid;
+    });
+  }
+
+  /**
+   * Walks in one direction until a named location is reached, then stops.
+   *
+   * Counting presses is wrong in both directions: one press swallowed by the
+   * 95ms movement tween leaves the party short of the crossing, and one press
+   * too many carries it straight through to the next map. This walk failed
+   * exactly that way — 22 lefts overshot the Mossroad into Hearthcross.
+   * Jiggles perpendicular when a villager blocks the lane.
+   */
+  async function crossTo(
+    page: Page,
+    app: ReturnType<Page["locator"]>,
+    direction: "ArrowRight" | "ArrowLeft" | "ArrowUp" | "ArrowDown",
+    locationId: string
+  ): Promise<void> {
+    for (let step = 0; step < 60; step += 1) {
+      if (await app.getAttribute("data-location-id") === locationId) return;
+      const at = await grid(page);
+      await page.keyboard.press(direction);
+      await page.waitForTimeout(160);
+      const after = await grid(page);
+      if (at && after && at.x === after.x && at.y === after.y
+        && await app.getAttribute("data-location-id") !== locationId) {
+        await page.keyboard.press(step % 2 === 0 ? "ArrowDown" : "ArrowUp");
+        await page.waitForTimeout(150);
+      }
+    }
+  }
+
   test("mid-game: Emberwake, the ledger, and the second region", async ({ page }) => {
     const errors: string[] = [];
     page.on("console", (message) => {
@@ -58,9 +96,9 @@ test.describe("@playtest", () => {
 
     // East to the Mossroad, then east again to Emberwake.
     await pressRepeatedly(page, "ArrowUp", 2);
-    await pressRepeatedly(page, "ArrowRight", 17);
+    await crossTo(page, app, "ArrowRight", "location.mossroad");
     await expect(app).toHaveAttribute("data-location-id", "location.mossroad");
-    await pressRepeatedly(page, "ArrowRight", 22);
+    await crossTo(page, app, "ArrowRight", "location.emberwake");
     await expect(app).toHaveAttribute("data-location-id", "location.emberwake");
     await shot(page, "03-emberwake-arrival-scene");
     await clearScene(page);
@@ -88,7 +126,7 @@ test.describe("@playtest", () => {
     await page.waitForTimeout(200);
 
     // Walk back west and look at the Mossroad again on the way out.
-    await pressRepeatedly(page, "ArrowLeft", 22);
+    await crossTo(page, app, "ArrowLeft", "location.mossroad");
     await expect(app).toHaveAttribute("data-location-id", "location.mossroad");
     await shot(page, "09-mossroad-return");
 
