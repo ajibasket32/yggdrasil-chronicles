@@ -49,6 +49,62 @@ export function motionDuration(milliseconds: number): number {
   return gameSettingsStore.get().reducedMotion ? 0 : milliseconds;
 }
 
+/**
+ * Fades a freshly built object in, for panels that used to appear whole on the
+ * frame they were created.
+ *
+ * Under Reduced Motion the object is left exactly as built — fully visible.
+ * Setting alpha to 0 first and relying on a zero-length tween to raise it again
+ * is the shape that once made every toast in this game invisible.
+ */
+export function revealObject(
+  scene: Phaser.Scene,
+  target: Phaser.GameObjects.GameObject & { setAlpha: (value: number) => unknown },
+  milliseconds = 130
+): void {
+  const duration = motionDuration(milliseconds);
+  if (duration <= 0) return;
+  target.setAlpha(0);
+  scene.tweens.add({ targets: target, alpha: 1, duration, ease: "Quad.easeOut" });
+}
+
+/** The colour every scene fades through, so no transition looks like a different game. */
+const FADE_INK = [10, 18, 24] as const;
+
+/**
+ * Fades a scene in from the transition colour.
+ *
+ * Safe to call unconditionally: under Reduced Motion it does nothing at all
+ * rather than running a zero-length fade, because the camera is already fully
+ * visible and the only thing a zero-length fade can do is flicker.
+ */
+export function fadeSceneIn(scene: Phaser.Scene, milliseconds = 220): void {
+  const duration = motionDuration(milliseconds);
+  if (duration <= 0) return;
+  scene.cameras.main.fadeIn(duration, ...FADE_INK);
+}
+
+/**
+ * Fades out, then runs `action` — starting the next scene, usually.
+ *
+ * Two deliberate choices. `action` runs off a timer rather than the camera's
+ * completion event, so a camera that never reports completion cannot stand
+ * between the player and the next screen. And under Reduced Motion the fade is
+ * skipped entirely and `action` runs immediately, rather than fading to black
+ * over zero milliseconds and hoping something clears it — this project has
+ * already shipped one bug where Reduced Motion made an element vanish instead
+ * of appear, and a black screen you cannot leave is the worse version of it.
+ */
+export function fadeSceneOutThen(scene: Phaser.Scene, action: () => void, milliseconds = 200): void {
+  const duration = motionDuration(milliseconds);
+  if (duration <= 0) {
+    action();
+    return;
+  }
+  scene.cameras.main.fadeOut(duration, ...FADE_INK);
+  scene.time.delayedCall(duration + 10, action);
+}
+
 export function playSound(scene: Phaser.Scene, key: string): void {
   // Effects carry their own preference. They used to ride the global sound
   // manager's mute and volume, which the music shares — so silencing effects

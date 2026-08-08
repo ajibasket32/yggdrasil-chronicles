@@ -4,7 +4,7 @@ import type { BattleAction, BattleView, GameBridge, GameSnapshot } from "../brid
 import { gamepadButtonAction, pollStickDirection, type StickRepeatState } from "../gamepadControls";
 import { playMusic } from "../music";
 import { keyboardActionForCode, keyboardCodeLabel } from "../keyboardControls";
-import { announceGameStatus, announceScene, COLORS, fontPx, getBridge, mixColour, motionDuration, playSound, TEXT } from "../runtime";
+import { announceGameStatus, announceScene, COLORS, fadeSceneIn, fadeSceneOutThen, fontPx, getBridge, mixColour, motionDuration, playSound, TEXT } from "../runtime";
 
 const ACTIONS: Array<{ id: BattleAction; label: string; hint: string }> = [
   { id: "attack", label: "ATTACK", hint: "A reliable physical strike." },
@@ -32,6 +32,16 @@ export class BattleScene extends Phaser.Scene {
   private subMenuIndex = 0;
   /** Where each actor was last drawn, so event feedback can be placed on them. */
   private readonly actorPositions = new Map<string, { x: number; y: number; sprite: Phaser.GameObjects.Image }>();
+  /**
+   * The pools each actor was last drawn with.
+   *
+   * The scene repaints from scratch on every snapshot, so a bar has no memory
+   * of its own: damage simply replaced one rectangle with a shorter one and the
+   * single clearest piece of feedback in a JRPG — watching health drain — never
+   * happened. Keeping the previous value is what lets the new bar animate from
+   * where the old one was.
+   */
+  private readonly lastPools = new Map<string, { hp: number; mp: number; alive: boolean }>();
   private unsubscribe?: () => void;
   private resolving = false;
   private readonly stickState: StickRepeatState = { nextAt: 0 };
@@ -53,7 +63,13 @@ export class BattleScene extends Phaser.Scene {
     this.actionIndex = 0;
     this.subMenu = "none";
     this.subMenuIndex = 0;
+    // Cleared with the cursor: a fresh fight must not drain its bars from the
+    // numbers the last one ended on.
+    this.lastPools.clear();
     this.cameras.main.setBackgroundColor(0x151923);
+    // The world fades to black before starting this scene; without a matching
+    // fade in, the fight snapped into full brightness out of that black.
+    fadeSceneIn(this, 160);
     this.render();
     this.bindKeys();
     this.unsubscribe = this.bridge.subscribe((snapshot) => {
@@ -226,14 +242,15 @@ export class BattleScene extends Phaser.Scene {
     party.forEach((actor, index) => {
       const x = 152 + index * 92;
       const y = 262 - (index % 2) * 24;
+      const previous = this.lastPools.get(actor.id);
       const key = actor.spriteKey && this.textures.exists(actor.spriteKey) ? actor.spriteKey : "sprite.player";
       const sprite = this.add.image(x, y, key).setScale(1.8).setFlipX(true);
       if (actor.tint !== undefined) sprite.setTint(actor.tint);
       if (!actor.alive) sprite.setTint(0x4d545d);
       this.actorPositions.set(actor.id, { x, y, sprite });
       this.drawActiveActorMarker(x, y, actor.id === battle.activeActorId, actor.name);
-      this.drawHealth(x - 48, y + 38, 96, actor.hp, actor.maxHp, true);
-      this.drawResource(x - 48, y + 47, 96, actor.mp, actor.maxMp);
+      this.drawHealth(x - 48, y + 38, 96, actor.hp, actor.maxHp, true, previous?.hp ?? actor.hp);
+      this.drawResource(x - 48, y + 47, 96, actor.mp, actor.maxMp, previous?.mp ?? actor.mp);
       this.drawActorLabel(x - 48, y + 54, `${actor.name}  ${actor.hp}/${actor.maxHp}`);
       this.drawStatuses(x - 48, y + 68, actor.statuses);
     });
@@ -246,13 +263,35 @@ export class BattleScene extends Phaser.Scene {
       // beside a party member three times their height.
       const sprite = this.add.image(x, y, key).setScale(actor.maxHp > 80 ? 4.6 : 3.6);
       if (actor.tint !== undefined) sprite.setTint(actor.tint);
-      if (!actor.alive) sprite.setAlpha(0.25);
+      const previous = this.lastPools.get(actor.id);
+      if (!actor.alive) this.fadeDefeated(sprite, previous?.alive !== false);
       this.actorPositions.set(actor.id, { x, y, sprite });
       this.drawActiveActorMarker(x, y, actor.id === battle.activeActorId, this.titleCase(actor.name));
-      this.drawHealth(x - 48, y + 46, 96, actor.hp, actor.maxHp, false);
+      this.drawHealth(x - 48, y + 46, 96, actor.hp, actor.maxHp, false, previous?.hp ?? actor.hp);
       this.drawActorLabel(x - 48, y + 55, `${this.titleCase(actor.name)}  ${actor.hp}/${actor.maxHp}`);
       this.drawStatuses(x - 48, y + 69, actor.statuses);
     });
+
+    // Recorded after painting, so the next repaint animates from what the
+    // player is looking at right now rather than from the newest numbers.
+    for (const actor of battle.actors) {
+      this.lastPools.set(actor.id, { hp: actor.hp, mp: actor.mp, alive: actor.alive });
+    }
+  }
+
+  /**
+   * A defeated foe dims out instead of being drawn faint from the first frame.
+   * `justFell` is false on every repaint after the one that killed it, so the
+   * fade plays once and the body then simply stays dim.
+   */
+  private fadeDefeated(sprite: Phaser.GameObjects.Image, justFell: boolean): void {
+    const duration = motionDuration(justFell ? 420 : 0);
+    if (duration <= 0) {
+      sprite.setAlpha(0.25);
+      return;
+    }
+    sprite.setAlpha(1);
+    this.tweens.add({ targets: sprite, alpha: 0.25, duration, ease: "Quad.easeIn" });
   }
 
   /**
@@ -336,11 +375,11 @@ export class BattleScene extends Phaser.Scene {
     });
   }
 
-  private drawResource(x: number, y: number, width: number, mp: number, maxMp: number): void {
+  private drawResource(x: number, y: number, width: number, mp: number, maxMp: number, previousMp: number): void {
     if (maxMp <= 0) return;
-    const ratio = Phaser.Math.Clamp(mp / maxMp, 0, 1);
     this.add.rectangle(x, y, width, 4, 0x11151c).setOrigin(0);
-    this.add.rectangle(x, y, width * ratio, 4, 0x5f8fd0).setOrigin(0);
+    const fill = this.add.rectangle(x, y, width, 4, 0x5f8fd0).setOrigin(0);
+    this.drainBar(fill, mp, previousMp, maxMp, 240);
   }
 
   /** Status tokens, so the one screen where conditions decide play finally shows them. */
@@ -352,7 +391,21 @@ export class BattleScene extends Phaser.Scene {
 
   private drawActiveActorMarker(x: number, y: number, active: boolean, name: string): void {
     if (!active) return;
-    this.add.circle(x, y, 42, 0xf2c66d, 0.1).setStrokeStyle(3, 0xf2c66d);
+    const ring = this.add.circle(x, y, 42, 0xf2c66d, 0.1).setStrokeStyle(3, 0xf2c66d);
+    // A slow breath on the ring. Whose turn it is was drawn as a perfectly
+    // still circle, which on a screen where nothing else moves between actions
+    // reads as a frozen game rather than as one waiting for you.
+    const pulse = motionDuration(900);
+    if (pulse > 0) {
+      this.tweens.add({
+        targets: ring,
+        scale: 1.07,
+        duration: pulse,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut"
+      });
+    }
     this.add.text(x, y - 62, "ACTIVE", {
       ...TEXT.small,
       color: COLORS.gold,
@@ -362,10 +415,49 @@ export class BattleScene extends Phaser.Scene {
     this.add.text(28, 74, `ACTING: ${name.toUpperCase()}`, { ...TEXT.small, color: COLORS.gold });
   }
 
-  private drawHealth(x: number, y: number, width: number, hp: number, maxHp: number, party: boolean): void {
-    const ratio = maxHp > 0 ? Phaser.Math.Clamp(hp / maxHp, 0, 1) : 0;
+  private drawHealth(
+    x: number,
+    y: number,
+    width: number,
+    hp: number,
+    maxHp: number,
+    party: boolean,
+    previousHp: number
+  ): void {
     this.add.rectangle(x, y, width, 7, 0x11151c).setOrigin(0);
-    this.add.rectangle(x, y, width * ratio, 7, party ? 0x64ba83 : 0xc95d63).setOrigin(0);
+    const fill = this.add.rectangle(x, y, width, 7, party ? 0x64ba83 : 0xc95d63).setOrigin(0);
+    this.drainBar(fill, hp, previousHp, maxHp, 300);
+  }
+
+  /**
+   * Scales a bar from what it last read to what it reads now.
+   *
+   * Under Reduced Motion the end state is applied directly rather than tweened
+   * over zero milliseconds: a zero-length tween that never reports completion
+   * would leave the bar frozen at the *old* value, which is worse than not
+   * animating at all — it would be actively lying about the actor's health.
+   */
+  private drainBar(
+    fill: Phaser.GameObjects.Rectangle,
+    value: number,
+    previous: number,
+    maximum: number,
+    milliseconds: number
+  ): void {
+    const ratio = maximum > 0 ? Phaser.Math.Clamp(value / maximum, 0, 1) : 0;
+    const from = maximum > 0 ? Phaser.Math.Clamp(previous / maximum, 0, 1) : 0;
+    const duration = motionDuration(milliseconds);
+    if (duration <= 0 || from === ratio) {
+      fill.setScale(ratio, 1);
+      return;
+    }
+    fill.setScale(from, 1);
+    this.tweens.add({
+      targets: fill,
+      scaleX: ratio,
+      duration,
+      ease: "Quad.easeOut"
+    });
   }
 
   /**
@@ -383,7 +475,24 @@ export class BattleScene extends Phaser.Scene {
     this.add.rectangle(0, 340, 960, 2, 0x6f8f82).setOrigin(0);
     if (battle.phase === "victory" || battle.phase === "defeat" || battle.phase === "escaped") {
       const label = battle.phase === "victory" ? "VICTORY" : battle.phase === "escaped" ? "SAFE WITHDRAWAL" : "THE PARTY FALLS";
-      this.add.text(38, 370, label, { ...TEXT.title, color: battle.phase === "defeat" ? "#e46e76" : COLORS.gold });
+      const banner = this.add.text(38, 370, label, {
+        ...TEXT.title,
+        color: battle.phase === "defeat" ? "#e46e76" : COLORS.gold
+      });
+      // The banner lands rather than appearing. A fight's outcome is the one
+      // moment in a battle that deserves a beat of its own, and it was drawn
+      // in the same flat repaint as the hint text under it.
+      const land = motionDuration(260);
+      if (land > 0) {
+        banner.setScale(battle.phase === "defeat" ? 0.96 : 1.16).setAlpha(0);
+        this.tweens.add({
+          targets: banner,
+          scale: 1,
+          alpha: 1,
+          duration: land,
+          ease: battle.phase === "defeat" ? "Sine.easeOut" : "Back.easeOut"
+        });
+      }
       this.add.text(40, 431, battle.log.at(-1) ?? "", TEXT.body);
       this.add.text(40, 493, "Enter  Return to the road", TEXT.small);
       return;
@@ -525,7 +634,9 @@ export class BattleScene extends Phaser.Scene {
         console.error("Leaving battle failed", error);
       } finally {
         this.resolving = false;
-        this.scene.start("world");
+        // Every other transition in the game fades; leaving a battle was the
+        // one hard cut, so every fight ended on a jolt.
+        fadeSceneOutThen(this, () => this.scene.start("world"));
       }
       return;
     }

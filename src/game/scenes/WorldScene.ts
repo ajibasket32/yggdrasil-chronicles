@@ -17,7 +17,7 @@ import { windowAround, windowFooter, type OverlayWindow } from "../overlayWindow
 import { BUILDING_TILES, groundTile, tileVariant, treeAt, TREE_TILES, type TileRef } from "../tileset";
 import { getNpcSpawnPoints } from "../npcPlacement";
 import { musicForLocation, playMusic, stopMusic } from "../music";
-import { announceGameStatus, announceScene, COLORS, fontPx, getBridge, motionDuration, playSound, rowsThatFit, setSceneFlag, TEXT } from "../runtime";
+import { announceGameStatus, announceScene, COLORS, fadeSceneOutThen, fontPx, getBridge, motionDuration, playSound, revealObject, rowsThatFit, setSceneFlag, TEXT } from "../runtime";
 import {
   getLocationExits,
   getObjectiveGuidance,
@@ -312,6 +312,8 @@ export class WorldScene extends Phaser.Scene {
     children.push(this.add.text(40, 500, `${active.index + 1} / ${scene.lines.length}   Enter  Continue`, TEXT.small));
 
     this.overlay = this.add.container(0, 0, children).setDepth(70);
+
+    revealObject(this, this.overlay);
     this.overlayKind = undefined;
   }
 
@@ -963,6 +965,8 @@ ${objective.objective}` : "No active thread.", {
    * are governed by the deterministic systems, not by lighting.
    */
   private applyDayTint(): void {
+    // What the sky was showing a moment ago, so the new wash can grow out of it.
+    const previousAlpha = (this.dayTint?.fillAlpha ?? 0);
     this.dayTint?.destroy();
     const minutes = this.snapshot.worldMinutes % 1440;
     const hour = minutes / 60;
@@ -982,9 +986,23 @@ ${objective.objective}` : "No active thread.", {
       this.dayTint = undefined;
       return;
     }
+    // The wash covers the whole map, so appearing at full strength in one frame
+    // made dusk and nightfall land as a flicker rather than as time passing.
+    // Resting jumps the clock by eight hours, which is exactly when it shows.
     this.dayTint = this.add.rectangle(0, 0, MAP_COLUMNS * TILE, MAP_ROWS * TILE, color, alpha)
       .setOrigin(0)
       .setDepth(12);
+    const duration = motionDuration(previousAlpha > 0 ? 700 : 900);
+    if (duration > 0) {
+      this.dayTint.setFillStyle(color, previousAlpha);
+      this.tweens.addCounter({
+        from: previousAlpha,
+        to: alpha,
+        duration,
+        ease: "Sine.easeInOut",
+        onUpdate: (tween) => this.dayTint?.setFillStyle(color, tween.getValue() ?? alpha)
+      });
+    }
   }
 
   /** A once-per-chronicle searchable object, so the world has something to find besides people. */
@@ -1204,6 +1222,7 @@ ${objective.objective}` : "No active thread.", {
       children.push(this.add.text(647, panelY + panelHeight - 30, "Enter ▾", TEXT.small));
     }
     this.overlay = this.add.container(0, 0, children).setDepth(40);
+    revealObject(this, this.overlay);
   }
 
   private async advanceDialogue(): Promise<void> {
@@ -1321,6 +1340,7 @@ ${objective.objective}` : "No active thread.", {
       color: COLORS.muted
     }).setOrigin(0.5));
     this.overlay = this.add.container(0, 0, children).setDepth(100);
+    revealObject(this, this.overlay);
   }
 
   /**
@@ -1355,6 +1375,7 @@ ${objective.objective}` : "No active thread.", {
     }).setOrigin(0.5, 0);
     const hint = this.add.text(480, 500, "Esc / B  Return to the road", { ...TEXT.small, color: COLORS.muted }).setOrigin(0.5);
     this.overlay = this.add.container(0, 0, [veil, title, body, hint]).setDepth(100);
+    revealObject(this, this.overlay);
     this.overlayKind = "ending";
   }
 
@@ -1435,6 +1456,7 @@ ${objective.objective}` : "No active thread.", {
       TEXT.small
     );
     this.overlay = this.add.container(0, 0, [scrim, panel, title, rule, body, bodyClip, hint, ...(overflow.marker ? [overflow.marker] : [])]).setDepth(50);
+    revealObject(this, this.overlay);
   }
 
   /**
@@ -1768,6 +1790,7 @@ ${objective.objective}` : "No active thread.", {
     body.setMask(bodyClip.createGeometryMask());
     const hint = this.add.text(88, 462, this.interactiveOverlayHint(), TEXT.small);
     this.overlay = this.add.container(0, 0, [scrim, panel, title, rule, body, bodyClip, hint, ...(overflow.marker ? [overflow.marker] : [])]).setDepth(50);
+    revealObject(this, this.overlay);
   }
 
   private interactiveOverlayContent(compact = false): string {
@@ -2461,8 +2484,7 @@ ${objective.objective}` : "No active thread.", {
     // authored arrival point. The battle return tile goes for the same reason.
     this.entryDirection = undefined;
     this.battleReturnGrid = undefined;
-    this.cameras.main.fadeOut(motionDuration(180), 10, 18, 24);
-    this.time.delayedCall(motionDuration(190), () => this.scene.start("title"));
+    fadeSceneOutThen(this, () => this.scene.start("title"), 180);
   }
 
   private async launchEncounter(): Promise<void> {

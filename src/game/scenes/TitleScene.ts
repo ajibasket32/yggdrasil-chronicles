@@ -17,7 +17,7 @@ import {
   keyboardCodeLabel,
   rebindKeyboardAction
 } from "../keyboardControls";
-import { announceGameStatus, announceScene, COLORS, fontPx, getBridge, mixColour, motionDuration, playSound, TEXT } from "../runtime";
+import { announceGameStatus, announceScene, COLORS, fadeSceneIn, fadeSceneOutThen, fontPx, getBridge, mixColour, motionDuration, playSound, TEXT } from "../runtime";
 
 const NAME_CHOICES = ["Rowan", "Aster", "Marlowe", "Sage", "Kestrel", "Vale"] as const;
 /** Slots the load menu offers, in display order. `quick` is listed so a quick save is recoverable from the title. */
@@ -79,6 +79,8 @@ export class TitleScene extends Phaser.Scene {
   private lockupExtras: Phaser.GameObjects.GameObject[] = [];
   /** Bottom of the wordmark block, so dense screens can start right under it. */
   private lockupBottom = 0;
+  /** The row the selection bar was last drawn on, so it can slide to the next one. */
+  private previousRowY?: number;
   private detailText?: Phaser.GameObjects.Text;
   private controlsText?: Phaser.GameObjects.Text;
   private creationTexts: Phaser.GameObjects.Text[] = [];
@@ -104,12 +106,16 @@ export class TitleScene extends Phaser.Scene {
     // on its way out — would refuse every confirm on the next visit here.
     this.loading = false;
     this.confirmingNewGame = false;
+    this.previousRowY = undefined;
     this.cameras.main.setBackgroundColor(COLORS.ink);
+    // Boot hands straight over to the title, so without this the wordmark and
+    // the tree simply appeared, mid-thought, on the first frame of the game.
+    fadeSceneIn(this, 420);
     this.paintBackdrop();
     // The title screen shows the tree; every other screen this scene draws puts
     // text where the tree is — character creation's detail column sits directly
     // over the canopy — so those dim it first.
-    this.modeScrim = this.add.rectangle(0, 0, 960, 540, COLORS.ink, 0.62).setOrigin(0).setVisible(false);
+    this.modeScrim = this.add.rectangle(0, 0, 960, 540, COLORS.ink, 0.62).setOrigin(0).setAlpha(0);
     // Stacked from measured heights. "CHRONICLES" sat at a literal 126 while
     // the wordmark above it ran to 134, so the two overlapped and the lockup
     // read as cramped at every text size.
@@ -419,6 +425,26 @@ export class TitleScene extends Phaser.Scene {
     else if (action === "cancel") this.back();
   }
 
+  /**
+   * Raises or lowers the dimming scrim over the artwork.
+   *
+   * It was flipped with `setVisible`, so moving between the title and any other
+   * screen dropped a 62% black sheet over the tree in a single frame — the
+   * hardest cut on a screen that is otherwise all soft edges.
+   */
+  private setScrim(dim: boolean): void {
+    const scrim = this.modeScrim;
+    if (!scrim) return;
+    const target = dim ? 1 : 0;
+    this.tweens.killTweensOf(scrim);
+    const duration = motionDuration(150);
+    if (duration <= 0) {
+      scrim.setAlpha(target);
+      return;
+    }
+    this.tweens.add({ targets: scrim, alpha: target, duration, ease: "Sine.easeOut" });
+  }
+
   /** The rule and subtitle, hidden only where a screen needs their room. */
   private setLockupVisible(visible: boolean): void {
     for (const extra of this.lockupExtras) (extra as Phaser.GameObjects.Text).setVisible(visible);
@@ -433,7 +459,7 @@ export class TitleScene extends Phaser.Scene {
     this.detailText = undefined;
     this.creationTexts = [];
     this.refreshControlsText();
-    this.modeScrim?.setVisible(false);
+    this.setScrim(false);
     this.setLockupVisible(true);
     const snapshot = this.bridge.getSnapshot();
     const hasSave = snapshot.hasSave;
@@ -460,12 +486,24 @@ export class TitleScene extends Phaser.Scene {
         const gold = Phaser.Display.Color.HexStringToColor(COLORS.gold).color;
         // The bar fades out rather than ending on a hard edge, which over the
         // artwork read as a stray rectangle rather than as a highlight.
+        const pieces: Phaser.GameObjects.GameObject[] = [];
         for (let step = 0; step < 22; step += 1) {
-          this.menuDecor.push(
+          pieces.push(
             this.add.rectangle(52 + step * 22, y - 9, 22, 40, gold, 0.1 * (1 - step / 21) ** 1.4).setOrigin(0)
           );
         }
-        this.menuDecor.push(this.add.rectangle(52, y - 9, 3, 40, gold, 0.85).setOrigin(0));
+        pieces.push(this.add.rectangle(52, y - 9, 3, 40, gold, 0.85).setOrigin(0));
+        // Grouped so the highlight can travel. Rebuilt in place at the new row,
+        // it teleported: nothing connected the row you left to the row you
+        // arrived at, which is the whole job of a selection highlight.
+        const bar = this.add.container(0, 0, pieces);
+        this.menuDecor.push(bar);
+        const slide = motionDuration(140);
+        if (slide > 0 && this.previousRowY !== undefined && this.previousRowY !== y) {
+          bar.setY(this.previousRowY - y);
+          this.tweens.add({ targets: bar, y: 0, duration: slide, ease: "Quad.easeOut" });
+        }
+        this.previousRowY = y;
       }
       const row = this.add.text(74, y, heading, {
         ...TEXT.heading,
@@ -531,7 +569,7 @@ export class TitleScene extends Phaser.Scene {
       `MUSIC VOLUME        ${Math.round(settings.musicVolume * 100)}%`,
       "KEYBOARD BINDINGS"
     ];
-    this.modeScrim?.setVisible(true);
+    this.setScrim(true);
     const heading = this.add.text(72, 210, "SETTINGS", { ...TEXT.heading, color: COLORS.gold });
 
     // The list windows to what actually fits. Flowing eight rows from measured
@@ -584,7 +622,7 @@ export class TitleScene extends Phaser.Scene {
     this.creationTexts = [];
     this.refreshControlsText();
     this.mode = "bindings";
-    this.modeScrim?.setVisible(true);
+    this.setScrim(true);
     const bindings = gameSettingsStore.get().keyBindings;
     // This screen is the densest one here, so it reclaims the decorative rule
     // and subtitle. The heading was drawn at y 172, straight through them.
@@ -655,7 +693,7 @@ export class TitleScene extends Phaser.Scene {
     this.creationTexts = [];
     this.mode = "load";
     this.setLockupVisible(true);
-    this.modeScrim?.setVisible(true);
+    this.setScrim(true);
     const heading = this.add.text(72, 210, "LOAD A CHRONICLE", { ...TEXT.heading, color: COLORS.gold });
     const slotTexts = MANUAL_SLOTS.map((slot, index) => {
       const available = this.hasSlot(slot);
@@ -711,7 +749,7 @@ export class TitleScene extends Phaser.Scene {
     this.menuTexts = [];
     this.mode = "creation";
     this.setLockupVisible(true);
-    this.modeScrim?.setVisible(true);
+    this.setScrim(true);
     const difficulty = DIFFICULTY_CHOICES[this.difficultyIndex];
     const values = [
       ["NAME", NAME_CHOICES[this.nameIndex]],
@@ -902,8 +940,7 @@ export class TitleScene extends Phaser.Scene {
       this.loading = false;
       throw error;
     }
-    this.cameras.main.fadeOut(motionDuration(260), 10, 18, 24);
-    this.time.delayedCall(motionDuration(270), () => this.scene.start("world"));
+    fadeSceneOutThen(this, () => this.scene.start("world"), 260);
   }
 
   /**
@@ -932,8 +969,7 @@ export class TitleScene extends Phaser.Scene {
       else this.drawTitleMenu(result.message);
       return;
     }
-    this.cameras.main.fadeOut(motionDuration(260), 10, 18, 24);
-    this.time.delayedCall(motionDuration(270), () => this.scene.start("world"));
+    fadeSceneOutThen(this, () => this.scene.start("world"), 260);
   }
 
   private back(): void {
