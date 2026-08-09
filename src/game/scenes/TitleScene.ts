@@ -450,6 +450,44 @@ export class TitleScene extends Phaser.Scene {
     for (const extra of this.lockupExtras) (extra as Phaser.GameObjects.Text).setVisible(visible);
   }
 
+  /**
+   * The gold highlight behind the selected row, on every screen this scene
+   * draws.
+   *
+   * The title menu had it and the four screens behind it — settings, key
+   * bindings, load and character creation — marked selection with a bare "›"
+   * and a colour change. That is the one signal a player with a colour vision
+   * deficiency cannot read, and it meant the first screen felt built while the
+   * rest felt like a list.
+   *
+   * The bar travels rather than being redrawn in place: rebuilt at the new row
+   * it teleports, and nothing connects the row you left to the row you reached,
+   * which is the whole job of a highlight.
+   */
+  private drawSelectionBar(y: number, height: number, x = 52, width = 484): void {
+    // `COLORS.gold` is a CSS string for text styles; shapes want a number.
+    const gold = Phaser.Display.Color.HexStringToColor(COLORS.gold).color;
+    // The bar fades out rather than ending on a hard edge, which over the
+    // artwork read as a stray rectangle rather than as a highlight.
+    const pieces: Phaser.GameObjects.GameObject[] = [];
+    const steps = 22;
+    const slice = width / steps;
+    for (let step = 0; step < steps; step += 1) {
+      pieces.push(
+        this.add.rectangle(x + step * slice, y - 9, slice, height, gold, 0.1 * (1 - step / (steps - 1)) ** 1.4).setOrigin(0)
+      );
+    }
+    pieces.push(this.add.rectangle(x, y - 9, 3, height, gold, 0.85).setOrigin(0));
+    const bar = this.add.container(0, 0, pieces);
+    this.menuDecor.push(bar);
+    const slide = motionDuration(140);
+    if (slide > 0 && this.previousRowY !== undefined && this.previousRowY !== y) {
+      bar.setY(this.previousRowY - y);
+      this.tweens.add({ targets: bar, y: 0, duration: slide, ease: "Quad.easeOut" });
+    }
+    this.previousRowY = y;
+  }
+
   private drawTitleMenu(message?: string): void {
     this.menuTexts.forEach((text) => text.destroy());
     this.creationTexts.forEach((text) => text.destroy());
@@ -481,30 +519,7 @@ export class TitleScene extends Phaser.Scene {
       const unavailable = index === 1 && !hasSave;
       const [heading, annotation] = splitMenuLabel(label);
 
-      if (selected) {
-        // `COLORS.gold` is a CSS string for text styles; shapes want a number.
-        const gold = Phaser.Display.Color.HexStringToColor(COLORS.gold).color;
-        // The bar fades out rather than ending on a hard edge, which over the
-        // artwork read as a stray rectangle rather than as a highlight.
-        const pieces: Phaser.GameObjects.GameObject[] = [];
-        for (let step = 0; step < 22; step += 1) {
-          pieces.push(
-            this.add.rectangle(52 + step * 22, y - 9, 22, 40, gold, 0.1 * (1 - step / 21) ** 1.4).setOrigin(0)
-          );
-        }
-        pieces.push(this.add.rectangle(52, y - 9, 3, 40, gold, 0.85).setOrigin(0));
-        // Grouped so the highlight can travel. Rebuilt in place at the new row,
-        // it teleported: nothing connected the row you left to the row you
-        // arrived at, which is the whole job of a selection highlight.
-        const bar = this.add.container(0, 0, pieces);
-        this.menuDecor.push(bar);
-        const slide = motionDuration(140);
-        if (slide > 0 && this.previousRowY !== undefined && this.previousRowY !== y) {
-          bar.setY(this.previousRowY - y);
-          this.tweens.add({ targets: bar, y: 0, duration: slide, ease: "Quad.easeOut" });
-        }
-        this.previousRowY = y;
-      }
+      if (selected) this.drawSelectionBar(y, 40);
       const row = this.add.text(74, y, heading, {
         ...TEXT.heading,
         color: selected ? COLORS.gold : unavailable ? "#64727a" : COLORS.cream
@@ -588,9 +603,17 @@ export class TitleScene extends Phaser.Scene {
     let rowY = firstRowY;
     const rows: Phaser.GameObjects.Text[] = [];
     const addRow = (label: string, selected: boolean, small = false): void => {
+      // Measured before the bar is drawn, so the highlight matches the row it
+      // sits behind at every text size rather than a guessed height.
       const row = this.add.text(72, rowY, label, small
         ? { ...TEXT.small, color: COLORS.muted }
         : { ...TEXT.heading, color: selected ? COLORS.gold : COLORS.cream });
+      if (selected) {
+        this.drawSelectionBar(rowY, row.height + 12);
+        // The bar is created after the row, so it would cover it. Bringing the
+        // row back to the top is cheaper than reordering the whole draw.
+        this.children.bringToTop(row);
+      }
       rowY += row.height + (small ? 4 : 9);
       rows.push(row);
     };
@@ -643,9 +666,14 @@ export class TitleScene extends Phaser.Scene {
     const rows = REBINDABLE_ACTIONS.map((action, index) => {
       const selected = index === this.bindingIndex;
       const value = selected && this.capturingBinding ? "PRESS A KEY…" : keyboardBindingLabel(bindings[action]);
+      const columnX = 72 + Math.floor(index / perColumn) * 430;
+      const rowY = firstRowY + (index % perColumn) * pitch;
+      // Narrower than the other screens and offset to the row's own column, so
+      // the highlight cannot bleed across into the second one.
+      if (selected) this.drawSelectionBar(rowY + 7, pitch, columnX - 20, 400);
       return this.add.text(
-        72 + Math.floor(index / perColumn) * 430,
-        firstRowY + (index % perColumn) * pitch,
+        columnX,
+        rowY,
         `${selected ? "›" : " "} ${keyboardActionLabel(action).padEnd(22)} ${value}`,
         {
           ...TEXT.body,
@@ -656,6 +684,7 @@ export class TitleScene extends Phaser.Scene {
     });
     const resetSelected = this.bindingIndex === REBINDABLE_ACTIONS.length;
     const resetY = firstRowY + perColumn * pitch + 10;
+    if (resetSelected) this.drawSelectionBar(resetY + 7, pitch, 52, 400);
     rows.push(this.add.text(
       72,
       resetY,
@@ -698,7 +727,9 @@ export class TitleScene extends Phaser.Scene {
     const slotTexts = MANUAL_SLOTS.map((slot, index) => {
       const available = this.hasSlot(slot);
       const selected = index === this.loadIndex;
-      return this.add.text(72, 250 + index * 42, `${selected ? "›" : " "} ${SLOT_TITLES[slot]}  —  ${this.slotSummary(slot)}`, {
+      const rowY = 250 + index * 42;
+      if (selected) this.drawSelectionBar(rowY, 36);
+      return this.add.text(72, rowY, `${selected ? "›" : " "} ${SLOT_TITLES[slot]}  —  ${this.slotSummary(slot)}`, {
         ...TEXT.heading,
         fontSize: fontPx(17),
         color: selected ? (available ? COLORS.gold : COLORS.muted) : available ? COLORS.cream : "#64727a"
@@ -758,14 +789,16 @@ export class TitleScene extends Phaser.Scene {
       ["DIFFICULTY", difficulty?.label ?? ""],
       ["BEGIN", "Start in Hearthcross"]
     ] as const;
-    this.creationTexts = values.map(([label, value], index) =>
-      // A cursor glyph as well as the colour change, so selection never rides
-      // on colour alone.
-      this.add.text(72, 226 + index * 44, `${index === this.creationRow ? "›" : " "} ${label.padEnd(12)}  ${value}`, {
+    this.creationTexts = values.map(([label, value], index) => {
+      const rowY = 226 + index * 44;
+      if (index === this.creationRow) this.drawSelectionBar(rowY, 38, 52, 420);
+      // A cursor glyph as well as the colour change and the bar, so selection
+      // never rides on colour alone.
+      return this.add.text(72, rowY, `${index === this.creationRow ? "›" : " "} ${label.padEnd(12)}  ${value}`, {
         ...TEXT.heading,
         color: index === this.creationRow ? COLORS.gold : COLORS.cream
-      })
-    );
+      });
+    });
     const ancestry = ancestries[this.ancestryIndex];
     const job = jobs[this.jobIndex];
     // The draft's actual numbers and its authored strengths — written for
