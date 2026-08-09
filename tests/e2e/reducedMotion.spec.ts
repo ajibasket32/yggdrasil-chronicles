@@ -139,5 +139,46 @@ test("the game is playable, and nothing is invisible, with Reduced Motion on", a
   expect(await transparentObjects(page, "battle"), "nothing in a battle may be left part-faded")
     .toEqual([]);
 
+  // The day/night wash is a counter tween rather than a property tween, so it
+  // has its own zero-duration path: it must land on the final alpha directly
+  // instead of holding the old one.
+  const tint = await page.evaluate(() => {
+    const world = (window as unknown as { __YGG_GAME?: { scene: { getScene(key: string): {
+      snapshot: { worldMinutes: number };
+      applyDayTint(): void;
+      dayTint?: { fillAlpha: number };
+      tweens: { getTweens(): unknown[] };
+    } | undefined } } }).__YGG_GAME?.scene.getScene("world");
+    if (!world) return { alpha: -1, tweens: -1 };
+    world.snapshot = { ...world.snapshot, worldMinutes: 22 * 60 };
+    world.applyDayTint();
+    return { alpha: world.dayTint?.fillAlpha ?? -1, tweens: world.tweens.getTweens().length };
+  });
+  expect(tint.alpha, "nightfall must be applied at full strength immediately").toBeGreaterThan(0.3);
+  expect(tint.tweens, "and must not animate at all").toBe(0);
+
+  // Leaving the battle is the transition that used to be a hard cut, and the
+  // one place a fade-to-black could strand the player with no way back.
+  for (let press = 0; press < 16; press += 1) {
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(300);
+  }
+  await page.waitForTimeout(900);
+  await expect(app, "Reduced Motion must not strand the player leaving a battle")
+    .toHaveAttribute("data-scene", "world");
+  const restored = await page.evaluate(() => {
+    const world = (window as unknown as { __YGG_GAME?: { scene: { getScene(key: string): {
+      cameras?: { main?: { alpha: number; fadeEffect?: { isRunning: boolean } } };
+    } | undefined } } }).__YGG_GAME?.scene.getScene("world");
+    return {
+      alpha: world?.cameras?.main?.alpha ?? -1,
+      fading: Boolean(world?.cameras?.main?.fadeEffect?.isRunning)
+    };
+  });
+  expect(restored.alpha, "the world must come back at full brightness").toBe(1);
+  expect(restored.fading, "no fade may still be running after arrival").toBe(false);
+  expect(await transparentObjects(page, "world"), "nothing may be left part-faded after a battle")
+    .toEqual([]);
+
   expect(errors, "Reduced Motion must not produce console errors").toEqual([]);
 });
