@@ -59,6 +59,5 @@ export function enemyCombatant(
 
 /** Strips a combat instance suffix like ".0"/".1" back to the authored enemy content ID. */
 export function enemyContentId(instanceId: string): string {
-  const lastDot = instanceId.lastIndexOf(".");
-  return lastDot === -1 ? instanceId : instanceId.slice(0, lastDot);
+  return instanceId.replace(/\.\d+$/, "");
 }

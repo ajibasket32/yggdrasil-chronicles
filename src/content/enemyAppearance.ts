@@ -1,5 +1,5 @@
 /**
- * How each authored enemy looks: a silhouette sheet and a species tint.
+ * How each authored enemy looks: a texture and a species tint.
  *
  * Same pattern as `portraits.ts` — appearance is content data keyed by id, so
  * both the battle scene and the world's encounter marker draw from one table.
@@ -12,19 +12,19 @@ export interface EnemyAppearance {
 }
 
 const ENEMY_SPRITE_KEYS: Readonly<Record<string, string>> = {
-  "enemy.briar-wolf": "sprite.enemy.small",
-  "enemy.root-gnawer": "sprite.enemy.small",
-  "enemy.mireling": "sprite.enemy.small",
-  "enemy.ash-mote": "sprite.enemy.small",
-  "enemy.cinder-hound": "sprite.enemy.small",
-  "enemy.rime-stag": "sprite.enemy.small",
-  "enemy.frost-moth": "sprite.enemy.small",
-  "enemy.star-echo": "sprite.enemy.small",
-  "enemy.cinder-wraith": "sprite.enemy.humanoid",
-  "enemy.brass-sentinel": "sprite.enemy.humanoid",
-  "enemy.pale-custodian": "sprite.enemy.humanoid",
-  "enemy.mire-antler": "sprite.enemy.boss",
-  "enemy.kiln-heart": "sprite.enemy.boss",
+  "enemy.briar-wolf": "sprite.monster.wolf",
+  "enemy.root-gnawer": "sprite.monster.gnawer",
+  "enemy.mireling": "sprite.monster.slime",
+  "enemy.ash-mote": "sprite.monster.mote",
+  "enemy.cinder-hound": "sprite.monster.wolf",
+  "enemy.rime-stag": "sprite.monster.horned-beast",
+  "enemy.frost-moth": "sprite.monster.moth",
+  "enemy.star-echo": "sprite.monster.star-echo",
+  "enemy.cinder-wraith": "sprite.monster.wraith",
+  "enemy.brass-sentinel": "sprite.monster.sentinel",
+  "enemy.pale-custodian": "sprite.monster.custodian",
+  "enemy.mire-antler": "sprite.monster.horned-beast",
+  "enemy.kiln-heart": "sprite.monster.kiln-core",
   "enemy.varn-rootless": "sprite.enemy.boss",
   "enemy.varn-echo": "sprite.enemy.boss"
 };

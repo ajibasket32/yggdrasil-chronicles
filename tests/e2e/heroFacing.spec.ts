@@ -52,6 +52,39 @@ function readAvatar(page: Page): Promise<{ frame: string; facing: string; frameT
 test("the hero faces the direction it is walking", async ({ page }) => {
   await enterWorld(page);
 
+  const spriteSources = await page.evaluate(() => {
+    const game = (window as unknown as { __YGG_GAME?: {
+      textures: { get: (key: string) => { getSourceImage(): CanvasImageSource } };
+      scene: { getScene(key: string): { hud?: { list: Array<{ type?: string; texture?: { key?: string } }> } } };
+    } }).__YGG_GAME;
+    const textureHash = (key: string): number => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 768;
+      canvas.height = 256;
+      const context = canvas.getContext("2d");
+      const image = game?.textures.get(key).getSourceImage();
+      if (!context || !image) return -1;
+      context.drawImage(image, 0, 0);
+      let hash = 0x811c9dc5;
+      for (const value of context.getImageData(0, 0, canvas.width, canvas.height).data) {
+        hash = Math.imul(hash ^ value, 0x01000193);
+      }
+      return hash >>> 0;
+    };
+    const hudImages = game?.scene.getScene("world").hud?.list
+      .filter((child) => child.type === "Image")
+      .map((child) => child.texture?.key ?? "") ?? [];
+    return {
+      boss: textureHash("sprite.enemy.boss"),
+      dressedWarrior: textureHash("sprite.job.warden"),
+      hudImages
+    };
+  });
+  expect(spriteSources.hudImages, "the HUD should show local job art, not a solid colour placeholder")
+    .toContain("sprite.job.vanguard");
+  expect(spriteSources.boss, "bosses must use dressed character art rather than Character-Base")
+    .toBe(spriteSources.dressedWarrior);
+
   const initial = await readAvatar(page);
   // 192 cells plus __BASE. If the sheet ever loads as a plain image this drops
   // to 1, and the facing frames below would silently stop existing.

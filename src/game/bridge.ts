@@ -38,6 +38,8 @@ export interface PartyMemberView {
   mp: number;
   maxMp: number;
   portraitTint: number;
+  /** Local character sheet used by the world HUD and battle presentation. */
+  spriteKey?: string;
   /** Experience earned into the current level, and what the next one costs. */
   experienceIntoLevel: number;
   experienceForNextLevel: number;
@@ -98,6 +100,9 @@ export interface GameCommandResult {
 export interface BuildPreview {
   maxHp: number;
   maxMp: number;
+  /** Preloaded job sprite and ancestry tint used by the creation preview. */
+  spriteKey: string;
+  tint: number;
   stats: PartyMemberStatsView;
   role: string;
   startingSkillNames: string[];

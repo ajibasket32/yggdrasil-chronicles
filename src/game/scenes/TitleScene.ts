@@ -91,6 +91,7 @@ export class TitleScene extends Phaser.Scene {
   private settingsIndex = 0;
   private bindingIndex = 0;
   private capturingBinding = false;
+  private driftingMotes: Phaser.GameObjects.Arc[] = [];
 
   constructor() {
     super("title");
@@ -107,6 +108,7 @@ export class TitleScene extends Phaser.Scene {
     this.loading = false;
     this.confirmingNewGame = false;
     this.previousRowY = undefined;
+    this.driftingMotes = [];
     this.cameras.main.setBackgroundColor(COLORS.ink);
     // Boot hands straight over to the title, so without this the wordmark and
     // the tree simply appeared, mid-thought, on the first frame of the game.
@@ -341,6 +343,7 @@ export class TitleScene extends Phaser.Scene {
       const x = 470 + random() * 440;
       const y = 90 + random() * 380;
       const mote = this.add.circle(x, y, 1 + random() * 1.8, 0xd8e9b8, 0.5);
+      this.driftingMotes.push(mote);
       this.tweens.add({
         targets: mote,
         y: y - 40 - random() * 50,
@@ -352,6 +355,18 @@ export class TitleScene extends Phaser.Scene {
         ease: "Sine.easeInOut"
       });
     }
+  }
+
+  private syncDriftingMotes(): void {
+    const shouldDrift = !gameSettingsStore.get().reducedMotion && !gameSettingsStore.get().highContrast;
+    if (shouldDrift && this.driftingMotes.length === 0) {
+      this.paintDrifting();
+      return;
+    }
+    if (shouldDrift) return;
+    this.tweens.killTweensOf(this.driftingMotes);
+    this.driftingMotes.forEach((mote) => mote.destroy());
+    this.driftingMotes = [];
   }
 
   override update(time: number): void {
@@ -804,6 +819,11 @@ export class TitleScene extends Phaser.Scene {
     // The draft's actual numbers and its authored strengths — written for
     // every loadout and previously displayed nowhere, so creation was blind.
     const preview = this.bridge.previewBuild(ancestry?.id ?? "", job?.id ?? "");
+    if (preview && this.textures.exists(preview.spriteKey)) {
+      this.menuDecor.push(this.add.image(480, 184, preview.spriteKey, 0)
+        .setDisplaySize(80, 80)
+        .setTint(preview.tint));
+    }
     const previewText = preview
       ? [
         `HP ${preview.maxHp}  MP ${preview.maxMp}`,
@@ -924,6 +944,7 @@ export class TitleScene extends Phaser.Scene {
         this.drawBindings();
         return;
       }
+      if (this.settingsIndex === 0 || this.settingsIndex === 2) this.syncDriftingMotes();
       playSound(this, "sfx.confirm");
       this.drawSettings();
       return;

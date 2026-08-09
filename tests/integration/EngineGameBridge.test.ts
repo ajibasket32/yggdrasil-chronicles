@@ -136,6 +136,7 @@ describe("EngineGameBridge party combat", () => {
   });
 
   it("gives every authored enemy and starting job a distinct battle portrait, not a shared generic sprite", async () => {
+    const enemySpriteKeys = new Set<string>();
     for (const encounter of encounters) {
       const { bridge, saves } = createBridge();
       await startChronicle(bridge);
@@ -158,10 +159,12 @@ describe("EngineGameBridge party combat", () => {
       const enemyActors = bridge.getSnapshot().battle?.actors.filter(({ isParty }) => !isParty) ?? [];
       expect(enemyActors.length, encounter.id).toBeGreaterThan(0);
       for (const enemy of enemyActors) {
-        expect(enemy.spriteKey, `${encounter.id}: ${enemy.name}`).toMatch(/^sprite\.enemy\.(small|humanoid|boss)$/);
+        expect(enemy.spriteKey, `${encounter.id}: ${enemy.name}`).toMatch(/^sprite\.(?:enemy\.(?:small|humanoid|boss)|monster\.[a-z-]+)$/);
+        enemySpriteKeys.add(enemy.spriteKey ?? "");
         expect(enemy.tint, `${encounter.id}: ${enemy.name}`).toBeDefined();
       }
     }
+    expect(enemySpriteKeys.size).toBeGreaterThanOrEqual(12);
     for (const job of jobs) {
       const { bridge } = createBridge();
       await bridge.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: job.id, difficulty: "normal" });

@@ -84,6 +84,25 @@ test("the game is playable, and nothing is invisible, with Reduced Motion on", a
   await expect(app).toHaveAttribute("data-pending-scene", "none");
   await page.waitForTimeout(250);
 
+  await page.keyboard.press("ArrowRight");
+  const stillWalk = await page.evaluate(() => {
+    const world = (window as unknown as { __YGG_GAME?: { scene: { getScene(key: string): {
+      playerGrid: { x: number; y: number };
+      player: { x: number; y: number; anims: { isPlaying: boolean } };
+      tweens: { getTweensOf(target: object): unknown[] };
+    } } } }).__YGG_GAME?.scene.getScene("world");
+    if (!world) return { atDestination: false, animating: true, tweens: -1 };
+    return {
+      atDestination: world.player.x === world.playerGrid.x * 32 + 16
+        && world.player.y === world.playerGrid.y * 32 + 16,
+      animating: world.player.anims.isPlaying,
+      tweens: world.tweens.getTweensOf(world.player).length
+    };
+  });
+  expect(stillWalk.atDestination, "a reduced-motion step should land synchronously").toBe(true);
+  expect(stillWalk.animating, "a reduced-motion step must not play a walk cycle").toBe(false);
+  expect(stillWalk.tweens, "a reduced-motion step must not create a zero-length movement tween").toBe(0);
+
   // Every overlay is built by the same reveal path, which drops alpha to zero
   // before tweening it back. With motion off it must not touch alpha at all.
   for (const [name, key] of [
@@ -181,4 +200,33 @@ test("the game is playable, and nothing is invisible, with Reduced Motion on", a
     .toEqual([]);
 
   expect(errors, "Reduced Motion must not produce console errors").toEqual([]);
+});
+
+test("turning Reduced Motion on stops the title's infinite decorative motion", async ({ page }) => {
+  await page.addInitScript((settings) => {
+    window.localStorage.setItem("yggdrasil-chronicles.settings.v2", JSON.stringify(settings));
+  }, { ...REDUCED_MOTION_SETTINGS, reducedMotion: false });
+  await page.goto("/");
+  await expect(page.locator("#app")).toHaveAttribute("data-scene", "title");
+  await page.waitForTimeout(3000);
+  const titleTweens = (): Promise<number> => page.evaluate(() => {
+    return (window as unknown as { __YGG_GAME?: { scene: { getScene(key: string): {
+      tweens: { getTweens(): unknown[] };
+    } } } }).__YGG_GAME?.scene.getScene("title").tweens.getTweens().length ?? -1;
+  });
+  expect(await titleTweens(), "the title should begin with drifting motes").toBeGreaterThan(4);
+
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(300);
+  expect(await titleTweens(), "enabling Reduced Motion must stop existing infinite motes").toBe(0);
+
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(100);
+  expect(await titleTweens(), "disabling Reduced Motion should restore the title ambience").toBeGreaterThan(4);
 });

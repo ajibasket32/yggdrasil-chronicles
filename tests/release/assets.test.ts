@@ -30,7 +30,7 @@ describe("release asset audit", () => {
     const result = auditAssets();
 
     expect(result.valid, result.issues.map((issue) => issue.message).join("\n")).toBe(true);
-    expect(result.catalog).toHaveLength(10);
+    expect(result.catalog).toHaveLength(11);
     expect(result.runtimeAssetReferences).toEqual([
       "/assets/vendor/everface.png",
       "/assets/vendor/everrogue-tileset.png",
@@ -45,6 +45,17 @@ describe("release asset audit", () => {
       "/assets/vendor/kenney-rpg-audio/Audio/handleSmallLeather.ogg",
       "/assets/vendor/kenney-rpg-audio/Audio/knifeSlice.ogg",
       "/assets/vendor/kenney-rpg-audio/Audio/metalLatch.ogg",
+      "/assets/vendor/monster-pack-2d/custodian.png",
+      "/assets/vendor/monster-pack-2d/gnawer.png",
+      "/assets/vendor/monster-pack-2d/horned-beast.png",
+      "/assets/vendor/monster-pack-2d/kiln-core.png",
+      "/assets/vendor/monster-pack-2d/mote.png",
+      "/assets/vendor/monster-pack-2d/moth.png",
+      "/assets/vendor/monster-pack-2d/sentinel.png",
+      "/assets/vendor/monster-pack-2d/slime.png",
+      "/assets/vendor/monster-pack-2d/star-echo.png",
+      "/assets/vendor/monster-pack-2d/wolf.png",
+      "/assets/vendor/monster-pack-2d/wraith.png",
       "/assets/vendor/music/The_Old_Tower_Inn.mp3",
       "/assets/vendor/music/TownTheme.mp3",
       "/assets/vendor/music/battleThemeA.mp3",
@@ -52,7 +63,6 @@ describe("release asset audit", () => {
       "/assets/vendor/music/the_field_of_dreams.mp3",
       "/assets/vendor/puny-characters/Puny-Characters/Archer-Green.png",
       "/assets/vendor/puny-characters/Puny-Characters/Archer-Purple.png",
-      "/assets/vendor/puny-characters/Puny-Characters/Character-Base.png",
       "/assets/vendor/puny-characters/Puny-Characters/Mage-Cyan.png",
       "/assets/vendor/puny-characters/Puny-Characters/Mage-Red.png",
       "/assets/vendor/puny-characters/Puny-Characters/Slime.png",

@@ -24,6 +24,10 @@ function actionsFor(battle: BattleView | undefined): typeof ACTIONS {
 
 type SubMenu = "none" | "skill" | "item";
 
+const HUMANOID_FRAMES = 192;
+const PARTY_FACING_FRAME = 48;
+const ENEMY_FACING_FRAME = 144;
+
 export class BattleScene extends Phaser.Scene {
   private bridge!: GameBridge;
   private snapshot!: Readonly<GameSnapshot>;
@@ -31,7 +35,13 @@ export class BattleScene extends Phaser.Scene {
   private subMenu: SubMenu = "none";
   private subMenuIndex = 0;
   /** Where each actor was last drawn, so event feedback can be placed on them. */
-  private readonly actorPositions = new Map<string, { x: number; y: number; sprite: Phaser.GameObjects.Image }>();
+  private readonly actorPositions = new Map<string, {
+    x: number;
+    y: number;
+    isParty: boolean;
+    idleFrame: number;
+    sprite: Phaser.GameObjects.Sprite;
+  }>();
   /**
    * The pools each actor was last drawn with.
    *
@@ -153,8 +163,10 @@ export class BattleScene extends Phaser.Scene {
     //
     // Without this the idle pulse on the active-actor ring, which repeats
     // forever by design, gained one more permanent copy on every single
-    // repaint: measured at +2 per action, climbing for the whole fight.
-    this.tweens.killAll();
+    // repaint: measured at +2 per action, climbing for the whole fight. Scope
+    // the kill to display objects: killAll also stopped the scene-owned music
+    // cross-fade, leaving the battle score silent or its outgoing track alive.
+    this.tweens.killTweensOf(this.children.list);
     this.children.removeAll(true);
   }
 
@@ -254,10 +266,11 @@ export class BattleScene extends Phaser.Scene {
       const y = 262 - (index % 2) * 24;
       const previous = this.lastPools.get(actor.id);
       const key = actor.spriteKey && this.textures.exists(actor.spriteKey) ? actor.spriteKey : "sprite.player";
-      const sprite = this.add.image(x, y, key).setScale(1.8).setFlipX(true);
+      const sprite = this.add.sprite(x, y, key, this.battleIdleFrame(key, true)).setScale(1.8);
       if (actor.tint !== undefined) sprite.setTint(actor.tint);
-      if (!actor.alive) sprite.setTint(0x4d545d);
-      this.actorPositions.set(actor.id, { x, y, sprite });
+      const idleFrame = Number(sprite.frame.name);
+      if (!actor.alive) this.showDefeated(sprite, previous?.alive !== false, idleFrame);
+      this.actorPositions.set(actor.id, { x, y, isParty: true, idleFrame, sprite });
       this.drawActiveActorMarker(x, y, actor.id === battle.activeActorId, actor.name);
       this.drawHealth(x - 48, y + 38, 96, actor.hp, actor.maxHp, true, previous?.hp ?? actor.hp);
       this.drawResource(x - 48, y + 47, 96, actor.mp, actor.maxMp, previous?.mp ?? actor.mp);
@@ -268,14 +281,15 @@ export class BattleScene extends Phaser.Scene {
       const x = 596 + index * 90;
       const y = 250 - (index % 2) * 24;
       const key = actor.spriteKey && this.textures.exists(actor.spriteKey) ? actor.spriteKey : "sprite.enemy.small";
-      // Enemy art is a smaller source texture than the party's, so matching
-      // scale factors did not give matching sizes: the foes rendered as specks
-      // beside a party member three times their height.
-      const sprite = this.add.image(x, y, key).setScale(actor.maxHp > 80 ? 4.6 : 3.6);
+      // The catalog mixes 32px sheets and 64px static monsters. Display size,
+      // unlike scale, keeps both sources at the same readable battle size.
+      const sprite = this.add.sprite(x, y, key, this.battleIdleFrame(key, false))
+        .setDisplaySize(actor.maxHp > 80 ? 128 : 96, actor.maxHp > 80 ? 128 : 96);
       if (actor.tint !== undefined) sprite.setTint(actor.tint);
       const previous = this.lastPools.get(actor.id);
-      if (!actor.alive) this.fadeDefeated(sprite, previous?.alive !== false);
-      this.actorPositions.set(actor.id, { x, y, sprite });
+      const idleFrame = Number(sprite.frame.name);
+      if (!actor.alive) this.showDefeated(sprite, previous?.alive !== false, idleFrame);
+      this.actorPositions.set(actor.id, { x, y, isParty: false, idleFrame, sprite });
       this.drawActiveActorMarker(x, y, actor.id === battle.activeActorId, this.titleCase(actor.name));
       this.drawHealth(x - 48, y + 46, 96, actor.hp, actor.maxHp, false, previous?.hp ?? actor.hp);
       this.drawActorLabel(x - 48, y + 55, `${this.titleCase(actor.name)}  ${actor.hp}/${actor.maxHp}`);
@@ -294,11 +308,27 @@ export class BattleScene extends Phaser.Scene {
    * `justFell` is false on every repaint after the one that killed it, so the
    * fade plays once and the body then simply stays dim.
    */
-  private fadeDefeated(sprite: Phaser.GameObjects.Image, justFell: boolean): void {
+  private battleIdleFrame(textureKey: string, isParty: boolean): number {
+    const texture = this.textures.get(textureKey);
+    const frame = isParty ? PARTY_FACING_FRAME : ENEMY_FACING_FRAME;
+    return texture.has(String(frame)) ? frame : 0;
+  }
+
+  private showDefeated(sprite: Phaser.GameObjects.Sprite, justFell: boolean, idleFrame: number): void {
     const duration = motionDuration(justFell ? 420 : 0);
     if (duration <= 0) {
+      const finalFrame = sprite.texture.frameTotal >= HUMANOID_FRAMES ? idleFrame + 23 : 14;
+      if (sprite.texture.has(String(finalFrame))) sprite.setFrame(finalFrame);
       sprite.setAlpha(0.25);
       return;
+    }
+    const humanoid = sprite.texture.frameTotal >= HUMANOID_FRAMES;
+    const first = humanoid ? idleFrame + 19 : 7;
+    const last = humanoid ? idleFrame + 23 : 14;
+    if (sprite.texture.has(String(last))) {
+      const key = `battle.death.${sprite.texture.key}.${idleFrame}`;
+      this.ensureAnimation(key, sprite.texture.key, first, last, 14);
+      sprite.play(key);
     }
     sprite.setAlpha(1);
     this.tweens.add({ targets: sprite, alpha: 0.25, duration, ease: "Quad.easeIn" });
@@ -315,13 +345,16 @@ export class BattleScene extends Phaser.Scene {
     let delay = 0;
     for (const event of battle.events) {
       if (event.type === "damage") {
+        this.playActorAction(event.actorId, delay, true);
         this.floatNumber(event.targetId, `${event.amount}`, event.critical ? 0xf2c66d : 0xe46e76, delay, event.critical);
-        this.recoil(event.targetId, delay);
+        this.recoil(event.targetId, delay, battle.actors.some(({ id, alive }) => id === event.targetId && !alive));
         delay += 90;
       } else if (event.type === "healing") {
+        this.playActorAction(event.actorId, delay, false);
         this.floatNumber(event.targetId, `+${event.amount}`, 0x64ba83, delay, false);
         delay += 90;
       } else if (event.type === "miss") {
+        this.playActorAction(event.actorId, delay, true);
         this.floatNumber(event.targetId, "MISS", 0x9fb0bd, delay, false);
         delay += 70;
       } else if (event.type === "status_damage") {
@@ -329,6 +362,48 @@ export class BattleScene extends Phaser.Scene {
         delay += 70;
       }
     }
+  }
+
+  /** Uses the sheet's directional action cells; slime has no attack cells, so its lunge alone carries the action. */
+  private playActorAction(actorId: string, delay: number, lunges: boolean): void {
+    const position = this.actorPositions.get(actorId);
+    const actor = this.snapshot.battle?.actors.find(({ id }) => id === actorId);
+    if (!position || actor?.alive === false || motionDuration(1) === 0) return;
+    const start = position.idleFrame + 6;
+    const end = position.idleFrame + 11;
+    const wait = motionDuration(delay);
+    if (position.sprite.texture.frameTotal >= HUMANOID_FRAMES && position.sprite.texture.has(String(end))) {
+      const key = `battle.action.${position.sprite.texture.key}.${position.idleFrame}`;
+      this.ensureAnimation(key, position.sprite.texture.key, start, end, 18);
+      this.time.delayedCall(wait, () => {
+        if (!position.sprite.active) return;
+        position.sprite.once(`animationcomplete-${key}`, () => {
+          if (position.sprite.active) position.sprite.setFrame(position.idleFrame);
+        });
+        position.sprite.play(key);
+      });
+    }
+    if (!lunges) return;
+    const origin = position.x;
+    this.tweens.add({
+      targets: position.sprite,
+      x: origin + (position.isParty ? 12 : -12),
+      duration: motionDuration(110),
+      delay: wait,
+      yoyo: true,
+      ease: "Sine.easeInOut",
+      onComplete: () => position.sprite.setX(origin)
+    });
+  }
+
+  private ensureAnimation(key: string, textureKey: string, start: number, end: number, frameRate: number): void {
+    if (this.anims.exists(key)) return;
+    this.anims.create({
+      key,
+      frames: this.anims.generateFrameNumbers(textureKey, { start, end }),
+      frameRate,
+      repeat: 0
+    });
   }
 
   private floatNumber(actorId: string, text: string, color: number, delay: number, emphatic: boolean): void {
@@ -369,15 +444,28 @@ export class BattleScene extends Phaser.Scene {
     });
   }
 
-  private recoil(actorId: string, delay: number): void {
+  private recoil(actorId: string, delay: number, defeated: boolean): void {
     const position = this.actorPositions.get(actorId);
     if (!position) return;
     const origin = position.x;
+    const wait = motionDuration(delay);
+    if (!defeated) {
+      const humanoid = position.sprite.texture.frameTotal >= HUMANOID_FRAMES;
+      const hurtFrame = humanoid ? position.idleFrame + 18 : 6;
+      if (position.sprite.texture.has(String(hurtFrame))) {
+        this.time.delayedCall(wait, () => {
+          if (position.sprite.active) position.sprite.setFrame(hurtFrame);
+        });
+        this.time.delayedCall(wait + motionDuration(170), () => {
+          if (position.sprite.active && !position.sprite.anims.isPlaying) position.sprite.setFrame(position.idleFrame);
+        });
+      }
+    }
     this.tweens.add({
       targets: position.sprite,
-      x: origin + 9,
+      x: origin + (position.isParty ? -9 : 9),
       duration: motionDuration(60),
-      delay: motionDuration(delay),
+      delay: wait,
       yoyo: true,
       repeat: 1,
       ease: "Sine.easeInOut",
@@ -619,6 +707,7 @@ export class BattleScene extends Phaser.Scene {
    * combat with the pre-battle autosave as the newest state on disk.
    */
   private async runResolving(work: () => Promise<void>): Promise<void> {
+    const before = this.snapshot;
     this.resolving = true;
     try {
       await work();
@@ -626,7 +715,10 @@ export class BattleScene extends Phaser.Scene {
       console.error("Battle action failed", error);
     } finally {
       this.resolving = false;
-      this.render();
+      // A successful bridge emission already repainted and started the action
+      // feedback. Repainting it again here destroyed that feedback immediately.
+      // Failed/no-op bridge calls still need their input gate redrawn.
+      if (this.snapshot === before) this.render();
     }
   }
 

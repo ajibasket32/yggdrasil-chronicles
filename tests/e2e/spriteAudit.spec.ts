@@ -1,5 +1,27 @@
 import { expect, test, type Page } from "@playwright/test";
 
+test("character creation previews the selected job sprite", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("canvas")).toBeVisible();
+  await expect(page.locator("#app")).toHaveAttribute("data-scene", "title");
+  await expect(page.getByText(/Title screen/)).toBeVisible();
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(500);
+  const previewTexture = async (): Promise<string | undefined> => page.evaluate(() => {
+    const title = (window as unknown as { __YGG_GAME?: { scene: { getScene(key: string): {
+      children: { list: Array<{ type?: string; texture?: { key?: string } }> };
+    } } } }).__YGG_GAME?.scene.getScene("title");
+    return title?.children.list.find(({ type, texture }) => type === "Image" && texture?.key?.startsWith("sprite.job."))?.texture?.key;
+  });
+  expect(await previewTexture()).toBe("sprite.job.vanguard");
+
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("ArrowRight");
+  await page.waitForTimeout(300);
+  expect(await previewTexture()).toBe("sprite.job.ranger");
+});
+
 /**
  * Missing-sprite audit: walks the whole game and, at every beat, sweeps every
  * active scene's display list for objects whose texture resolved to Phaser's

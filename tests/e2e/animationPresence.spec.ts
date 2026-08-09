@@ -106,10 +106,26 @@ test("every animation the game promises is still being played", async ({ page })
   await recordAnimations(page, "world");
   await takeAnimations(page);
 
+  await page.evaluate(() => {
+    const scope = window as unknown as {
+      __walkAnimations?: string[];
+      __YGG_GAME?: { scene: { getScene(name: string): { player?: {
+        on(event: string, callback: (animation: { key: string }) => void): void;
+      } } | undefined } };
+    };
+    scope.__walkAnimations = [];
+    scope.__YGG_GAME?.scene.getScene("world")?.player?.on("animationstart", (animation) => {
+      scope.__walkAnimations?.push(animation.key);
+    });
+  });
+
   await page.keyboard.press("ArrowRight");
   await page.waitForTimeout(320);
   expect((await takeAnimations(page)).join(" "), "the party should glide between tiles")
-    .toContain("world:Image:x,y");
+    .toContain("world:Sprite:x,y");
+  expect(await page.evaluate(() => (window as unknown as { __walkAnimations?: string[] }).__walkAnimations),
+    "the hero should use the sheet's walk cycle while moving")
+    .toContain("player.walk.right");
 
   await page.keyboard.press("p");
   await page.waitForTimeout(340);
@@ -133,6 +149,20 @@ test("every animation the game promises is still being played", async ({ page })
   });
   expect((await takeAnimations(page)).join(" "), "nightfall should ease in rather than flicker")
     .toContain("world:counter");
+  const tintTweens = await page.evaluate(async () => {
+    const world = (window as unknown as {
+      __YGG_GAME?: { scene: { getScene(name: string): {
+        snapshot: { worldMinutes: number }; applyDayTint(): void;
+        tweens: { getTweens(): unknown[] };
+      } | undefined } };
+    }).__YGG_GAME?.scene.getScene("world");
+    if (!world) return -1;
+    world.snapshot = { ...world.snapshot, worldMinutes: 19 * 60 };
+    world.applyDayTint();
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+    return world.tweens.getTweens().length;
+  });
+  expect(tintTweens, "replacing the day tint must retire its previous counter tween").toBe(1);
 
   // A battle, for the feedback that only exists there.
   await page.evaluate(async () => {
@@ -148,12 +178,125 @@ test("every animation the game promises is still being played", async ({ page })
 
   await recordAnimations(page, "battle");
   await takeAnimations(page);
+  const battleFrames = await page.evaluate(() => {
+    const battle = (window as unknown as { __YGG_GAME?: { scene: { getScene(name: string): {
+      actorPositions: Map<string, { isParty: boolean; sprite: { frame: { name: string | number } } }>;
+    } | undefined } } }).__YGG_GAME?.scene.getScene("battle");
+    return battle ? [...battle.actorPositions.values()].map(({ isParty, sprite }) => ({ isParty, frame: Number(sprite.frame.name) })) : [];
+  });
+  expect(battleFrames.filter(({ isParty }) => isParty).every(({ frame }) => frame === 48),
+    "party sprites should face their opponents instead of showing the sheet's front pose").toBe(true);
+  await page.evaluate(() => {
+    type BattleSprite = { on(event: string, callback: (animation: { key: string }) => void): void };
+    const scope = window as unknown as {
+      __battleSpriteAnimations?: string[];
+      __YGG_GAME?: { scene: { getScene(name: string): {
+        add: { sprite(...args: unknown[]): BattleSprite };
+      } | undefined } };
+    };
+    const battle = scope.__YGG_GAME?.scene.getScene("battle");
+    if (!battle) return;
+    scope.__battleSpriteAnimations = [];
+    const addSprite = battle.add.sprite.bind(battle.add);
+    battle.add.sprite = (...args: unknown[]) => {
+      const sprite = addSprite(...args);
+      sprite.on("animationstart", ({ key }) => scope.__battleSpriteAnimations?.push(key));
+      return sprite;
+    };
+  });
+  const unrelatedTweenSurvived = await page.evaluate(() => {
+    const battle = (window as unknown as { __YGG_GAME?: { scene: { getScene(name: string): {
+      render(): void;
+      tweens: {
+        add(config: Record<string, unknown>): unknown;
+        getTweensOf(target: object): unknown[];
+      };
+    } | undefined } } }).__YGG_GAME?.scene.getScene("battle");
+    if (!battle) return false;
+    const target = { value: 0 };
+    battle.tweens.add({ targets: target, value: 1, duration: 5000 });
+    battle.render();
+    return battle.tweens.getTweensOf(target).length === 1;
+  });
+  expect(unrelatedTweenSurvived, "a repaint must not kill the music cross-fade or another non-display tween").toBe(true);
   await page.keyboard.press("Enter");
   await page.waitForTimeout(1100);
   const inBattle = (await takeAnimations(page)).join(" ");
 
   expect(inBattle, "health should drain rather than jump").toContain("battle:Rectangle:scaleX");
   expect(inBattle, "damage numbers should float off the target").toContain("battle:Text:alpha,y");
-  expect(inBattle, "a struck combatant should recoil").toContain("battle:Image:x");
+  expect(inBattle, "attackers and struck combatants should move").toContain("battle:Sprite:x");
+  expect(await page.evaluate(() => (window as unknown as { __battleSpriteAnimations?: string[] }).__battleSpriteAnimations),
+    "humanoid attackers should play the action cells from their sheet").toContain("battle.action.sprite.job.vanguard.48");
+  expect(await page.evaluate(() => {
+    const battle = (window as unknown as { __YGG_GAME?: { scene: { getScene(name: string): {
+      actorPositions: Map<string, { idleFrame: number; sprite: { frame: { name: string | number } } }>;
+    } | undefined } } }).__YGG_GAME?.scene.getScene("battle");
+    const actor = battle?.actorPositions.get("party.protagonist");
+    return actor ? Number(actor.sprite.frame.name) === actor.idleFrame : false;
+  }), "the action animation should return its actor to the facing pose").toBe(true);
   expect(inBattle, "the active-actor ring should breathe").toContain("battle:Arc:scale");
+});
+
+test("battle sprites use their action cells and source-independent sizing", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("canvas")).toBeVisible();
+  await page.evaluate(async () => {
+    const game = (window as unknown as { __YGG_GAME?: {
+      registry: { get(key: string): {
+        newGame(draft: { name: string; ancestryId: string; jobId: string; difficulty: string }): Promise<void>;
+        startEncounter(id: string): Promise<void>;
+      } };
+      scene: { start(key: string): void };
+    } }).__YGG_GAME;
+    const bridge = game?.registry.get("yggdrasil.bridge");
+    await bridge?.newGame({ name: "Aster", ancestryId: "hearthborn", jobId: "vanguard", difficulty: "normal" });
+    await bridge?.startEncounter("encounter.mossroad-foragers");
+    game?.scene.start("battle");
+  });
+  await expect(page.locator("#app")).toHaveAttribute("data-scene", "battle");
+  await page.waitForTimeout(500);
+  await recordAnimations(page, "battle");
+  await takeAnimations(page);
+
+  const actors = await page.evaluate(() => {
+    const battle = (window as unknown as { __YGG_GAME?: { scene: { getScene(name: string): {
+      actorPositions: Map<string, {
+        isParty: boolean;
+        sprite: { displayWidth: number; frame: { name: string | number }; texture: { key: string } };
+      }>;
+    } | undefined } } }).__YGG_GAME?.scene.getScene("battle");
+    return battle ? [...battle.actorPositions.values()].map(({ isParty, sprite }) => ({
+      isParty,
+      frame: Number(sprite.frame.name),
+      texture: sprite.texture.key,
+      width: sprite.displayWidth
+    })) : [];
+  });
+  expect(actors.filter(({ isParty }) => isParty).every(({ frame }) => frame === 48)).toBe(true);
+  expect(actors.filter(({ isParty }) => !isParty).every(({ width }) => width === 96)).toBe(true);
+  expect(actors.some(({ texture }) => texture.startsWith("sprite.monster."))).toBe(true);
+
+  await page.evaluate(() => {
+    type BattleSprite = { on(event: string, callback: (animation: { key: string }) => void): void };
+    const scope = window as unknown as {
+      __battleSpriteAnimations?: string[];
+      __YGG_GAME?: { scene: { getScene(name: string): { add: { sprite(...args: unknown[]): BattleSprite } } | undefined } };
+    };
+    const battle = scope.__YGG_GAME?.scene.getScene("battle");
+    if (!battle) return;
+    scope.__battleSpriteAnimations = [];
+    const addSprite = battle.add.sprite.bind(battle.add);
+    battle.add.sprite = (...args: unknown[]) => {
+      const sprite = addSprite(...args);
+      sprite.on("animationstart", ({ key }) => scope.__battleSpriteAnimations?.push(key));
+      return sprite;
+    };
+  });
+
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(900);
+  expect((await takeAnimations(page)).join(" ")).toContain("battle:Sprite:x");
+  expect(await page.evaluate(() => (window as unknown as { __battleSpriteAnimations?: string[] }).__battleSpriteAnimations))
+    .toContain("battle.action.sprite.job.vanguard.48");
 });

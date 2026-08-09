@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Replaced the world HUD's solid-colour party placeholders with the loaded job
+  sprites, added the selected job sprite to character creation, replaced the
+  bosses' unfinished base-body sheet with dressed local art, and animated the
+  hero's directional walk frames. Tightened enemy
+  instance-ID fallback, Reduced Motion's live title toggle, day-tint tween
+  replacement, and battle repaint cleanup so presentation tweens no longer
+  leak, survive against the wrong target, or silence a music cross-fade.
+- Replaced the roster's three repeated enemy silhouettes with eleven selected
+  front-facing sprites from isaiah658's CC0 50+ Monsters Pack. Wolves, moths,
+  horned beasts, wraiths, sentinels, custodians, slimes, and bosses now retain
+  their own readable identities in both the world and battle scenes.
+
 - Gave every speaker a real face. EverFace (Efilheim — the same CC0 author as
   the dungeon tileset) ships eighteen pixel portraits in exactly this game's
   style; all thirty speaker tags now map to a face and a subtle faction wash,

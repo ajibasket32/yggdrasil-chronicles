@@ -17,7 +17,7 @@ import { windowAround, windowFooter, type OverlayWindow } from "../overlayWindow
 import { BUILDING_TILES, groundTile, tileVariant, treeAt, TREE_TILES, type TileRef } from "../tileset";
 import { getNpcSpawnPoints } from "../npcPlacement";
 import { musicForLocation, playMusic, stopMusic } from "../music";
-import { announceGameStatus, announceScene, COLORS, fadeSceneOutThen, fontPx, getBridge, motionDuration, playSound, revealObject, rowsThatFit, setSceneFlag, TEXT } from "../runtime";
+import { announceGameStatus, announceScene, COLORS, fadeSceneIn, fadeSceneOutThen, fontPx, getBridge, motionDuration, playSound, revealObject, rowsThatFit, setSceneFlag, TEXT } from "../runtime";
 import {
   getLocationExits,
   getObjectiveGuidance,
@@ -117,7 +117,7 @@ interface OverflowWindow {
 export class WorldScene extends Phaser.Scene {
   private bridge!: GameBridge;
   private snapshot!: Readonly<GameSnapshot>;
-  private player!: Phaser.GameObjects.Image;
+  private player!: Phaser.GameObjects.Sprite;
   private playerGrid: Point = { x: 5, y: 9 };
   /** Kept on the scene so a battle or a location change cannot reset it. */
   private facing: "up" | "down" | "left" | "right" = "down";
@@ -204,6 +204,7 @@ export class WorldScene extends Phaser.Scene {
   private revealTarget?: { target: Phaser.GameObjects.Text; full: string };
   /** Day/night wash over the map; updated when world time advances. */
   private dayTint?: Phaser.GameObjects.Rectangle;
+  private dayTintTween?: Phaser.Tweens.Tween;
   private endingShown = false;
   /** Analog-stick repeat state; buttons arrive as events, the stick must be polled. */
   private readonly stickState: StickRepeatState = { nextAt: 0 };
@@ -219,9 +220,22 @@ export class WorldScene extends Phaser.Scene {
     // the title after finishing a campaign. Without this reset a second
     // playthrough in the same tab silently never shows its ending.
     this.endingShown = false;
+    this.moving = false;
     this.locked = false;
     this.transitioning = false;
-    this.cameras.main.fadeIn(motionDuration(280), 10, 18, 24);
+    fadeSceneIn(this, 280);
+    for (const direction of ["up", "down", "left", "right"] as const) {
+      const first = PLAYER_FACING_FRAMES[direction];
+      const key = `player.walk.${direction}`;
+      if (!this.anims.exists(key) && this.textures.get("sprite.player").has(String(first + 3))) {
+        this.anims.create({
+          key,
+          frames: this.anims.generateFrameNumbers("sprite.player", { start: first, end: first + 3 }),
+          frameRate: 24,
+          repeat: -1
+        });
+      }
+    }
     this.renderLocation();
     this.bindKeys();
     this.unsubscribe = this.bridge.subscribe((snapshot) => {
@@ -576,7 +590,7 @@ export class WorldScene extends Phaser.Scene {
     this.spawnNpcs(location.id);
     if (kind !== "town") this.spawnEncounter(location.id);
     this.spawnCurio(location.id);
-    this.player = this.add.image(this.playerGrid.x * TILE + 16, this.playerGrid.y * TILE + 16, "sprite.player");
+    this.player = this.add.sprite(this.playerGrid.x * TILE + 16, this.playerGrid.y * TILE + 16, "sprite.player");
     this.player.setDepth(10);
     // renderLocation destroys and rebuilds the avatar on every location change
     // and on every return from a battle, so the facing has to be re-applied
@@ -814,6 +828,7 @@ export class WorldScene extends Phaser.Scene {
     const look = spriteForEnemyId(firstEnemyId ?? "");
     this.encounterSprite = this.add.image(point.x * TILE + 16, point.y * TILE + 16, look.spriteKey, 0)
       .setDepth(8)
+      .setDisplaySize(32, 32)
       .setTint(look.tint);
     this.encounterSprite.setData("encounterId", encounter);
     const guidance = getObjectiveGuidance(this.snapshot);
@@ -854,7 +869,8 @@ export class WorldScene extends Phaser.Scene {
     const partyTop = partyHeading.y + partyHeading.height + 8;
     snapshot.party.slice(0, 4).forEach((member, index) => {
       const y = partyTop + index * 63;
-      children.push(this.add.rectangle(HUD_X + 18, y, 34, 34, member.portraitTint).setOrigin(0));
+      const spriteKey = member.spriteKey && this.textures.exists(member.spriteKey) ? member.spriteKey : "sprite.player";
+      children.push(this.add.image(HUD_X + 35, y + 17, spriteKey, 0).setDisplaySize(34, 34).setTint(member.portraitTint));
       children.push(this.add.text(HUD_X + 61, y - 2, `${member.name}  Lv ${member.level}`, { ...TEXT.body, fontSize: fontPx(12), wordWrap: { width: 145 } }));
       children.push(this.add.text(HUD_X + 61, y + 16, `HP ${member.hp}/${member.maxHp}  MP ${member.mp}/${member.maxMp}`, { ...TEXT.small, fontSize: fontPx(9) }));
     });
@@ -960,18 +976,28 @@ ${objective.objective}` : "No active thread.", {
     }
     if (this.npcSprites.some(({ point }) => point.x === next.x && point.y === next.y)) return;
     this.playerGrid = next;
+    const duration = motionDuration(95);
+    const finish = (): void => {
+      this.moving = false;
+      this.player.stop();
+      this.facePlayer(direction);
+      playSound(this, "sfx.step");
+      this.refreshPrompt();
+    };
+    if (duration <= 0) {
+      this.player.setPosition(next.x * TILE + 16, next.y * TILE + 16);
+      finish();
+      return;
+    }
     this.moving = true;
+    this.player.play(`player.walk.${direction}`);
     this.tweens.add({
       targets: this.player,
       x: next.x * TILE + 16,
       y: next.y * TILE + 16,
-      duration: motionDuration(95),
+      duration,
       ease: "Sine.easeOut",
-      onComplete: () => {
-        this.moving = false;
-        playSound(this, "sfx.step");
-        this.refreshPrompt();
-      }
+      onComplete: finish
     });
   }
 
@@ -1033,6 +1059,8 @@ ${objective.objective}` : "No active thread.", {
    * are governed by the deterministic systems, not by lighting.
    */
   private applyDayTint(): void {
+    this.dayTintTween?.stop();
+    this.dayTintTween = undefined;
     // What the sky was showing a moment ago, so the new wash can grow out of it.
     const previousAlpha = (this.dayTint?.fillAlpha ?? 0);
     this.dayTint?.destroy();
@@ -1057,18 +1085,24 @@ ${objective.objective}` : "No active thread.", {
     // The wash covers the whole map, so appearing at full strength in one frame
     // made dusk and nightfall land as a flicker rather than as time passing.
     // Resting jumps the clock by eight hours, which is exactly when it shows.
-    this.dayTint = this.add.rectangle(0, 0, MAP_COLUMNS * TILE, MAP_ROWS * TILE, color, alpha)
+    const tint = this.add.rectangle(0, 0, MAP_COLUMNS * TILE, MAP_ROWS * TILE, color, alpha)
       .setOrigin(0)
       .setDepth(12);
+    this.dayTint = tint;
     const duration = motionDuration(previousAlpha > 0 ? 700 : 900);
     if (duration > 0) {
-      this.dayTint.setFillStyle(color, previousAlpha);
-      this.tweens.addCounter({
+      tint.setFillStyle(color, previousAlpha);
+      this.dayTintTween = this.tweens.addCounter({
         from: previousAlpha,
         to: alpha,
         duration,
         ease: "Sine.easeInOut",
-        onUpdate: (tween) => this.dayTint?.setFillStyle(color, tween.getValue() ?? alpha)
+        onUpdate: (tween) => {
+          if (tint.active) tint.setFillStyle(color, tween.getValue() ?? alpha);
+        },
+        onComplete: () => {
+          this.dayTintTween = undefined;
+        }
       });
     }
   }
@@ -2381,7 +2415,10 @@ ${objective.objective}` : "No active thread.", {
       const settings = gameSettingsStore.get();
       if (this.systemIndex === 8) gameSettingsStore.update({ highContrast: !settings.highContrast });
       else if (this.systemIndex === 9) gameSettingsStore.update({ textSize: nextTextSize(settings.textSize) });
-      else if (this.systemIndex === 10) gameSettingsStore.update({ reducedMotion: !settings.reducedMotion });
+      else if (this.systemIndex === 10) {
+        gameSettingsStore.update({ reducedMotion: !settings.reducedMotion });
+        this.applyDayTint();
+      }
       else if (this.systemIndex === 11) gameSettingsStore.update({ soundEnabled: !settings.soundEnabled });
       else if (this.systemIndex === 12) gameSettingsStore.update({ soundVolume: settings.soundVolume >= 1 ? 0 : Math.min(1, settings.soundVolume + 0.1) });
       else if (this.systemIndex === 13) gameSettingsStore.update({ musicEnabled: !settings.musicEnabled });

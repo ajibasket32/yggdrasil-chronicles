@@ -41,7 +41,18 @@ export class BootScene extends Phaser.Scene {
     // creatures, wraiths, sentinels, and named bosses read as different foes.
     this.load.spritesheet("sprite.enemy.small", `${base}/Slime.png`, { frameWidth: 32, frameHeight: 32 });
     this.load.spritesheet("sprite.enemy.humanoid", `${base}/Soldier-Yellow.png`, { frameWidth: 32, frameHeight: 32 });
-    this.load.spritesheet("sprite.enemy.boss", `${base}/Character-Base.png`, { frameWidth: 32, frameHeight: 32 });
+    this.load.spritesheet("sprite.enemy.boss", `${base}/Warrior-Red.png`, { frameWidth: 32, frameHeight: 32 });
+    this.load.image("sprite.monster.custodian", "/assets/vendor/monster-pack-2d/custodian.png");
+    this.load.image("sprite.monster.gnawer", "/assets/vendor/monster-pack-2d/gnawer.png");
+    this.load.image("sprite.monster.horned-beast", "/assets/vendor/monster-pack-2d/horned-beast.png");
+    this.load.image("sprite.monster.kiln-core", "/assets/vendor/monster-pack-2d/kiln-core.png");
+    this.load.image("sprite.monster.mote", "/assets/vendor/monster-pack-2d/mote.png");
+    this.load.image("sprite.monster.moth", "/assets/vendor/monster-pack-2d/moth.png");
+    this.load.image("sprite.monster.sentinel", "/assets/vendor/monster-pack-2d/sentinel.png");
+    this.load.image("sprite.monster.slime", "/assets/vendor/monster-pack-2d/slime.png");
+    this.load.image("sprite.monster.star-echo", "/assets/vendor/monster-pack-2d/star-echo.png");
+    this.load.image("sprite.monster.wolf", "/assets/vendor/monster-pack-2d/wolf.png");
+    this.load.image("sprite.monster.wraith", "/assets/vendor/monster-pack-2d/wraith.png");
     // Speaker portraits: EverFace (Efilheim, CC0), one row of eighteen faces.
     this.load.spritesheet(PORTRAIT_SHEET, "/assets/vendor/everface.png", {
       frameWidth: PORTRAIT_SOURCE_SIZE,

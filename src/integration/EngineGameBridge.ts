@@ -834,6 +834,8 @@ export class EngineGameBridge implements GameBridge {
     return {
       maxHp: stats.maxHp,
       maxMp: stats.maxMp,
+      spriteKey: spriteKeyForJob(jobId),
+      tint: ANCESTRY_TINTS[ancestryId] ?? 0xffffff,
       stats: {
         strength: stats.strength,
         dexterity: stats.dexterity,
@@ -2697,6 +2699,7 @@ export class EngineGameBridge implements GameBridge {
       maxHp: displayStats.maxHp,
       mp: displayMp,
       maxMp: displayStats.maxMp,
+      spriteKey: spriteKeyForJob(member.jobId),
       portraitTint: tints[index % tints.length] ?? 0xffffff,
       stats: {
         strength: displayStats.strength,

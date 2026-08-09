@@ -1,15 +1,22 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { encounters, npcs, startingBuildLoadouts } from "../../src/content/campaign";
 import { knownEnemyAppearanceIds, spriteForEnemyId } from "../../src/content/enemyAppearance";
 import { knownPortraitTags, portraitAppearance } from "../../src/content/portraits";
 import { scenes } from "../../src/content/scenes";
 
-import { PORTRAIT_FRAME_COUNT, PORTRAIT_SHEET } from "../../src/content/portraits";
+import { PORTRAIT_FRAME_COUNT, PORTRAIT_SHEET, PORTRAIT_SOURCE_SIZE } from "../../src/content/portraits";
 
 /** Texture keys BootScene loads. A portrait pointing anywhere else draws nothing. */
 const LOADED_SHEETS = new Set([PORTRAIT_SHEET]);
 
 describe("speaker portraits", () => {
+  it("matches the committed sheet's frame layout", () => {
+    const png = readFileSync(new URL("../../public/assets/vendor/everface.png", import.meta.url));
+    expect(png.readUInt32BE(16)).toBe(PORTRAIT_SOURCE_SIZE * PORTRAIT_FRAME_COUNT);
+    expect(png.readUInt32BE(20)).toBe(PORTRAIT_SOURCE_SIZE);
+  });
+
   it("gives every authored NPC a face", () => {
     const missing = npcs.filter((npc) => portraitAppearance(npc.assetTag) === undefined);
     expect(missing.map(({ id }) => id)).toEqual([]);
@@ -76,9 +83,32 @@ describe("enemy appearance", () => {
   });
 
   it("draws only from sheets BootScene loads", () => {
+    const loadedKeys = new Set([
+      "sprite.enemy.small", "sprite.enemy.humanoid", "sprite.enemy.boss",
+      "sprite.monster.custodian", "sprite.monster.gnawer", "sprite.monster.horned-beast",
+      "sprite.monster.kiln-core", "sprite.monster.mote", "sprite.monster.moth",
+      "sprite.monster.sentinel", "sprite.monster.slime", "sprite.monster.star-echo",
+      "sprite.monster.wolf", "sprite.monster.wraith"
+    ]);
     for (const enemyId of knownEnemyAppearanceIds()) {
       const look = spriteForEnemyId(enemyId);
-      expect(["sprite.enemy.small", "sprite.enemy.humanoid", "sprite.enemy.boss"]).toContain(look.spriteKey);
+      expect(loadedKeys.has(look.spriteKey), `${enemyId}: ${look.spriteKey}`).toBe(true);
     }
+  });
+
+  it("keeps the selected monster textures at their authored 64px frame size", () => {
+    const files = [
+      "custodian", "gnawer", "horned-beast", "kiln-core", "mote", "moth",
+      "sentinel", "slime", "star-echo", "wolf", "wraith"
+    ];
+    for (const file of files) {
+      const png = readFileSync(new URL(`../../public/assets/vendor/monster-pack-2d/${file}.png`, import.meta.url));
+      expect([png.readUInt32BE(16), png.readUInt32BE(20)], file).toEqual([64, 64]);
+    }
+  });
+
+  it("uses enough distinct silhouettes to keep the authored roster readable", () => {
+    const keys = knownEnemyAppearanceIds().map((enemyId) => spriteForEnemyId(enemyId).spriteKey);
+    expect(new Set(keys).size).toBeGreaterThanOrEqual(12);
   });
 });
