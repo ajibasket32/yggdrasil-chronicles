@@ -163,8 +163,29 @@ function sourceFiles(rootDir: string): string[] {
   return files.filter((path) => runtimeExtensions.has(extname(path).toLowerCase())).sort();
 }
 
+/**
+ * Source with its comments removed.
+ *
+ * Discovery is a regex over raw text, so any "/assets/..." path written in a
+ * comment was treated as something the game loads. Two of them, added while
+ * explaining *why* a path is built the way it is, were reported as runtime
+ * assets missing from the release — an audit failing on prose. Documentation
+ * should never be able to fail a build, and a path that is only mentioned is
+ * not a path that is fetched.
+ */
+function stripComments(contents: string): string {
+  // Replaced with spaces rather than removed, so nothing on either side of a
+  // comment is accidentally joined into a new token.
+  return contents
+    .replace(/\/\*[\s\S]*?\*\//g, (match) => " ".repeat(match.length))
+    .replace(/(^|[^:])\/\/[^\n]*/g, (match, lead: string) => lead + " ".repeat(match.length - lead.length));
+}
+
 function scanRuntimeText(rootDir: string): Array<{ path: string; contents: string }> {
-  return sourceFiles(rootDir).map((path) => ({ path, contents: readFileSync(path, "utf8") }));
+  return sourceFiles(rootDir).map((path) => ({
+    path,
+    contents: stripComments(readFileSync(path, "utf8"))
+  }));
 }
 
 export function findRuntimeAssetReferences(rootDir: string): string[] {

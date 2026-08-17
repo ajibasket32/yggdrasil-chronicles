@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
@@ -59,6 +59,46 @@ function vendorPacksInRelease(): Set<string> {
   return packs;
 }
 
+/**
+ * Writes the player-facing attribution file.
+ *
+ * ASSETS.md is two documents in one: a CC0 attribution table, which every
+ * recipient of the build has a right to and which the licences ask be kept with
+ * the work, and an internal decision record — why a pack was chosen, which
+ * findings were refuted, what the owner was warned about and decided anyway.
+ * The whole file used to be copied to the public web root, so the second half
+ * was published to every player at a guessable URL.
+ *
+ * The table travels; the deliberation does not.
+ */
+function writeReleaseAttribution(source: string, destination: string): void {
+  if (!existsSync(source)) {
+    throw new Error(`Release asset source is missing: ${source}`);
+  }
+  const lines = readFileSync(source, "utf8").split(/\r?\n/);
+  const table: string[] = [];
+  for (const line of lines) {
+    // The catalogue is the leading table: every row starts a pipe cell. Stop at
+    // the first section heading after it, which is where the prose begins.
+    if (line.startsWith("## ") && table.length > 0) break;
+    if (line.startsWith("|")) table.push(line);
+  }
+  if (table.length < 3) {
+    throw new Error("ASSETS.md has no attribution table to publish.");
+  }
+  const attribution = [
+    "# Asset attribution — Yggdrasil Chronicles",
+    "",
+    "Every asset below is CC0 or public domain. This file travels with the game",
+    "so each work keeps its author, source and licence beside it.",
+    "",
+    ...table,
+    ""
+  ].join(String.fromCharCode(10));
+  mkdirSync(dirname(destination), { recursive: true });
+  writeFileSync(destination, attribution, "utf8");
+}
+
 function copyReleaseAsset(source: string, destination: string): void {
   if (!existsSync(source)) {
     throw new Error(`Release asset source is missing: ${source}`);
@@ -103,12 +143,20 @@ function productionAssetPruning(): Plugin {
           }
         }
       }
-      copyReleaseAsset(resolve(projectRoot, "ASSETS.md"), resolve(productionDirectory, "ASSETS.md"));
+      writeReleaseAttribution(resolve(projectRoot, "ASSETS.md"), resolve(productionDirectory, "ASSETS.md"));
     }
   };
 }
 
 export default defineConfig({
+  // Relative, so a build runs from wherever it is unpacked rather than only
+  // from a domain root. itch.io and GitHub Pages both serve from a subpath, and
+  // there the root-absolute URLs Vite emits by default resolve against the
+  // domain root instead: index.html loads, its own script 404s, and the player
+  // gets a white page. Runtime asset paths are handled separately — they are
+  // fetched by Phaser rather than rewritten by the bundler — through
+  // `assetBase()` in src/game/runtime.ts.
+  base: "./",
   server: {
     host: "127.0.0.1",
     port: 5173,

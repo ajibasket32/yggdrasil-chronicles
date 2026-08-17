@@ -1,5 +1,6 @@
 import type Phaser from "phaser";
 import { gameSettingsStore } from "../settings";
+import { assetBase } from "./runtime";
 
 /**
  * Background music, at last.
@@ -96,12 +97,15 @@ export function playMusic(scene: Phaser.Scene, key: MusicKey): void {
     return;
   }
   if (!scene.cache.audio.exists(key)) {
-    // Not preloaded. BootScene fetches only the title theme, so a place's own
-    // score arrives when the place does. Requested once: a track that fails to
+    // Nothing is preloaded: every track, including the title theme, arrives
+    // when the scene that wants it asks. Requested once — a track that fails to
     // load leaves the game silent rather than retrying on every redraw, and
     // every scene declares its music on every redraw.
     if (requested.has(key)) return;
     requested.add(key);
+    // This loader belongs to whichever scene is playing, not to BootScene, so
+    // it has its own base to set for a build hosted under a subdirectory.
+    scene.load.setBaseURL(assetBase());
     scene.load.audio(key, MUSIC_TRACKS[key]);
     scene.load.once("complete", () => {
       if (scene.cache.audio.exists(key)) playMusic(scene, key);

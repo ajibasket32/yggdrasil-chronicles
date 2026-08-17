@@ -202,6 +202,37 @@ export function mixColour(from: number, to: number, ratio: number): number {
   return (blend(16) << 16) | (blend(8) << 8) | blend(0);
 }
 
+/**
+ * Where this build's files actually live, as a prefix for every asset the game
+ * loads at runtime.
+ *
+ * Asset paths are written root-absolute — "/assets/vendor/..." — which is right
+ * when the game is served from a domain root and wrong everywhere else. Hosted
+ * at `user.github.io/yggdrasil/` or on an itch.io project page, the browser
+ * resolves "/assets/..." against the domain root, finds nothing, and the player
+ * gets a white screen: verified by serving a real build from a subdirectory,
+ * where index.html returned 200 and its own script returned 404.
+ *
+ * Derived from the document's own URL rather than from
+ * `import.meta.env.BASE_URL`. That was the first attempt and it did not work:
+ * with `base: "./"` Vite substitutes the literal "./", which says "relative to
+ * the importing module" — meaningful to the bundler, meaningless to Phaser's
+ * loader, which resolves against the document. Treating it as "no prefix" left
+ * every sprite resolving to the domain root again, and a browser test of the
+ * real build from a subdirectory showed all of them still returning 404.
+ *
+ * The directory the page was served from is the one thing that is true at
+ * runtime regardless of how the build was configured or where it was unpacked.
+ * For a root-hosted build this is "", exactly the previous behaviour.
+ */
+export function assetBase(): string {
+  if (typeof document === "undefined") return "";
+  // baseURI honours a <base> tag if one is ever added; the directory is
+  // everything up to the last slash, so "/game/index.html" gives "/game".
+  const url = new URL(".", document.baseURI);
+  return url.pathname.replace(/\/+$/, "");
+}
+
 export function fontPx(basePx: number): string {
   return `${Math.max(8, Math.round(basePx * textScale))}px`;
 }

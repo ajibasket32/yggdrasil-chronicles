@@ -38,6 +38,8 @@ function walkFiles(directory: string): string[] {
   return files;
 }
 
+const NEWLINE = /\r?\n/;
+
 function relativePath(root: string, path: string): string {
   return relative(root, path).split(sep).join("/");
 }
@@ -63,8 +65,12 @@ export function auditReleasePackage(
     issues.push({ code: "release-missing-file", message: "Production index.html is missing; run npm run build first." });
   } else {
     const index = readFileSync(indexPath, "utf8");
-    const scriptReferences = [...index.matchAll(/(?:src|href)="(\/assets\/[^"?]+(?:\.js|\.css))"/g)].map((match) => match[1]);
-    if (scriptReferences.length === 0 || scriptReferences.some((asset) => asset === undefined || !existsSync(join(releaseDirectory, asset.replace(/^\//, ""))))) {
+    // Accepts "./assets/..." as well as "/assets/...": the build is emitted with
+    // a relative base so it runs from a subdirectory, and a check that only knew
+    // the root-absolute form reported a perfectly good package as broken.
+    const scriptReferences = [...index.matchAll(/(?:src|href)="(\.?\/assets\/[^"?]+(?:\.js|\.css))"/g)]
+      .map((match) => match[1]);
+    if (scriptReferences.length === 0 || scriptReferences.some((asset) => asset === undefined || !existsSync(join(releaseDirectory, asset.replace(/^\.?\//, ""))))) {
       issues.push({ code: "release-index-invalid", message: "Production index.html does not resolve every bundled script and stylesheet." });
     }
   }
@@ -103,10 +109,40 @@ export function auditReleasePackage(
     }
   }
 
-  const catalog = join(projectRoot, "ASSETS.md");
+  // The build publishes an attribution file derived from ASSETS.md's catalogue
+  // table rather than a byte copy of the whole document: the table is what the
+  // CC0 licences ask travel with the work, while the rest of ASSETS.md is an
+  // internal decision record that used to be served at a guessable public URL.
+  //
+  // So this checks the obligation rather than the bytes: every source row must
+  // be present in what ships, and nothing else may be.
   const packagedCatalog = join(releaseDirectory, "ASSETS.md");
-  if (!existsSync(packagedCatalog) || hash(catalog) !== hash(packagedCatalog)) {
-    issues.push({ code: "release-license-missing", message: "Release package is missing matching ASSETS.md attribution." });
+  if (!existsSync(packagedCatalog)) {
+    issues.push({ code: "release-license-missing", message: "Release package is missing ASSETS.md attribution." });
+  } else {
+    const sourceRows = readFileSync(join(projectRoot, "ASSETS.md"), "utf8")
+      .split(NEWLINE)
+      .filter((line) => line.startsWith("|"));
+    const packaged = readFileSync(packagedCatalog, "utf8");
+    // Rows that exist in source must survive packaging. A catalogue with no
+    // rows at all is not a failure — it is simply nothing to carry, and
+    // treating it as one made an empty catalogue report "missing 0 rows".
+    const missing = sourceRows.filter((row) => !packaged.includes(row));
+    if (missing.length > 0) {
+      issues.push({
+        code: "release-license-missing",
+        message: `Release attribution is missing ${missing.length} catalogue row(s).`
+      });
+    }
+    // A heading beyond the table means prose came with it.
+    const strayHeadings = packaged.split(NEWLINE)
+      .filter((line) => line.startsWith("## "));
+    if (strayHeadings.length > 0) {
+      issues.push({
+        code: "release-unexpected-vendor-file",
+        message: `Release attribution carries internal prose: ${strayHeadings[0]}`
+      });
+    }
   }
 
   // Derived from what actually ships, not from one pack's name. Naming a single

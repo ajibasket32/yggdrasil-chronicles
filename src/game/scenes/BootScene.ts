@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { COLORS } from "../runtime";
+import { assetBase, COLORS } from "../runtime";
 import { PORTRAIT_SHEET, PORTRAIT_SOURCE_SIZE } from "../../content";
 import { DUNGEON_SHEET, OVERWORLD_SHEET, SOURCE_TILE } from "../tileset";
 
@@ -9,6 +9,12 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
+    // Every path below is written root-absolute for readability, and the loader
+    // is told once where the root actually is. Hosted under a subdirectory —
+    // itch.io, GitHub Pages — "/assets/..." resolves against the domain root
+    // and every file 404s. This is empty for a root-hosted build.
+    this.load.setBaseURL(assetBase());
+
     // Terrain. Both sheets have been committed with verified CC0 provenance
     // since the asset catalog was written and were referenced by nothing.
     this.load.spritesheet(OVERWORLD_SHEET, "/assets/vendor/punyworld-overworld.png", {
