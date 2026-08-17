@@ -10,7 +10,6 @@ import {
 import { EngineGameBridge } from "./integration/EngineGameBridge";
 import { MemorySaveStorage, SaveRepository } from "./save";
 import { applySettingsToPhaserGame, gameSettingsStore } from "./settings";
-import { verifyGrapify } from "./grapify-boot";
 
 /**
  * Builds the bridge, and keeps a browser that refuses storage playing.
@@ -94,13 +93,3 @@ gameSettingsStore.subscribe((settings) => {
   applyMusicSettings(game);
 });
 
-// Loaded on every start, by explicit request, and checked rather than assumed.
-// The result is reported and then ignored: nothing a player can see depends on
-// it, so a failure here must not change what happens next.
-const grapify = verifyGrapify();
-if (grapify.loaded) {
-  console.info(`grapify is loaded and working (${grapify.detail}).`);
-} else {
-  console.warn(`grapify did not initialise: ${grapify.detail}. The game is unaffected.`);
-}
-if (app) app.dataset.grapify = grapify.loaded ? "loaded" : "failed";

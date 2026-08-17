@@ -20,28 +20,27 @@ Additional UI and VFX remain blocked until a CC0/public-domain source is verifie
 
 ## Code dependency licences
 
-Every asset above is CC0. One **code** dependency is not, and it is recorded
-here because the consequence is easy to discover far too late.
+Every asset above is CC0, and every code dependency that reaches the shipped
+bundle is permissive. Nothing in a build carries a copyleft obligation.
 
-| Package | Version | Licence | Bundled into the shipped game? |
-| --- | --- | --- | --- |
-| `grapify` | 1.0.7 | **GPL-3.0** | Yes — imported from `src/grapify-boot.ts` |
+This section exists because that was briefly not true. `grapify` (GPL-3.0) was
+installed at the owner's explicit instruction, and because it was statically
+imported it was compiled into the shipped JavaScript — which would have obliged
+any distribution of the game to be licensed GPL-3.0 in its entirety and to offer
+its source to every recipient. The release audit caught it: the game declared no
+licence at all, so a public release would have handed players GPL-covered code
+with no grant to use it.
 
-Installed at the owner's explicit instruction, after the licence, the
-chart-library purpose and the self-referential manifest were all raised. What
-that means in practice, stated plainly:
+It was removed once the consequence was put plainly to the owner, who chose to
+keep the game their own. `grapify` provided nothing a player could see — it is a
+chart library, and the game never drew a chart — so removing it changed no
+behaviour. Verified after removal: `grep -rl grapify dist/` matches nothing in
+the JavaScript, and the four `console.log` lines the package contributed to
+every player's console are gone with it.
 
-- GPL-3.0 is a copyleft licence. Because grapify's code is bundled into the
-  JavaScript this game ships, **distributing that build carries GPL-3.0
-  obligations for the whole game** — including publishing its source under
-  GPL-3.0 to anyone who receives it.
-- Nothing conflicts *today*: this project declares no licence of its own, and
-  nothing has been distributed. The obligation attaches the moment a build is
-  handed to anyone else.
-- It is fully reversible. `npm uninstall grapify` plus deleting
-  `src/grapify-boot.ts`, `src/types/grapify.d.ts` and the two lines that call
-  it in `src/main.ts` removes the obligation entirely. Nothing a player can see
-  depends on it.
+The rule worth keeping: a copyleft dependency that reaches the browser bundle
+sets the licence of the whole game. `tools/audit-release.ts` checks asset
+licences but not code ones, so this is currently a human check.
 
 ## Verified license evidence
 

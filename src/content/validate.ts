@@ -1,4 +1,5 @@
 import type { ContentPack, QuestDefinition } from "../shared/types";
+import { knownEnemyAppearanceIds } from "./enemyAppearance";
 import { knownPortraitTags } from "./portraits";
 import { scenes } from "./scenes";
 
@@ -462,6 +463,19 @@ export function validateContentPack(pack: ContentPack): ContentValidationResult 
       if (reverse && !reverse.connections.includes(location.id)) {
         warnings.push(`${location.id} -> ${connection} is not reciprocal`);
       }
+    }
+  }
+
+  // Every enemy an encounter can field must have an authored sprite and tint.
+  // `spriteForEnemyId` falls back to the small-slime sheet with no tint for an
+  // id it does not know, so a missing entry is not an error a player sees as an
+  // error — it is a wolf that renders as a slime, which no test in the suite
+  // looks for. `knownEnemyAppearanceIds` was written for exactly this check and
+  // then never called by anything, so the guarantee it describes did not exist.
+  const enemyAppearanceIds = new Set(knownEnemyAppearanceIds());
+  for (const enemyId of [...encounterEnemyIds].sort()) {
+    if (!enemyAppearanceIds.has(enemyId)) {
+      errors.push(`${enemyId} has no authored sprite, so it would render as the default monster`);
     }
   }
 

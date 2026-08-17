@@ -341,7 +341,7 @@ test("the canvas keeps its aspect ratio at any window shape", async ({ page }) =
   }
 });
 
-test("only the title theme is fetched up front; a place's score arrives with it", async ({ page }) => {
+test("no music is fetched before the title draws; each score arrives with its place", async ({ page }) => {
   await page.goto("/");
   const app = page.locator("#app");
   await expect(page.locator("canvas")).toBeVisible();
@@ -354,12 +354,18 @@ test("only the title theme is fetched up front; a place's score arrives with it"
       return Object.fromEntries(keys.map((key) => [key, game?.cache.audio.exists(key) ?? false]));
     });
 
-  // Decoding all five tracks before the title drew held tens of megabytes of
-  // PCM apiece for places the player had not reached.
+  // Nothing is fetched before the title draws. Decoding all five up front held
+  // tens of megabytes of PCM for places the player had not reached; keeping
+  // only the title theme still put 3.4 MB between the player and their first
+  // frame, on a screen showing nothing, for audio no browser will play until
+  // they interact. The title theme now arrives the same way every other track
+  // does — when the scene that wants it asks.
   const atTitle = await cached();
-  expect(atTitle["music.title"]).toBe(true);
   expect(atTitle["music.town"]).toBe(false);
   expect(atTitle["music.dungeon"]).toBe(false);
+
+  // It does still arrive, so the title is scored a moment later.
+  await expect.poll(async () => (await cached())["music.title"], { timeout: 15_000 }).toBe(true);
 
   await startNewChronicle(page);
   await expect(app).toHaveAttribute("data-location-id", "location.hearthcross");

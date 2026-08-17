@@ -49,6 +49,8 @@ import {
   spriteForEnemyId,
   spriteKeyForJob,
   STATUS_LABELS,
+  statusAdjective,
+  statusNoun,
   titleCase
 } from "./presentation";
 import {
@@ -1803,7 +1805,12 @@ export class EngineGameBridge implements GameBridge {
         inventory: addItem(state.inventory, currentlyEquipped)
       };
       await this.persist("autosave");
-      return { success: true, message: `${member.name} unequips ${currentlyEquipped}.` };
+      // Named, not identified: this printed "Rowan unequips
+      // item.wayfarer-blade." in a loop the whole sidegrade economy is built on.
+      const removedName = EQUIPMENT[currentlyEquipped]?.name
+        ?? items.find(({ id }) => id === currentlyEquipped)?.name
+        ?? currentlyEquipped;
+      return { success: true, message: `${member.name} unequips ${removedName}.` };
     }
 
     const equipmentItem = EQUIPMENT[itemId];
@@ -2929,16 +2936,20 @@ export class EngineGameBridge implements GameBridge {
         return `${name(event.actorId)} misses ${name(event.targetId)}.`;
       case "guard":
         return `${name(event.actorId)} guards.`;
+      // Every line below used to print a raw content id — "is afflicted by
+      // fortify", "lacks the focus for skill.aimed-shot" — and called a buff an
+      // affliction, which inverts the meaning of a form the player just paid
+      // focus to cast.
       case "status_applied":
-        return `${name(event.targetId)} is afflicted by ${event.status}.`;
+        return `${name(event.targetId)} is now ${statusAdjective(event.status)}.`;
       case "status_damage":
-        return `${name(event.targetId)} suffers ${event.amount} ${event.status} damage.`;
+        return `${name(event.targetId)} suffers ${event.amount} damage from ${statusNoun(event.status)}.`;
       case "status_expired":
-        return `${event.status} fades from ${name(event.targetId)}.`;
+        return `${name(event.targetId)} is no longer ${statusAdjective(event.status)}.`;
       case "insufficient_mp":
-        return `${name(event.actorId)} lacks the focus for ${event.skillId}.`;
+        return `${name(event.actorId)} lacks the focus for ${SKILLS[event.skillId]?.name ?? "that form"}.`;
       case "incapacitated":
-        return `${name(event.actorId)} loses the turn to ${event.status}.`;
+        return `${name(event.actorId)} is ${statusAdjective(event.status)} and loses the turn.`;
       case "battle_ended":
         return event.outcome === "victory" ? "The last enemy falls." : "The party can fight no longer.";
     }

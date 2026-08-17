@@ -1,6 +1,5 @@
 import Phaser from "phaser";
 import { COLORS } from "../runtime";
-import { MUSIC_TRACKS } from "../music";
 import { PORTRAIT_SHEET, PORTRAIT_SOURCE_SIZE } from "../../content";
 import { DUNGEON_SHEET, OVERWORLD_SHEET, SOURCE_TILE } from "../tileset";
 
@@ -72,14 +71,18 @@ export class BootScene extends Phaser.Scene {
     this.load.audio("sfx.coin", `${audio}/handleCoins2.ogg`);
     this.load.audio("sfx.cursor", `${audio}/cloth1.ogg`);
     this.load.audio("sfx.miss", `${audio}/cloth3.ogg`);
-    // The score: five CC0 tracks catalogued in ASSETS.md. Only the title theme
-    // is fetched here — the other four are loaded the first time a place asks
-    // for them (see `playMusic`). Decoding all five up front held tens of
-    // megabytes of PCM apiece before the title screen had drawn a pixel, most
-    // of it for places the player had not reached and might never reach, on the
-    // phones the touch build exists for. The full table still lives in music.ts,
-    // so the release audit sees every path.
-    this.load.audio("music.title", MUSIC_TRACKS["music.title"]);
+    // The score: five CC0 tracks catalogued in ASSETS.md, and none of them is
+    // fetched here. Each is loaded the first time a place asks for it, which
+    // `playMusic` already does — including the title theme, requested by
+    // TitleScene the moment it draws.
+    //
+    // Decoding them up front held tens of megabytes of PCM before the title had
+    // drawn a pixel. The title theme was kept back from that change and became
+    // the single largest thing between a player and their first frame: 3.4 MB
+    // that has to arrive before `create()` runs, on a screen showing nothing at
+    // all. It cannot even be heard until the player interacts, because browsers
+    // refuse autoplay until then. The full table still lives in music.ts, so the
+    // release audit sees every path.
   }
 
   create(): void {

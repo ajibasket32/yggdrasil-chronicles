@@ -59,6 +59,41 @@ export const STATUS_LABELS: Readonly<Record<StatusId, string>> = {
   slow: "Slowed — acting later"
 };
 
+/**
+ * Adjectives for the battle log, where the descriptions above cannot be
+ * inlined: "Rowan is afflicted by Fortified — taking less harm" is not a
+ * sentence. The log previously printed the raw status id instead, so the player
+ * read "is afflicted by fortify" for a buff they had just chosen to cast.
+ */
+const STATUS_ADJECTIVES: Readonly<Record<StatusId, string>> = {
+  guard: "guarding",
+  poison: "poisoned",
+  burn: "burning",
+  bleed: "bleeding",
+  stun: "stunned",
+  sleep: "asleep",
+  freeze: "frozen",
+  weaken: "weakened",
+  fortify: "fortified",
+  haste: "hastened",
+  slow: "slowed"
+};
+
+/** The nouns the recurring-damage statuses are named by. */
+const STATUS_NOUNS: Readonly<Partial<Record<StatusId, string>>> = {
+  poison: "poison",
+  burn: "burning",
+  bleed: "bleeding"
+};
+
+export function statusAdjective(status: StatusId): string {
+  return STATUS_ADJECTIVES[status] ?? status;
+}
+
+export function statusNoun(status: StatusId): string {
+  return STATUS_NOUNS[status] ?? statusAdjective(status);
+}
+
 const SLOT_LABELS: Readonly<Record<GameSaveSlot, string>> = {
   autosave: "Autosave",
   quick: "Quick Save",
