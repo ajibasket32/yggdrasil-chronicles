@@ -24,13 +24,61 @@ const completionResponseSchema = z.object({
 /** Generous for this patch schema, and small enough that a runaway body cannot hurt. */
 const MAX_RESPONSE_BYTES = 256 * 1024;
 
+/**
+ * The exact shape the validator accepts, stated to the model.
+ *
+ * The prompt used to describe the *policy* — no raw stats, only whitelisted
+ * effects — but never named a single field, while `generatedContentPatchSchema`
+ * is `.strict()` and rejects anything else. So a model had to guess the schema,
+ * and guessed wrong: one returned top-level `canonNotes` and `trigger`, omitted
+ * `id`, `triggerId` and `createdAt`, wrote dialogue as `{lines, playerOptions}`
+ * instead of `{text, nextIds}`, and used `questId` where an effect needs
+ * `questLocalId`. Every one of those is a silent fall back to the scripted beat,
+ * so the provider looked configured and never once produced narrative.
+ */
 const SYSTEM_PROMPT = `You are the optional narrative generator for Yggdrasil Chronicles.
-Return exactly one JSON object and no Markdown. Generate optional dialogue, local NPCs,
-quests, events, and only whitelisted effects. Never invent raw damage, stats, XP,
-currency, loot, battle outcomes, boss state, or authored quest transitions. Use only
-asset tags, encounter IDs, and reward tiers supplied in the context. Every generated
-quest must be referenced by an unlock_generated_quest effect. Keep canonical facts
-consistent with canonSummary.`;
+
+Return exactly one JSON object, no Markdown, no prose outside it. The object is
+validated strictly: any extra, missing or misnamed key is rejected whole.
+
+Required shape — use these exact key names:
+{
+  "id": string,                       // unique id for this patch
+  "triggerId": string,                // copy trigger.id from the context
+  "promptVersion": string,            // copy promptVersion from the context
+  "createdAt": string,                // ISO 8601, e.g. 2024-01-01T00:00:00.000Z
+  "dialogue": [                       // up to 40
+    { "id": string, "speakerId": string, "text": string, "nextIds": string[] }
+  ],
+  "quests": [                         // up to 4
+    { "localId": string, "title": string, "summary": string,
+      "objectives": string[], "rewardTier": "minor"|"standard"|"major"|"boss" }
+  ],
+  "npcs": [                           // up to 4
+    { "localId": string, "name": string, "role": string,
+      "personality": string[], "assetTag": string }
+  ],
+  "events": [                         // up to 4
+    { "localId": string, "title": string, "description": string,
+      "encounterId"?: string }
+  ],
+  "effects": [                        // up to 12, only these four forms
+    { "type": "create_generated_flag", "key": "generated.<lowercase.id>", "value": boolean|number|string },
+    { "type": "adjust_relationship", "npcId": string, "axis": "trust"|"respect"|"fear", "amount": -5..5 },
+    { "type": "unlock_generated_quest", "questLocalId": string },
+    { "type": "add_chronicle_entry", "title": string, "body": string }
+  ]
+}
+
+Every array must be present, even if empty. One line of dialogue is one object
+with its own "text"; do not nest an array of lines inside it.
+
+Never invent raw damage, stats, XP, currency, loot, battle outcomes, boss state,
+or authored quest transitions — the game engine owns all of those. Use only the
+asset tags, encounter IDs and reward tiers supplied in the context. Every quest
+you generate must also be referenced by an unlock_generated_quest effect whose
+questLocalId matches its localId. Keep every canonical fact consistent with
+canonSummary.`;
 
 function strictJsonObject(text: string): unknown {
   const parsed: unknown = JSON.parse(text);

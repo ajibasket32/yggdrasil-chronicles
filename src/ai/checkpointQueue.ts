@@ -67,7 +67,13 @@ export class NarrativeCheckpointQueue {
     this.#endpoint = options.endpoint ?? "/api/narrative";
     this.#clientId = options.clientId ?? `browser-${Math.random().toString(36).slice(2)}`;
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
-    this.#requestTimeoutMs = options.requestTimeoutMs ?? 16_000;
+    // Sixteen seconds was tuned for a model that answers immediately. A
+    // reasoning model thinks first: a real narrative patch measured 55s against
+    // the configured gateway, so the browser gave up before the answer existed
+    // and every checkpoint silently became scripted. Nothing waits on this —
+    // `enqueue` is fire-and-forget and a timeout just yields the scripted beat —
+    // so the only cost of waiting longer is waiting longer.
+    this.#requestTimeoutMs = options.requestTimeoutMs ?? 90_000;
     this.#catalog = options.validationCatalog ?? {};
     this.#cache = options.cache ?? new Map();
   }
