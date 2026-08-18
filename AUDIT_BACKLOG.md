@@ -1,4 +1,24 @@
-# Yggdrasil Chronicles — Definitive Feature-Completeness Backlog
+# Yggdrasil Chronicles — Feature-Completeness Backlog (HISTORICAL)
+
+> ## This document is finished work, not a to-do list.
+>
+> Every one of the 176 items below, and both addenda, is **done**. So are four
+> later adversarial audit rounds and a release-readiness audit. This is kept as
+> a record of how the game got here — what was found, what was refuted, and why
+> decisions were made — because that reasoning is worth preserving and is not
+> recoverable from the code.
+>
+> **It is written in the present tense about a version of the game that no
+> longer exists.** Read as current it is badly wrong. The verdict below says
+> there is no music, no animation, no damage numbers, no map, no target
+> selection, no interactable objects, and that bosses die in two rounds. All of
+> that was true when it was written and none of it is true now: the game has a
+> full score, animated battles with draining health bars, a world map, target
+> selection, and a campaign simulation that walks 36 quests and wins every boss
+> fight across eight seeds with the authored phase choreography playing out.
+>
+> For the current state, read `CHANGELOG.md` and the test suites.
+
 
 **Plan of record.** 176 work items, ordered. Verified against the working tree at `7229122` (clean, `main`). **Audit coverage is now complete** — every dimension originally designed has run and returned.
 

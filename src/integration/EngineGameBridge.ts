@@ -1450,6 +1450,19 @@ export class EngineGameBridge implements GameBridge {
         : undefined;
       const activeSkillId = requestedSkillId ?? actor.skills.find((candidate) => SKILLS[candidate]);
       const activeSkill = activeSkillId ? SKILLS[activeSkillId] : undefined;
+      // Refuse rather than spend the turn. The engine correctly declines a cast
+      // the actor cannot pay for and returns its state untouched — but the
+      // caller fell through to the enemy's turn anyway, so choosing a form you
+      // could not afford handed the round to the enemy and printed nothing at
+      // all. Every caster runs out of focus; this was reachable in the first
+      // hour and every hour after.
+      if (action === "skill" && activeSkill && actor.mp < activeSkill.mpCost) {
+        active.log.push(
+          `${actor.name} lacks the focus for ${activeSkill.name}. Choose another action.`
+        );
+        this.emit();
+        return;
+      }
       const scope = action === "skill" ? activeSkill?.target ?? "enemy" : "enemy";
       const chosenTargetId = this.resolveActionTarget(active, actor.id, scope, targetId, target.id);
       if (scope === "enemy") active.lastTargetId = chosenTargetId;

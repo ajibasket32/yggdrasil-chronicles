@@ -642,11 +642,21 @@ export class BattleScene extends Phaser.Scene {
     this.add.text(28, 360, "CHOOSE A FORM", { ...TEXT.small, color: COLORS.gold });
     battle.activeSkills.forEach((skill, index) => {
       const selected = index === this.subMenuIndex;
-      this.add.text(36, 393 + index * 24, `${selected ? "›" : " "} ${skill.name.padEnd(20)} ${skill.mpCost} MP`, {
-        ...TEXT.heading,
-        fontSize: fontPx(14),
-        color: selected ? COLORS.gold : COLORS.cream
-      });
+      // `affordable` has been on this view all along and nothing read it, so a
+      // form the character could not pay for looked exactly like one they
+      // could. Dimmed, and marked in words as well as colour.
+      const unaffordable = skill.affordable === false;
+      const suffix = unaffordable ? "  — not enough focus" : "";
+      this.add.text(
+        36,
+        393 + index * 24,
+        `${selected ? "›" : " "} ${skill.name.padEnd(20)} ${skill.mpCost} MP${suffix}`,
+        {
+          ...TEXT.heading,
+          fontSize: fontPx(14),
+          color: unaffordable ? "#6b7580" : selected ? COLORS.gold : COLORS.cream
+        }
+      );
     });
     this.paintSubMenuHint("selects a form");
   }
